@@ -19,9 +19,9 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 # -- Config -----------------------------------------------------------------
-MODEL = os.environ.get("SOMA_LOCAL_MODEL", "qwen3:4b")
-RANKER_MODEL = os.environ.get("SOMA_RANKER_MODEL", "qwen3:4b")
-ANALYST_MODEL = os.environ.get("SOMA_ANALYST_MODEL", "gemma4:e4b")
+MODEL = os.environ.get("SOMA_LOCAL_MODEL", "gemma4:e4b")
+RANKER_MODEL = os.environ.get("SOMA_RANKER_MODEL", "gemma4:e4b")
+ANALYST_MODEL = os.environ.get("SOMA_ANALYST_MODEL", "qwen3-coder:30b-a3b-q4_K_M")
 CHAT_ALLOWED_DIRS = [
     path for path in [
         "/Users/daliys",
@@ -40,9 +40,11 @@ MAX_PREVIEW_CHARS = 1_400
 OLLAMA_SUMMARY_TIMEOUT = 45
 DEFAULT_TOKEN_BUDGET = "balanced"
 TOKEN_BUDGETS = {
+    "micro": 1_000,
     "fast": 2_500,
     "balanced": 6_000,
-    "deep": 20_000,
+    "deep": 15_000,
+    "full": 30_000,
 }
 ANALYSIS_DEPTHS = {"deterministic", "ranked", "analyst"}
 CODEX_PACKET_TARGET_TOKENS = TOKEN_BUDGETS[DEFAULT_TOKEN_BUDGET]
@@ -283,14 +285,22 @@ async def query_ollama(messages, tools=None, timeout=120):
     return await query_ollama_model(MODEL, messages, tools=tools, timeout=timeout)
 
 
-async def query_ollama_model(model, messages, tools=None, timeout=120, num_predict=None):
-    data = {"model": model, "think": False, "messages": messages, "stream": False}
+async def query_ollama_model(model, messages, tools=None, timeout=120, num_predict=None, json_mode=False):
+    data = {
+        "model": model,
+        "think": False,
+        "messages": messages,
+        "stream": False,
+        "options": {"num_ctx": 4096, "temperature": 0.1},
+    }
+    if json_mode:
+        data["format"] = "json"
     if tools:
         data["tools"] = tools
     if num_predict:
-        data["options"] = {"num_predict": num_predict, "temperature": 0.1}
+        data["options"]["num_predict"] = num_predict
     req = urllib.request.Request(
-        "http://localhost:11434/api/chat",
+        "http://127.0.0.1:11434/api/chat",
         data=json.dumps(data).encode(),
         headers={"Content-Type": "application/json"},
     )
@@ -1257,24 +1267,38 @@ def ranker_payload(prompt, preflight, evidence_items):
 async def rank_evidence_with_model(prompt, preflight, evidence_items):
     if not evidence_items:
         return evidence_items, {"stage": "ranker", "model": RANKER_MODEL, "status": "skipped"}
-    system = (
-        "Rank small evidence candidates for a Codex packet. Return JSON only: "
-        "{\"ordered_ids\":[0,1],\"notes\":[\"...\"]}. Use only candidate ids."
-    )
-    response = await query_ollama_model(
-        RANKER_MODEL,
-        [
-            {"role": "system", "content": system},
-            {"role": "user", "content": json.dumps(ranker_payload(prompt, preflight, evidence_items))},
-        ],
-        timeout=25,
-        num_predict=180,
-    )
-    if "error" in response:
-        return evidence_items, {"stage": "ranker", "model": RANKER_MODEL, "status": "failed", "error": response["error"]}
-    decoded = extract_json_object(response.get("message", {}).get("content", ""))
+    decoded = None
+    last_error = "invalid ranker JSON"
+    payload = json.dumps(ranker_payload(prompt, preflight, evidence_items))
+    prompts = [
+        (
+            "Rank small evidence candidates for a Codex packet. Return JSON only: "
+            "{\"ordered_ids\":[0,1],\"notes\":[\"...\"]}. Use only candidate ids."
+        ),
+        (
+            "Return only minified JSON with this exact schema: "
+            "{\"ordered_ids\":[0,1]}. Use integer candidate ids only. No notes."
+        ),
+    ]
+    for attempt, system in enumerate(prompts, start=1):
+        response = await query_ollama_model(
+            RANKER_MODEL,
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": payload},
+            ],
+            timeout=25,
+            num_predict=180 if attempt == 1 else 96,
+            json_mode=True,
+        )
+        if "error" in response:
+            return evidence_items, {"stage": "ranker", "model": RANKER_MODEL, "status": "failed", "error": response["error"]}
+        decoded = extract_json_object(response.get("message", {}).get("content", ""))
+        if isinstance(decoded, dict) and isinstance(decoded.get("ordered_ids"), list):
+            break
+        last_error = f"invalid ranker JSON after attempt {attempt}"
     if not isinstance(decoded, dict) or not isinstance(decoded.get("ordered_ids"), list):
-        return evidence_items, {"stage": "ranker", "model": RANKER_MODEL, "status": "failed", "error": "invalid ranker JSON"}
+        return evidence_items, {"stage": "ranker", "model": RANKER_MODEL, "status": "failed", "error": last_error}
 
     ordered = []
     seen = set()
@@ -1307,24 +1331,39 @@ async def analyze_packet_with_model(prompt, preflight, evidence_items, error_lin
         ],
         "error_lines": error_lines[:MAX_ERROR_LINES],
     }
-    system = (
-        "Analyze a compact evidence packet. Return JSON only with "
-        "{\"hypotheses\":[\"...\"],\"missing_context\":[\"...\"]}. Do not invent facts."
-    )
-    response = await query_ollama_model(
-        ANALYST_MODEL,
-        [
-            {"role": "system", "content": system},
-            {"role": "user", "content": json.dumps(payload)},
-        ],
-        timeout=45,
-        num_predict=280,
-    )
-    if "error" in response:
-        return None, {"stage": "analyst", "model": ANALYST_MODEL, "status": "failed", "error": response["error"]}
-    decoded = extract_json_object(response.get("message", {}).get("content", ""))
+    decoded = None
+    last_error = "invalid analyst JSON"
+    user_payload = json.dumps(payload)
+    prompts = [
+        (
+            "Analyze a compact evidence packet. Return JSON only with "
+            "{\"hypotheses\":[\"...\"],\"missing_context\":[\"...\"]}. Do not invent facts."
+        ),
+        (
+            "Return only minified JSON with this exact schema: "
+            "{\"hypotheses\":[\"...\"],\"missing_context\":[\"...\"]}. "
+            "Use only facts from the provided packet."
+        ),
+    ]
+    for attempt, system in enumerate(prompts, start=1):
+        response = await query_ollama_model(
+            ANALYST_MODEL,
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_payload},
+            ],
+            timeout=45,
+            num_predict=280,
+            json_mode=True,
+        )
+        if "error" in response:
+            return None, {"stage": "analyst", "model": ANALYST_MODEL, "status": "failed", "error": response["error"]}
+        decoded = extract_json_object(response.get("message", {}).get("content", ""))
+        if isinstance(decoded, dict):
+            break
+        last_error = f"invalid analyst JSON after attempt {attempt}"
     if not isinstance(decoded, dict):
-        return None, {"stage": "analyst", "model": ANALYST_MODEL, "status": "failed", "error": "invalid analyst JSON"}
+        return None, {"stage": "analyst", "model": ANALYST_MODEL, "status": "failed", "error": last_error}
     return decoded, {"stage": "analyst", "model": ANALYST_MODEL, "status": "ok"}
 
 

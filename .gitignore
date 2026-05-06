@@ -65,3 +65,9 @@ fastlane/test_output
 .DS_Store
 __pycache__/
 *.py[cod]
+
+# Graphify local rebuild noise; keep graphify-out/graph.json, GRAPH_REPORT.md, and graph.html trackable.
+graphify-out/cache/
+graphify-out/cost.json
+graphify-out/manifest.json
+graphify-out/.graphify_*

@@ -17,7 +17,7 @@ from pathlib import Path
 
 import scout_pipeline
 
-DEFAULT_MODEL = "qwen3:4b"
+DEFAULT_MODEL = "gemma4:e4b"
 MAX_PROMPT_CHARS = 28_000
 RELAY_SYSTEM_PROMPT = (
     "You are a concise engineering assistant. Answer directly without verbose "
@@ -33,11 +33,12 @@ def ollama_chat(model, messages, *, num_predict, temperature=0.3, timeout=180):
         "stream": False,
         "options": {
             "num_predict": num_predict,
+            "num_ctx": 4096,
             "temperature": temperature,
         },
     }
     req = urllib.request.Request(
-        "http://localhost:11434/api/chat",
+        "http://127.0.0.1:11434/api/chat",
         data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json"},
     )
@@ -87,6 +88,9 @@ async def run_gather(prompt, project_root, analysis_depth):
     script_path = str(Path(__file__).with_name("scout_pipeline.py"))
     env = dict(os.environ)
     env["PYTHONDONTWRITEBYTECODE"] = "1"
+    env.setdefault("SOMA_LOCAL_MODEL", "gemma4:e4b")
+    env.setdefault("SOMA_RANKER_MODEL", "gemma4:e4b")
+    env.setdefault("SOMA_ANALYST_MODEL", "qwen3-coder:30b-a3b-q4_K_M")
     bundle = await asyncio.to_thread(
         lambda: json.loads(
             subprocess.run(

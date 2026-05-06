@@ -9,7 +9,7 @@ import os
 import sys
 import urllib.request
 
-MODEL = os.environ.get("SOMA_LOCAL_MODEL", "qwen3:4b")
+MODEL = os.environ.get("SOMA_LOCAL_MODEL", "gemma4:e4b")
 MAX_PROMPT_CHARS = 28_000
 
 
@@ -33,11 +33,12 @@ def query_ollama(prompt: str) -> dict:
         "stream": False,
         "options": {
             "num_predict": 1024,
+            "num_ctx": 4096,
             "temperature": 0.3,
         }
     }
     request = urllib.request.Request(
-        "http://localhost:11434/api/chat",
+        "http://127.0.0.1:11434/api/chat",
         data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json"},
     )

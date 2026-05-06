@@ -66,7 +66,7 @@ struct ContentView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
                         if viewModel.scoutTranscript.isEmpty {
-                            emptyState(icon: "folder.badge.magnifyingglass", title: "Scout mode", subtitle: "Chat directly with qwen3:4b to explore your files")
+                            emptyState(icon: "folder.badge.magnifyingglass", title: "Scout mode", subtitle: "Chat directly with \(ollama.modelName) to explore your files")
                         } else {
                             Text(viewModel.scoutTranscript).font(.system(.body, design: .monospaced)).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
                         }
@@ -92,6 +92,7 @@ struct ContentView: View {
     private var relayView: some View {
         VStack(spacing: 0) {
             projectRootPanel
+            mcpGatewayPanel
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if viewModel.relayPhase == .idle && viewModel.gatherBundle == nil && viewModel.relayResponse == nil && viewModel.relayError == nil {
@@ -101,7 +102,7 @@ struct ContentView: View {
                         phaseCard(emoji: "📦", title: "Compiling evidence…", subtitle: "Scanning deterministic project signals, logs, symbols, and git summaries", color: .orange)
                     }
                     if viewModel.relayPhase == .relaying {
-                        phaseCard(emoji: "🧠", title: "Running optional local analysis…", subtitle: "Using qwen3:4b on the compact packet only", color: .blue)
+                        phaseCard(emoji: "🧠", title: "Running optional local analysis…", subtitle: "Using \(ollama.modelName) on the compact packet only", color: .blue)
                     }
                     if let bundle = viewModel.gatherBundle, bundle.error == nil { bundlePanel(bundle) }
                     if let relay = viewModel.relayResponse { answerPanel(relay) }
@@ -176,6 +177,89 @@ struct ContentView: View {
             .controlSize(.small)
         }
         .padding(12).background(Color.secondary.opacity(0.06)).overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.15))).cornerRadius(10).padding(.horizontal).padding(.top)
+    }
+
+    private var mcpGatewayPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(viewModel.somaServerRunning ? Color.green : Color.secondary.opacity(0.5))
+                    .frame(width: 8, height: 8)
+                Label("Soma MCP Gateway", systemImage: "point.3.connected.trianglepath.dotted")
+                    .font(.subheadline.bold())
+                Spacer()
+                if viewModel.somaServerRunning {
+                    Button("Stop") { viewModel.stopSomaServer() }
+                        .buttonStyle(BorderedButtonStyle())
+                        .controlSize(.small)
+                        .disabled(viewModel.somaServerBusy)
+                } else {
+                    Button("Start") { viewModel.startSomaServer() }
+                        .buttonStyle(BorderedProminentButtonStyle())
+                        .controlSize(.small)
+                        .disabled(viewModel.somaServerBusy || viewModel.selectedProjectRoot.isEmpty)
+                }
+                Button("Refresh") { viewModel.refreshSomaStatus() }
+                    .buttonStyle(BorderedButtonStyle())
+                    .controlSize(.small)
+                    .disabled(viewModel.somaServerBusy)
+                Button("Verify Client") { viewModel.verifyCodexConfig() }
+                    .buttonStyle(BorderedButtonStyle())
+                    .controlSize(.small)
+                    .disabled(viewModel.somaServerBusy)
+                Button("Install Codex") { viewModel.installCodexConfig() }
+                    .buttonStyle(BorderedButtonStyle())
+                    .controlSize(.small)
+                    .disabled(viewModel.somaServerBusy || viewModel.selectedProjectRoot.isEmpty)
+                Button("Rollback Codex") { viewModel.rollbackCodexConfig() }
+                    .buttonStyle(BorderedButtonStyle())
+                    .controlSize(.small)
+                    .disabled(viewModel.somaServerBusy)
+                Button("Run Live Verify") { viewModel.runLiveVerify() }
+                    .buttonStyle(BorderedButtonStyle())
+                    .controlSize(.small)
+                    .disabled(viewModel.somaServerBusy || viewModel.selectedProjectRoot.isEmpty)
+                Menu("Copy Config") {
+                    Button("Codex") { viewModel.copyMCPConfig(client: "codex") }
+                    Button("Gemini") { viewModel.copyMCPConfig(client: "gemini") }
+                    Button("Claude") { viewModel.copyMCPConfig(client: "claude") }
+                }
+                .controlSize(.small)
+                .disabled(viewModel.selectedProjectRoot.isEmpty)
+            }
+
+            HStack(spacing: 10) {
+                badge(text: viewModel.somaServerRunning ? "server running" : "server stopped")
+                badge(text: viewModel.nexusConnected ? "nexus connected" : "nexus offline")
+                badge(text: viewModel.graphAvailable ? (viewModel.graphStale ? "graph stale" : "graph ready") : "graph missing")
+                if let pid = viewModel.somaServerPID { badge(text: "pid \(pid)") }
+                if let port = viewModel.somaServerPort { badge(text: "sse \(port)") }
+            }
+
+            if let status = viewModel.mcpInstallStatus, !status.isEmpty {
+                Text(status)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .textSelection(.enabled)
+            }
+            if let config = viewModel.mcpConfigPreview, !config.isEmpty {
+                Text(config)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .lineLimit(8)
+                    .textSelection(.enabled)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(NSColor.textBackgroundColor))
+                    .cornerRadius(8)
+            }
+        }
+        .padding(12)
+        .background(Color.blue.opacity(0.05))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.blue.opacity(0.16)))
+        .cornerRadius(10)
+        .padding(.horizontal)
+        .padding(.top, 8)
     }
 
     // MARK: - Components
@@ -588,12 +672,98 @@ struct SomaError: LocalizedError {
     var errorDescription: String? { msg }
 }
 
+struct SomaGatewayStatus: Codable, Sendable {
+    let status: String?
+    let project_root: String?
+    let server: SomaServerInfo?
+    let nexus: SomaNexusStatus?
+    let graph: SomaGraphStatus?
+}
+
+struct SomaServerInfo: Codable, Sendable {
+    let transport: String?
+    let tool_count: Int?
+    let tool_names: [String]?
+}
+
+struct SomaNexusStatus: Codable, Sendable {
+    let connected: Bool?
+    let port: Int?
+    let session_id: String?
+    let session_generation: Int?
+    let busy_reason: String?
+}
+
+struct SomaGraphStatus: Codable, Sendable {
+    let available: Bool?
+    let project_graph_available: Bool?
+    let stale: Bool?
+    let recommended_action: String?
+}
+
+struct ClientConfigStatus: Codable, Sendable {
+    let status: String
+    let summary: String
+    let config_path: String?
+    let soma_installed: Bool?
+    let direct_nexus_exposed: Bool?
+    let tool_exposure_clean: Bool?
+    let issues: [String]
+}
+
+struct ClientConfigInstallStatus: Codable, Sendable {
+    let status: String
+    let summary: String
+    let config_path: String?
+    let backup_path: String?
+    let soma_installed: Bool?
+    let direct_nexus_removed: Bool?
+    let old_soma_blocks_replaced: Int?
+    let issues: [String]
+}
+
+struct ClientConfigRollbackStatus: Codable, Sendable {
+    let status: String
+    let summary: String
+    let config_path: String?
+    let backup_path: String?
+    let restored: Bool?
+    let post_restore_status: String?
+    let post_restore_issues: [String]?
+    let issues: [String]?
+}
+
+struct LiveVerifyStatus: Codable, Sendable {
+    let status: String
+    let project_root: String?
+    let issues: [String]?
+    let tools: LiveVerifyTools?
+    let nexus: SomaNexusStatus?
+    let graph: SomaGraphStatus?
+    let calls: [String: LiveVerifyCall]?
+}
+
+struct LiveVerifyTools: Codable, Sendable {
+    let count: Int?
+    let expected_count: Int?
+    let unity_exposed: [String]?
+}
+
+struct LiveVerifyCall: Codable, Sendable {
+    let status: String?
+    let summary: String?
+    let instance_id: Int?
+    let path: String?
+}
+
 final class OllamaManager: ObservableObject {
     @Published var isModelLoaded = false
     @Published var isOllamaRunning = false
     @Published var isBusy = false
 
-    let modelName = "qwen3:4b"
+    let modelName = ProcessInfo.processInfo.environment["SOMA_LOCAL_MODEL"] ?? "gemma4:e4b"
+    let rankerModelName = ProcessInfo.processInfo.environment["SOMA_RANKER_MODEL"] ?? "gemma4:e4b"
+    let analystModelName = ProcessInfo.processInfo.environment["SOMA_ANALYST_MODEL"] ?? "qwen3-coder:30b-a3b-q4_K_M"
     private var timer: Timer?
 
     init() { startPolling() }
@@ -688,6 +858,8 @@ final class SomaViewModel: ObservableObject {
     private let lastProjectRootKey = "relay.lastProjectRoot"
     private let recentProjectRootsKey = "relay.recentProjectRoots"
     private var hasHydratedProjectRoots = false
+    private var somaServerProcess: Process?
+    private var somaServerInput: Pipe?
 
     @Published var scoutPrompt = ""
     @Published var scoutTranscript = ""
@@ -703,6 +875,16 @@ final class SomaViewModel: ObservableObject {
     @Published var selectedProjectRoot = ""
     @Published var recentProjectRoots: [String] = []
     @Published var analysisDepth: AnalysisDepth = .deterministic
+
+    @Published var somaServerRunning = false
+    @Published var somaServerPID: Int32?
+    @Published var somaServerPort: Int?
+    @Published var somaServerBusy = false
+    @Published var nexusConnected = false
+    @Published var graphAvailable = false
+    @Published var graphStale = false
+    @Published var mcpInstallStatus: String?
+    @Published var mcpConfigPreview: String?
 
     @Published var activityLogs: [String] = []
     @Published var showActivityLog = false
@@ -729,11 +911,15 @@ final class SomaViewModel: ObservableObject {
         selectedProjectRoot = normalized
         recentProjectRoots = deduplicatedRoots([normalized] + recentProjectRoots).prefix(6).map(\.self)
         persistProjectRoots()
+        refreshSomaStatus()
     }
 
     func clearProjectRoot() {
         selectedProjectRoot = ""
         UserDefaults.standard.set("", forKey: lastProjectRootKey)
+        nexusConnected = false
+        graphAvailable = false
+        graphStale = false
     }
 
     func hydrateProjectRootsIfNeeded() {
@@ -747,6 +933,7 @@ final class SomaViewModel: ObservableObject {
         }
         if !selectedProjectRoot.isEmpty {
             recentProjectRoots = deduplicatedRoots([selectedProjectRoot] + recentProjectRoots).prefix(6).map(\.self)
+            refreshSomaStatus()
         }
         persistProjectRoots()
     }
@@ -803,6 +990,218 @@ final class SomaViewModel: ObservableObject {
         activityLogs.append(log)
     }
 
+    func startSomaServer() {
+        guard !somaServerRunning, !selectedProjectRoot.isEmpty else { return }
+        somaServerBusy = true
+        do {
+            let script = try scriptURL(named: "soma_mcp_server")
+            let process = Process()
+            let input = Pipe()
+            process.executableURL = URL(fileURLWithPath: pythonPath())
+            process.arguments = [script.path, "--project-root", selectedProjectRoot]
+            process.environment = scriptEnvironment(projectRoot: selectedProjectRoot)
+            process.standardInput = input
+            process.standardOutput = Pipe()
+            process.standardError = Pipe()
+            process.terminationHandler = { [weak self] _ in
+                DispatchQueue.main.async {
+                    self?.somaServerRunning = false
+                    self?.somaServerPID = nil
+                    self?.somaServerInput = nil
+                    self?.somaServerProcess = nil
+                    self?.mcpInstallStatus = "Soma MCP server stopped."
+                }
+            }
+            try process.run()
+            somaServerProcess = process
+            somaServerInput = input
+            somaServerRunning = true
+            somaServerPID = process.processIdentifier
+            somaServerPort = nil
+            somaServerBusy = false
+            mcpInstallStatus = "Soma MCP stdio server running for \(selectedProjectRoot)."
+            logActivity("Started Soma MCP server pid \(process.processIdentifier)")
+            refreshSomaStatus()
+        } catch {
+            somaServerBusy = false
+            mcpInstallStatus = "Failed to start Soma MCP: \(error.localizedDescription)"
+            logActivity("Soma MCP start failed: \(error.localizedDescription)")
+        }
+    }
+
+    func stopSomaServer() {
+        guard let process = somaServerProcess else {
+            somaServerRunning = false
+            somaServerPID = nil
+            return
+        }
+        somaServerBusy = true
+        process.terminate()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            if process.isRunning {
+                process.interrupt()
+            }
+            self.somaServerBusy = false
+            self.somaServerRunning = process.isRunning
+            self.somaServerPID = process.isRunning ? process.processIdentifier : nil
+        }
+    }
+
+    func refreshSomaStatus() {
+        guard !selectedProjectRoot.isEmpty else { return }
+        Task {
+            do {
+                let data = try await runSomaHelper(args: ["--status-json", "--project-root", selectedProjectRoot])
+                let status = try JSONDecoder().decode(SomaGatewayStatus.self, from: data)
+                await MainActor.run {
+                    nexusConnected = status.nexus?.connected ?? false
+                    graphAvailable = status.graph?.project_graph_available ?? status.graph?.available ?? false
+                    graphStale = status.graph?.stale ?? false
+                    let nexusText = nexusConnected ? "Nexus connected" : "Nexus offline"
+                    let graphText = graphAvailable ? (graphStale ? "graph stale" : "graph ready") : "graph missing"
+                    let toolCount = status.server?.tool_count ?? 0
+                    mcpInstallStatus = "\(nexusText). \(graphText). Soma exposes \(toolCount) tools."
+                }
+            } catch {
+                await MainActor.run {
+                    mcpInstallStatus = "Soma status failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    func copyMCPConfig(client: String) {
+        guard !selectedProjectRoot.isEmpty else {
+            mcpInstallStatus = "Select a project root before copying MCP config."
+            return
+        }
+        Task {
+            do {
+                let data = try await runSomaHelper(args: ["--print-client-config", client, "--project-root", selectedProjectRoot])
+                guard let config = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !config.isEmpty else {
+                    throw SomaError("Empty MCP config")
+                }
+                await MainActor.run {
+                    let pb = NSPasteboard.general
+                    pb.clearContents()
+                    pb.setString(config, forType: .string)
+                    mcpConfigPreview = config
+                    mcpInstallStatus = "\(client.capitalized) MCP config copied. Merge it into the client config and remove direct Nexus entries."
+                }
+            } catch {
+                await MainActor.run {
+                    mcpInstallStatus = "Config generation failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    func verifyCodexConfig() {
+        Task {
+            do {
+                let data = try await runSomaHelper(args: ["--verify-client-config", "codex"])
+                let status = try JSONDecoder().decode(ClientConfigStatus.self, from: data)
+                await MainActor.run {
+                    mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let issueText = status.issues.isEmpty ? "no issues" : status.issues.joined(separator: ", ")
+                    mcpInstallStatus = "Codex config \(status.status): \(status.summary) (\(issueText))."
+                }
+            } catch {
+                await MainActor.run {
+                    mcpInstallStatus = "Codex config verification failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    func installCodexConfig() {
+        guard !selectedProjectRoot.isEmpty else {
+            mcpInstallStatus = "Select a project root before installing Codex config."
+            return
+        }
+        Task {
+            do {
+                let data = try await runSomaHelper(args: ["--install-codex-config", "--project-root", selectedProjectRoot])
+                let status = try JSONDecoder().decode(ClientConfigInstallStatus.self, from: data)
+                await MainActor.run {
+                    mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let backupText = status.backup_path == nil ? "no previous config backup needed" : "backup: \(status.backup_path ?? "")"
+                    mcpInstallStatus = "Codex config \(status.status): \(status.summary) \(backupText)."
+                }
+            } catch {
+                await MainActor.run {
+                    mcpInstallStatus = "Codex config install failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    func rollbackCodexConfig() {
+        Task {
+            do {
+                let data = try await runSomaHelper(args: ["--rollback-codex-config"])
+                let status = try JSONDecoder().decode(ClientConfigRollbackStatus.self, from: data)
+                await MainActor.run {
+                    mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let backupText = status.backup_path ?? "no backup"
+                    mcpInstallStatus = "Codex rollback \(status.status): \(status.summary) \(backupText)."
+                }
+            } catch {
+                await MainActor.run {
+                    mcpInstallStatus = "Codex rollback failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    func runLiveVerify() {
+        guard !selectedProjectRoot.isEmpty else {
+            mcpInstallStatus = "Select a project root before running live verification."
+            return
+        }
+        Task {
+            do {
+                let script = try scriptURL(named: "verify_soma_live_workflow")
+                let data = try await runScript(
+                    path: pythonPath(),
+                    args: [
+                        script.path,
+                        "--project-root", selectedProjectRoot,
+                        "--live-unity",
+                        "--run-apply",
+                        "--cleanup-apply",
+                    ]
+                )
+                let status = try JSONDecoder().decode(LiveVerifyStatus.self, from: data)
+                await MainActor.run {
+                    mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    mcpInstallStatus = summarizeLiveVerify(status)
+                    nexusConnected = status.nexus?.connected ?? nexusConnected
+                    graphAvailable = status.graph?.project_graph_available ?? status.graph?.available ?? graphAvailable
+                    graphStale = status.graph?.stale ?? graphStale
+                }
+            } catch {
+                await MainActor.run {
+                    mcpInstallStatus = "Live verify failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func summarizeLiveVerify(_ status: LiveVerifyStatus) -> String {
+        let tools = "\(status.tools?.count ?? 0)/\(status.tools?.expected_count ?? 12) tools"
+        let unityTools = status.tools?.unity_exposed?.isEmpty == false ? "unity exposed" : "no unity tools"
+        let nexus = status.nexus?.connected == true ? "nexus connected" : "nexus offline"
+        let graph = status.graph?.project_graph_available == true ? ((status.graph?.stale == true) ? "graph stale" : "graph ready") : "graph missing"
+        let calls = status.calls ?? [:]
+        let scene = calls["soma_scene"]?.status ?? "missing"
+        let inspect = calls["soma_inspect"]?.status ?? "missing"
+        let apply = calls["soma_apply"]?.status ?? "missing"
+        let cleanup = calls["cleanup_apply"]?.status ?? "missing"
+        let issueText = (status.issues ?? []).isEmpty ? "no issues" : (status.issues ?? []).joined(separator: ", ")
+        return "Live verify \(status.status): \(tools), \(unityTools), \(nexus), \(graph), scene \(scene), inspect \(inspect), apply \(apply), cleanup \(cleanup). \(issueText)."
+    }
+
     func runScout(ollama: OllamaManager) {
         let prompt = scoutPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty else { return }
@@ -821,7 +1220,7 @@ final class SomaViewModel: ObservableObject {
                 let stepDuration = Date().timeIntervalSince(stepStart)
 
                 await MainActor.run {
-                    logActivity("Received response from qwen3:4b", duration: stepDuration)
+                    logActivity("Received response from \(ollama.modelName)", duration: stepDuration)
                     scoutTranscript += (result.response ?? "") + "\n"
                     scoutHistory = result.history ?? []
                     scoutLoading = false
@@ -890,21 +1289,17 @@ final class SomaViewModel: ObservableObject {
     // MARK: Script runners
 
     private func runPythonChat(prompt: String, history: [[String: AnyCodable]]) async throws -> OllamaResponse {
-        guard let script = Bundle.main.url(forResource: "scout_pipeline", withExtension: "py") else {
-            throw SomaError("scout_pipeline.py not found in bundle")
-        }
+        let script = try scriptURL(named: "scout_pipeline")
         let historyJSON = (try? String(data: JSONEncoder().encode(history), encoding: .utf8)) ?? "[]"
-        let output = try await runScript(path: "/opt/homebrew/bin/python3", args: [script.path, prompt, historyJSON])
+        let output = try await runScript(path: pythonPath(), args: [script.path, prompt, historyJSON])
         return try JSONDecoder().decode(OllamaResponse.self, from: output)
     }
 
     private func runGather(prompt: String, projectRoot: String, recentRoots: [String]) async throws -> GatherBundle {
-        guard let script = Bundle.main.url(forResource: "scout_pipeline", withExtension: "py") else {
-            throw SomaError("scout_pipeline.py not found in bundle")
-        }
+        let script = try scriptURL(named: "scout_pipeline")
         let recentRootsJSON = (try? String(data: JSONEncoder().encode(recentRoots), encoding: .utf8)) ?? "[]"
         let output = try await runScript(
-            path: "/opt/homebrew/bin/python3",
+            path: pythonPath(),
             args: [
                 script.path,
                 prompt,
@@ -919,12 +1314,50 @@ final class SomaViewModel: ObservableObject {
     }
 
     private func runRelayScript(bundle: GatherBundle) async throws -> RelayResponse {
-        guard let script = Bundle.main.url(forResource: "relay", withExtension: "py") else {
-            throw SomaError("relay.py not found in bundle")
-        }
+        let script = try scriptURL(named: "relay")
         let bundleJSON = (try? String(data: JSONEncoder().encode(bundle), encoding: .utf8)) ?? "{}"
-        let output = try await runScript(path: "/opt/homebrew/bin/python3", args: [script.path, bundleJSON])
+        let output = try await runScript(path: pythonPath(), args: [script.path, bundleJSON])
         return try JSONDecoder().decode(RelayResponse.self, from: output)
+    }
+
+    private func runSomaHelper(args: [String]) async throws -> Data {
+        let script = try scriptURL(named: "soma_mcp_server")
+        return try await runScript(path: pythonPath(), args: [script.path] + args)
+    }
+
+    private func scriptURL(named name: String) throws -> URL {
+        if let bundled = Bundle.main.url(forResource: name, withExtension: "py") {
+            return bundled
+        }
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("\(name).py")
+        if FileManager.default.fileExists(atPath: sourceURL.path) {
+            return sourceURL
+        }
+        throw SomaError("\(name).py not found")
+    }
+
+    private func pythonPath() -> String {
+        if FileManager.default.fileExists(atPath: "/opt/homebrew/bin/python3") {
+            return "/opt/homebrew/bin/python3"
+        }
+        return "/usr/bin/python3"
+    }
+
+    private func scriptEnvironment(projectRoot: String? = nil) -> [String: String] {
+        var environment = ProcessInfo.processInfo.environment
+        environment["PATH"] = (environment["PATH"] ?? "") + ":/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/Users/daliys/.local/bin:/Users/daliys/.nvm/versions/node/v22.21.0/bin"
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
+        environment["SOMA_LOCAL_MODEL"] = environment["SOMA_LOCAL_MODEL"] ?? "gemma4:e4b"
+        environment["SOMA_RANKER_MODEL"] = environment["SOMA_RANKER_MODEL"] ?? "gemma4:e4b"
+        environment["SOMA_ANALYST_MODEL"] = environment["SOMA_ANALYST_MODEL"] ?? "qwen3-coder:30b-a3b-q4_K_M"
+        if let projectRoot, !projectRoot.isEmpty {
+            environment["SOMA_PROJECT_ROOT"] = projectRoot
+        } else if !selectedProjectRoot.isEmpty {
+            environment["SOMA_PROJECT_ROOT"] = selectedProjectRoot
+        }
+        return environment
     }
 
     private func runScript(path: String, args: [String]) async throws -> Data {
@@ -932,10 +1365,7 @@ final class SomaViewModel: ObservableObject {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: path)
             process.arguments = args
-            var environment = ProcessInfo.processInfo.environment
-            environment["PATH"] = (environment["PATH"] ?? "") + ":/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/Users/daliys/.nvm/versions/node/v22.21.0/bin"
-            environment["PYTHONDONTWRITEBYTECODE"] = "1"
-            process.environment = environment
+            process.environment = scriptEnvironment()
             let stdout = Pipe(), stderr = Pipe()
             process.standardOutput = stdout
             process.standardError = stderr
