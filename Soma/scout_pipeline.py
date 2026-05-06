@@ -567,8 +567,20 @@ def normalize_path(path):
 
 
 def is_noise_path(path):
-    path = Path(path)
-    return path.name in NOISE_PATH_NAMES or path.suffix.lower() in NOISE_SUFFIXES or "__pycache__" in path.parts
+    if type(path) is str:
+        if "__pycache__" in path:
+            if "__pycache__" in path.split('/'):
+                return True
+        name = path.rsplit('/', 1)[-1] if '/' in path else path
+        if name in NOISE_PATH_NAMES:
+            return True
+        if '.' in name:
+            suffix = name[name.rfind('.'):].lower()
+            if suffix in NOISE_SUFFIXES:
+                return True
+        return False
+    else:
+        return path.name in NOISE_PATH_NAMES or path.suffix.lower() in NOISE_SUFFIXES or "__pycache__" in path.parts
 
 
 def rel_path(path, project_root):
@@ -579,24 +591,20 @@ def rel_path(path, project_root):
 
 
 def dedupe_strings(items):
-    seen = set()
-    out = []
-    for item in items:
-        if not item or item in seen:
-            continue
-        seen.add(item)
-        out.append(item)
-    return out
+    return list(dict.fromkeys(item for item in items if item))
 
 
 def find_errors(text):
     out = []
+    tokens = ["ERROR", "EXCEPTION", "FATAL", "TRACEBACK", "CRASH"]
     for line in text.splitlines():
         upper = line.upper()
-        if any(token in upper for token in ["ERROR", "EXCEPTION", "FATAL", "TRACEBACK", "CRASH"]):
-            stripped = line.strip()
-            if len(stripped) > 5:
-                out.append(stripped)
+        for token in tokens:
+            if token in upper:
+                stripped = line.strip()
+                if len(stripped) > 5:
+                    out.append(stripped)
+                break
     return out
 
 
@@ -687,12 +695,16 @@ def detect_project_type(project_root):
 
 
 def should_skip_dir(name):
-    return name.startswith(".") and name not in {".config", ".github"} or name in SKIP_DIRS
+    return name in SKIP_DIRS or (name.startswith(".") and name not in {".config", ".github"})
 
 
 def categorize_path(path):
-    name = path.name
-    suffix = path.suffix.lower()
+    if type(path) is str:
+        name = path.rsplit('/', 1)[-1] if '/' in path else path
+        suffix = name[name.rfind('.'):].lower() if '.' in name else ''
+    else:
+        name = path.name
+        suffix = path.suffix.lower()
 
     if name in MANIFEST_NAMES or name == "project.pbxproj" or name.endswith(".xcodeproj") or name.endswith(".xcworkspace"):
         return "manifest"
