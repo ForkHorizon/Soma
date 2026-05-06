@@ -1,0 +1,3 @@
+## 2024-05-06 - [Avoid path instantiation in hot paths]
+**Learning:** `Path()` instantiation from `pathlib` can be surprisingly slow when called repeatedly in hot loops, like when iterating over thousands of files (`is_noise_path` or `categorize_path`). Python string operations (like `in`, `split`, `rsplit`) are significantly faster for basic directory/extension checks.
+**Action:** When working in functions that filter files during traversal (like `os.walk`), avoid converting string paths into `Path` objects unnecessarily. Add fast string-based paths and only fall back to `Path` methods if dealing with complex manipulations or when given a `Path` object to begin with.
