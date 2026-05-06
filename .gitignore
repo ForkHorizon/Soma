@@ -1,73 +1,46 @@
-# Xcode
-#
-# gitignore contributors: remember to update Global/Xcode.gitignore, Objective-C.gitignore & Swift.gitignore
+# Prerequisites
+*.d
 
-## User settings
-xcuserdata/
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
 
-## Obj-C/Swift specific
-*.hmap
+# Precompiled Headers
+*.gch
+*.pch
 
-## App packaging
-*.ipa
-*.dSYM.zip
-*.dSYM
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
 
-## Playgrounds
-timeline.xctimeline
-playground.xcworkspace
+# Fortran module files
+*.mod
+*.smod
 
-# Swift Package Manager
-#
-# Add this line if you want to avoid checking in source code from Swift Package Manager dependencies.
-# Packages/
-# Package.pins
-# Package.resolved
-# *.xcodeproj
-#
-# Xcode automatically generates this directory with a .xcworkspacedata file and xcuserdata
-# hence it is not needed unless you have added a package configuration file to your project
-# .swiftpm
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
 
-.build/
+# Executables
+*.exe
+*.out
+*.app
 
-# CocoaPods
-#
-# We recommend against adding the Pods directory to your .gitignore. However
-# you should judge for yourself, the pros and cons are mentioned at:
-# https://guides.cocoapods.org/using/using-cocoapods.html#should-i-check-the-pods-directory-into-source-control
-#
-# Pods/
-#
-# Add this line if you want to avoid checking in source code from the Xcode workspace
-# *.xcworkspace
-
-# Carthage
-#
-# Add this line if you want to avoid checking in source code from Carthage dependencies.
-# Carthage/Checkouts
-
-Carthage/Build/
-
-# fastlane
-#
-# It is recommended to not store the screenshots in the git repo.
-# Instead, use fastlane to re-generate the screenshots whenever they are needed.
-# For more information about the recommended setup visit:
-# https://docs.fastlane.tools/best-practices/source-control/#source-control
-
-fastlane/report.xml
-fastlane/Preview.html
-fastlane/screenshots/**/*.png
-fastlane/test_output
-
-# Local noise
-.DS_Store
+# Python
 __pycache__/
 *.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
 
-# Graphify local rebuild noise; keep graphify-out/graph.json, GRAPH_REPORT.md, and graph.html trackable.
-graphify-out/cache/
-graphify-out/cost.json
-graphify-out/manifest.json
-graphify-out/.graphify_*
+# Go
+Soma/go_scanner/soma_scanner
+Soma/go_scanner/soma_scanner
+Soma/go_scanner/soma_scanner
