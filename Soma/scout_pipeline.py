@@ -411,151 +411,30 @@ async def run_chat(user_prompt, history):
 
 def get_git_status(project_root):
     try:
-        res = subprocess.run(
-            ["git", "status", "--short", "--branch"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
+        go_scanner_dir = os.path.join(os.path.dirname(__file__), "go_scanner")
+        go_scanner_path = os.path.join(go_scanner_dir, "soma_scanner")
+        if not os.path.exists(go_scanner_path) or not os.access(go_scanner_path, os.X_OK):
+            build_go_scanner(go_scanner_dir)
+        res = subprocess.run([go_scanner_path, "git-status", project_root], capture_output=True, text=True, timeout=5)
         if res.returncode == 0:
-            lines = []
-            for line in res.stdout.splitlines():
-                if line.startswith("## "):
-                    lines.append(line)
-                    continue
-                path = line[3:].strip() if len(line) > 3 else line.strip()
-                if " -> " in path:
-                    path = path.split(" -> ", 1)[-1]
-                if is_noise_path(path):
-                    continue
-                lines.append(line)
-            status = "\n".join(lines).strip()
-            return status if status else "Clean (No changes detected)"
+            status = res.stdout.strip()
+            if status:
+                return status
     except Exception:
         pass
     return None
 
 
-def summarize_diff_hunks(diff_text):
-    hunks = []
-    current_file = None
-    current_hunk = None
-
-    for line in diff_text.splitlines():
-        if line.startswith("diff --git "):
-            current_file = line.split(" b/", 1)[-1] if " b/" in line else line
-            current_hunk = None
-            continue
-        if line.startswith("@@"):
-            match = re.search(r"\+(\d+)(?:,(\d+))?", line)
-            start = int(match.group(1)) if match else None
-            length = int(match.group(2) or "1") if match else None
-            current_hunk = {
-                "file": current_file,
-                "start_line": start,
-                "end_line": start + max(length - 1, 0) if start else None,
-                "added": 0,
-                "removed": 0,
-                "signals": [],
-            }
-            hunks.append(current_hunk)
-            continue
-        if not current_hunk or not line or line.startswith(("+++", "---")):
-            continue
-        if line.startswith("+"):
-            current_hunk["added"] += 1
-        elif line.startswith("-"):
-            current_hunk["removed"] += 1
-        lowered = line.lower()
-        if any(token in lowered for token in ("error", "exception", "todo", "fixme", "public ", "func ", "class ", "struct ", "def ")):
-            signal = line[1:].strip() if line[:1] in "+-" else line.strip()
-            if signal and len(current_hunk["signals"]) < 3:
-                current_hunk["signals"].append(signal[:140])
-
-    return hunks
-
-
-def rank_diff_hunks(hunks, terms, max_hunks=8):
-    def score_hunk(hunk):
-        score = 0
-        file_name = (hunk.get("file") or "").lower()
-        signals = " ".join(hunk.get("signals") or []).lower()
-        haystack = f"{file_name} {signals}"
-
-        for term in terms:
-            if term in file_name:
-                score += 20
-            if term in signals:
-                score += 12
-
-        if file_name.endswith((".py", ".swift", ".cs", ".js", ".ts")):
-            score += 8
-        if any(token in file_name for token in ("relay", "scout", "pipeline", "contentview", "player", "controller")):
-            score += 8
-        if any(token in haystack for token in ("error", "exception", "model", "token", "prompt", "diff", "log")):
-            score += 6
-        score += min((hunk.get("added") or 0) + (hunk.get("removed") or 0), 12)
-        return score
-
-    return sorted(hunks, key=score_hunk, reverse=True)[:max_hunks]
-
-
 def get_git_diff_summary(project_root, terms=None):
     try:
-        name_status = subprocess.run(
-            ["git", "diff", "HEAD", "--name-status"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        numstat = subprocess.run(
-            ["git", "diff", "HEAD", "--numstat"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        diff = subprocess.run(
-            ["git", "diff", "HEAD", "--unified=0", "--no-ext-diff"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        if name_status.returncode != 0:
-            return None
-
-        changed_files = []
-        for line in name_status.stdout.splitlines():
-            parts = line.split("\t")
-            if len(parts) >= 2:
-                path = parts[-1]
-                if not is_noise_path(path):
-                    changed_files.append({"status": parts[0], "path": path})
-
-        stats_by_path = {}
-        if numstat.returncode == 0:
-            for line in numstat.stdout.splitlines():
-                parts = line.split("\t")
-                if len(parts) >= 3:
-                    stats_by_path[parts[2]] = {"added": parts[0], "removed": parts[1]}
-
-        for item in changed_files:
-            item.update(stats_by_path.get(item["path"], {}))
-
-        raw_diff = diff.stdout if diff.returncode == 0 else ""
-        hunks = [
-            hunk for hunk in summarize_diff_hunks(raw_diff)
-            if not is_noise_path(hunk.get("file") or "")
-        ]
-        return {
-            "changed_files": changed_files[:40],
-            "changed_file_count": len(changed_files),
-            "hunks": rank_diff_hunks(hunks, terms or []),
-            "raw_diff_chars_omitted": len(raw_diff),
-        }
+        go_scanner_dir = os.path.join(os.path.dirname(__file__), "go_scanner")
+        go_scanner_path = os.path.join(go_scanner_dir, "soma_scanner")
+        if not os.path.exists(go_scanner_path) or not os.access(go_scanner_path, os.X_OK):
+            build_go_scanner(go_scanner_dir)
+        args = [go_scanner_path, "git-diff", project_root] + (terms or [])
+        res = subprocess.run(args, capture_output=True, text=True, timeout=10)
+        if res.returncode == 0:
+            return json.loads(res.stdout)
     except Exception:
         pass
     return None
@@ -735,53 +614,17 @@ def build_go_scanner(go_scanner_dir):
     return go_scanner_path
 
 def iter_project_files(project_root):
-    # Attempt to use the fast Go scanner
     go_scanner_dir = os.path.join(os.path.dirname(__file__), "go_scanner")
     go_scanner_path = os.path.join(go_scanner_dir, "soma_scanner")
-
     if not os.path.exists(go_scanner_path) or not os.access(go_scanner_path, os.X_OK):
-        go_scanner_path = build_go_scanner(go_scanner_dir)
-
-    if os.path.exists(go_scanner_path) and os.access(go_scanner_path, os.X_OK):
-        try:
-            res = subprocess.run(
-                [go_scanner_path, project_root],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            if res.returncode == 0:
-                discovered = json.loads(res.stdout)
-                return discovered
-        except Exception:
-            pass # Fall back to python `os.walk`
-
-    discovered = []
-    for base, dirnames, filenames in os.walk(project_root):
-        dirnames[:] = [name for name in dirnames if not should_skip_dir(name)]
-        for filename in filenames:
-            path_str = os.path.join(base, filename)
-            if os.path.islink(path_str):
-                continue
-            if is_noise_path(path_str):
-                continue
-            if len(discovered) >= MAX_DISCOVERED_FILES:
-                return discovered
-            category = categorize_path(path_str)
-            if category:
-                try:
-                    mtime = os.path.getmtime(path_str)
-                except Exception:
-                    mtime = 0
-                discovered.append(
-                    {
-                        "path": path_str,
-                        "name": filename,
-                        "category": category,
-                        "mtime": mtime,
-                    }
-                )
-    return discovered
+        build_go_scanner(go_scanner_dir)
+    try:
+        res = subprocess.run([go_scanner_path, "scan-files", project_root], capture_output=True, text=True, timeout=10)
+        if res.returncode == 0:
+            return json.loads(res.stdout)
+    except Exception:
+        pass
+    return []
 
 
 def cache_key_for_root(project_root):
@@ -803,49 +646,32 @@ def file_digest(path):
         return None
 
 
-def extract_symbols(path, text):
-    suffix = Path(path).suffix.lower()
-    patterns = []
-    if suffix == ".cs":
-        patterns = [
-            r"\b(?:class|struct|interface|enum)\s+([A-Za-z_][A-Za-z0-9_]*)",
-            r"\b(?:public|private|protected|internal|static|virtual|override|async|\s)+\s*[A-Za-z_][A-Za-z0-9_<>,\[\]?]*\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(",
-        ]
-    elif suffix == ".swift":
-        patterns = [
-            r"\b(?:class|struct|enum|protocol|actor)\s+([A-Za-z_][A-Za-z0-9_]*)",
-            r"\bfunc\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(",
-        ]
-    elif suffix == ".py":
-        patterns = [r"^\s*(?:class|def)\s+([A-Za-z_][A-Za-z0-9_]*)" ]
-    elif suffix in {".js", ".jsx", ".ts", ".tsx"}:
-        patterns = [
-            r"\b(?:class|function)\s+([A-Za-z_][A-Za-z0-9_]*)",
-            r"\b(?:const|let|var)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:async\s*)?\(",
-        ]
-
-    symbols = []
-    for pattern in patterns:
-        for match in re.finditer(pattern, text, re.MULTILINE):
-            symbols.append(match.group(1))
-            if len(symbols) >= 12:
-                return dedupe_strings(symbols)
-    return dedupe_strings(symbols)
+def extract_symbols(path, text=None):
+    try:
+        go_scanner_dir = os.path.join(os.path.dirname(__file__), "go_scanner")
+        go_scanner_path = os.path.join(go_scanner_dir, "soma_scanner")
+        if not os.path.exists(go_scanner_path) or not os.access(go_scanner_path, os.X_OK):
+            build_go_scanner(go_scanner_dir)
+        res = subprocess.run([go_scanner_path, "extract-symbols", path], capture_output=True, text=True, timeout=5)
+        if res.returncode == 0:
+            return json.loads(res.stdout)
+    except Exception:
+        pass
+    return []
 
 
-def extract_unity_refs(path, text):
-    if Path(path).suffix.lower() not in UNITY_EXTENSIONS:
-        return []
-    refs = []
-    for guid in re.findall(r"guid:\s*([0-9a-fA-F]{32})", text):
-        refs.append(f"guid:{guid}")
-        if len(refs) >= 12:
-            break
-    if "m_Script:" in text:
-        refs.insert(0, "contains MonoBehaviour script reference")
-    if "Missing" in text or "missing" in text:
-        refs.insert(0, "contains missing-reference text")
-    return dedupe_strings(refs)[:12]
+def extract_unity_refs(path, text=None):
+    try:
+        go_scanner_dir = os.path.join(os.path.dirname(__file__), "go_scanner")
+        go_scanner_path = os.path.join(go_scanner_dir, "soma_scanner")
+        if not os.path.exists(go_scanner_path) or not os.access(go_scanner_path, os.X_OK):
+            build_go_scanner(go_scanner_dir)
+        res = subprocess.run([go_scanner_path, "extract-unity-refs", path], capture_output=True, text=True, timeout=5)
+        if res.returncode == 0:
+            return json.loads(res.stdout)
+    except Exception:
+        pass
+    return []
 
 
 def build_repo_index(project_root, discovered):
@@ -987,11 +813,16 @@ def file_rank(item, terms, intent, project_type, packet_mode="debug", changed_pa
 
 def read_text_file(path):
     try:
-        with open(path, "rb") as handle:
-            data = handle.read(MAX_FILE_BYTES)
-        return data.decode("utf-8", errors="replace")
+        go_scanner_dir = os.path.join(os.path.dirname(__file__), "go_scanner")
+        go_scanner_path = os.path.join(go_scanner_dir, "soma_scanner")
+        if not os.path.exists(go_scanner_path) or not os.access(go_scanner_path, os.X_OK):
+            build_go_scanner(go_scanner_dir)
+        res = subprocess.run([go_scanner_path, "read-text", path], capture_output=True, timeout=5)
+        if res.returncode == 0:
+            return res.stdout.decode("utf-8", errors="replace")
     except Exception as exc:
         return f"[Unable to read file: {exc}]"
+    return f"[Unable to read file: Go scanner failed]"
 
 
 def excerpt_for_text(text, terms):
