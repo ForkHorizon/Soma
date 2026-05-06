@@ -726,21 +726,25 @@ def iter_project_files(project_root):
     for base, dirnames, filenames in os.walk(project_root):
         dirnames[:] = [name for name in dirnames if not should_skip_dir(name)]
         for filename in filenames:
-            path = Path(base) / filename
-            if path.is_symlink():
+            path_str = os.path.join(base, filename)
+            if os.path.islink(path_str):
                 continue
-            if is_noise_path(path):
+            if is_noise_path(path_str):
                 continue
             if len(discovered) >= MAX_DISCOVERED_FILES:
                 return discovered
-            category = categorize_path(path)
+            category = categorize_path(path_str)
             if category:
+                try:
+                    mtime = os.path.getmtime(path_str)
+                except Exception:
+                    mtime = 0
                 discovered.append(
                     {
-                        "path": str(path),
+                        "path": path_str,
                         "name": filename,
                         "category": category,
-                        "mtime": path.stat().st_mtime,
+                        "mtime": mtime,
                     }
                 )
     return discovered
