@@ -721,7 +721,41 @@ def categorize_path(path):
     return None
 
 
+def build_go_scanner(go_scanner_dir):
+    go_scanner_path = os.path.join(go_scanner_dir, "soma_scanner")
+    try:
+        subprocess.run(
+            ["go", "build", "-o", "soma_scanner", "main.go"],
+            cwd=go_scanner_dir,
+            capture_output=True,
+            timeout=30
+        )
+    except Exception:
+        pass
+    return go_scanner_path
+
 def iter_project_files(project_root):
+    # Attempt to use the fast Go scanner
+    go_scanner_dir = os.path.join(os.path.dirname(__file__), "go_scanner")
+    go_scanner_path = os.path.join(go_scanner_dir, "soma_scanner")
+
+    if not os.path.exists(go_scanner_path) or not os.access(go_scanner_path, os.X_OK):
+        go_scanner_path = build_go_scanner(go_scanner_dir)
+
+    if os.path.exists(go_scanner_path) and os.access(go_scanner_path, os.X_OK):
+        try:
+            res = subprocess.run(
+                [go_scanner_path, project_root],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if res.returncode == 0:
+                discovered = json.loads(res.stdout)
+                return discovered
+        except Exception:
+            pass # Fall back to python `os.walk`
+
     discovered = []
     for base, dirnames, filenames in os.walk(project_root):
         dirnames[:] = [name for name in dirnames if not should_skip_dir(name)]
