@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
-	"path/filepath"
 )
 
 type ChangedFile struct {
@@ -27,60 +27,10 @@ type Hunk struct {
 }
 
 type GitDiffSummary struct {
-	ChangedFiles         []ChangedFile `json:"changed_files"`
-	ChangedFileCount     int           `json:"changed_file_count"`
-	Hunks                []Hunk        `json:"hunks"`
-	RawDiffCharsOmitted  int           `json:"raw_diff_chars_omitted"`
-}
-
-func gitStatus(projectRoot string) {
-	cmd := exec.Command("git", "status", "--short", "--branch")
-	cmd.Dir = projectRoot
-	var out bytes.Buffer
-	cmd.Stdout = &out
-
-	if err := cmd.Run(); err != nil {
-		fmt.Println("")
-		return
-	}
-
-	lines := strings.Split(out.String(), "\n")
-	var resultLines []string
-
-	for _, line := range lines {
-		if strings.HasPrefix(line, "## ") {
-			resultLines = append(resultLines, line)
-			continue
-		}
-
-		path := line
-		if len(line) > 3 {
-			path = strings.TrimSpace(line[3:])
-		} else {
-			path = strings.TrimSpace(line)
-		}
-
-		if idx := strings.Index(path, " -> "); idx != -1 {
-			path = path[idx+4:]
-		}
-
-		if path == "" {
-			continue
-		}
-
-		name := filepath.Base(path)
-		if isNoisePath(path, name) {
-			continue
-		}
-		resultLines = append(resultLines, line)
-	}
-
-	status := strings.TrimSpace(strings.Join(resultLines, "\n"))
-	if status != "" {
-		fmt.Println(status)
-	} else {
-		fmt.Println("Clean (No changes detected)")
-	}
+	ChangedFiles        []ChangedFile `json:"changed_files"`
+	ChangedFileCount    int           `json:"changed_file_count"`
+	Hunks               []Hunk        `json:"hunks"`
+	RawDiffCharsOmitted int           `json:"raw_diff_chars_omitted"`
 }
 
 func min(a, b int) int {
@@ -145,12 +95,12 @@ func summarizeDiffHunks(diffText string) []Hunk {
 			}
 
 			hunk := Hunk{
-				File: currentFile,
+				File:      currentFile,
 				StartLine: startPtr,
-				EndLine: endPtr,
-				Added: 0,
-				Removed: 0,
-				Signals: []string{},
+				EndLine:   endPtr,
+				Added:     0,
+				Removed:   0,
+				Signals:   []string{},
 			}
 			hunks = append(hunks, hunk)
 			currentHunk = &hunks[len(hunks)-1]
@@ -222,8 +172,8 @@ func rankDiffHunks(hunks []Hunk, terms []string, maxHunks int) []Hunk {
 		}
 
 		if strings.HasSuffix(fileName, ".py") || strings.HasSuffix(fileName, ".swift") ||
-		   strings.HasSuffix(fileName, ".cs") || strings.HasSuffix(fileName, ".js") ||
-		   strings.HasSuffix(fileName, ".ts") {
+			strings.HasSuffix(fileName, ".cs") || strings.HasSuffix(fileName, ".js") ||
+			strings.HasSuffix(fileName, ".ts") {
 			score += 8
 		}
 
@@ -303,12 +253,18 @@ func gitDiff(projectRoot string, terms []string) {
 		}
 	}
 
-	statsByPath := make(map[string]struct{Added string; Removed string})
+	statsByPath := make(map[string]struct {
+		Added   string
+		Removed string
+	})
 	if err := numstatCmd.Run(); err == nil {
 		for _, line := range strings.Split(numstatOut.String(), "\n") {
 			parts := strings.Split(line, "\t")
 			if len(parts) >= 3 {
-				statsByPath[parts[2]] = struct{Added string; Removed string}{parts[0], parts[1]}
+				statsByPath[parts[2]] = struct {
+					Added   string
+					Removed string
+				}{parts[0], parts[1]}
 			}
 		}
 	}

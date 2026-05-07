@@ -5,7 +5,7 @@ import json
 import subprocess
 import shutil
 
-from Soma.scout_pipeline import iter_project_files
+from Soma.scout_pipeline_module import iter_project_files
 
 class TestGoScanner(unittest.TestCase):
     def setUp(self):
