@@ -49,6 +49,14 @@ func main() {
 			os.Exit(1)
 		}
 		readTextCmd(os.Args[2])
+	case "tail-logs":
+		if len(os.Args) < 3 {
+			fmt.Fprintf(os.Stderr, "Usage: %s tail-logs <file_path>\n", os.Args[0])
+			os.Exit(1)
+		}
+		tailLogsCmd(os.Args[2])
+	case "daemon":
+		runDaemon()
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown subcommand: %s\n", cmd)
 		os.Exit(1)

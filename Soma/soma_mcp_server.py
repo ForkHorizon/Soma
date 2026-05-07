@@ -18,7 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+# Swift acts as the primary MCP server now.
+# This script acts as a CLI runner for the heavy Python tools.
 
 SOMA_DIR = Path(__file__).parent
 sys.path.insert(0, str(SOMA_DIR))
@@ -712,13 +713,19 @@ def verify_codex_config(config_path: str | Path | None = None) -> dict[str, Any]
 def build_status_payload(project_root: str | None = None) -> dict[str, Any]:
     root = normalize_path(project_root) if project_root else get_active_project_root()
     state = nexus.discover(force=True)
+    # In migration phase, hardcode the known tools since FastMCP is removed
+    tools = [
+        "soma_prepare_context", "soma_get_map", "soma_ask", "soma_inspect",
+        "soma_scene", "soma_execute", "soma_debug", "soma_delta",
+        "soma_apply", "soma_remember", "soma_review", "soma_code_context"
+    ]
     return {
         "status": "ok",
         "server": {
             "transport": "stdio",
             "script": _server_script_path(),
-            "tool_count": len(mcp._tool_manager.list_tools()),
-            "tool_names": [tool.name for tool in mcp._tool_manager.list_tools()],
+            "tool_count": len(tools),
+            "tool_names": tools,
         },
         "project_root": root,
         "nexus": state.as_dict(),
@@ -727,17 +734,6 @@ def build_status_payload(project_root: str | None = None) -> dict[str, Any]:
     }
 
 
-mcp = FastMCP(
-    "Soma",
-    instructions=(
-        "Soma is the single MCP gateway for Big AI. Use soma_prepare_context, "
-        "soma_get_map, soma_code_context, and the narrow Unity tools instead of "
-        "connecting directly to Nexus Unity."
-    ),
-)
-
-
-@mcp.tool()
 async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str = "deterministic") -> str:
     """Compile a bounded evidence packet for implementation, debug, or review work."""
     project_root = get_active_project_root()
@@ -870,7 +866,6 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
         return _error_response(f"soma_prepare_context failed: {exc}")
 
 
-@mcp.tool()
 async def soma_get_map() -> str:
     """Return a compact living project map from git, Graphify, Nexus, and memory."""
     project_root = get_active_project_root()
@@ -939,7 +934,6 @@ async def soma_get_map() -> str:
     )
 
 
-@mcp.tool()
 async def soma_ask(question: str) -> str:
     """Answer a project question with Graphify context."""
     project_root = get_active_project_root()
@@ -959,7 +953,6 @@ async def soma_ask(question: str) -> str:
     )
 
 
-@mcp.tool()
 async def soma_inspect(instance_id: int, component_name: str | None = None, fields: list[str] | None = None) -> str:
     """Inspect a Unity object or component through filtered Nexus calls."""
     if not nexus.available():
@@ -979,7 +972,6 @@ async def soma_inspect(instance_id: int, component_name: str | None = None, fiel
     )
 
 
-@mcp.tool()
 async def soma_scene() -> str:
     """Return a compact Unity scene snapshot."""
     if not nexus.available():
@@ -997,7 +989,6 @@ async def soma_scene() -> str:
     )
 
 
-@mcp.tool()
 async def soma_execute(requests: list[dict[str, Any]]) -> str:
     """Advanced escape hatch for restricted Nexus batch operations."""
     if not nexus.available():
@@ -1023,7 +1014,6 @@ async def soma_execute(requests: list[dict[str, Any]]) -> str:
     )
 
 
-@mcp.tool()
 async def soma_debug(symptom: str) -> str:
     """Gather debug evidence from code, git, Nexus logs, and health."""
     base = json.loads(await soma_prepare_context(goal=symptom, budget="balanced", depth="ranked"))
@@ -1043,7 +1033,6 @@ async def soma_debug(symptom: str) -> str:
     return _json(base)
 
 
-@mcp.tool()
 async def soma_delta() -> str:
     """Return git changes plus Unity timeline and scene delta."""
     global _last_scene_generation
@@ -1080,7 +1069,6 @@ async def soma_delta() -> str:
     )
 
 
-@mcp.tool()
 async def soma_apply(files: list[dict[str, Any]]) -> str:
     """Write Unity code files, wait for compilation, and return compiler errors."""
     if not nexus.available():
@@ -1110,7 +1098,6 @@ async def soma_apply(files: list[dict[str, Any]]) -> str:
     )
 
 
-@mcp.tool()
 async def soma_remember(action: str, content: str = "", category: str = "notes") -> str:
     """Save, list, or clear structured project memory."""
     project_root = get_active_project_root()
@@ -1140,14 +1127,12 @@ async def soma_remember(action: str, content: str = "", category: str = "notes")
     return _error_response("Unknown memory action.", next_calls=["Use action save, list, or clear."])
 
 
-@mcp.tool()
 async def soma_review(focus: str = "current diff") -> str:
     """Prepare a bug/regression review packet."""
     goal = f"Review {focus} for behavioral regressions. Focus on bugs and missing tests, not style."
     return await soma_prepare_context(goal=goal, budget="balanced", depth="ranked")
 
 
-@mcp.tool()
 async def soma_code_context(query: str) -> str:
     """Return Graphify context plus deterministic source snippets for a focused query."""
     project_root = get_active_project_root()
@@ -1215,6 +1200,8 @@ if __name__ == "__main__":
     parser.add_argument("--verify-client-config", choices=["codex"], default=None, help="Verify a client config points to Soma only")
     parser.add_argument("--config-path", default=None, help="Override client config path for install/verify")
     parser.add_argument("--backup-path", default=None, help="Explicit backup path for Codex rollback")
+    parser.add_argument("--run-tool", default=None, help="Tool to run")
+    parser.add_argument("tool_args", nargs="*", help="Arguments for the tool (JSON)")
     args = parser.parse_args()
 
     if args.project_root:
@@ -1240,4 +1227,51 @@ if __name__ == "__main__":
         print(json.dumps(rollback_codex_config(args.config_path, args.backup_path), indent=2, sort_keys=True))
         raise SystemExit(0)
 
-    mcp.run(transport=args.transport)
+    import asyncio
+
+    if args.run_tool:
+        tool_name = args.run_tool
+        tool_params = {}
+        if args.tool_args:
+            try:
+                tool_params = json.loads(args.tool_args[0])
+            except Exception:
+                pass
+
+        async def run_requested_tool():
+            try:
+                if tool_name == "soma_prepare_context":
+                    res = await soma_prepare_context(**tool_params)
+                elif tool_name == "soma_get_map":
+                    res = await soma_get_map(**tool_params)
+                elif tool_name == "soma_ask":
+                    res = await soma_ask(**tool_params)
+                elif tool_name == "soma_inspect":
+                    res = await soma_inspect(**tool_params)
+                elif tool_name == "soma_scene":
+                    res = await soma_scene(**tool_params)
+                elif tool_name == "soma_execute":
+                    res = await soma_execute(**tool_params)
+                elif tool_name == "soma_debug":
+                    res = await soma_debug(**tool_params)
+                elif tool_name == "soma_delta":
+                    res = await soma_delta(**tool_params)
+                elif tool_name == "soma_apply":
+                    res = await soma_apply(**tool_params)
+                elif tool_name == "soma_remember":
+                    res = await soma_remember(**tool_params)
+                elif tool_name == "soma_review":
+                    res = await soma_review(**tool_params)
+                elif tool_name == "soma_code_context":
+                    res = await soma_code_context(**tool_params)
+                else:
+                    res = json.dumps({"error": f"Unknown tool {tool_name}"})
+                print(res)
+            except Exception as e:
+                print(json.dumps({"error": str(e)}))
+                sys.exit(1)
+
+        asyncio.run(run_requested_tool())
+        raise SystemExit(0)
+
+    print(json.dumps({"error": "FastMCP removed. Run tools via python script directly using --run-tool or use Swift MCP Server."}))

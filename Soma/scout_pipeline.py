@@ -231,6 +231,57 @@ Rules:
 """
 
 
+import uuid
+
+class GoDaemon:
+    _instance = None
+
+    def __init__(self):
+        go_scanner_dir = os.path.join(os.path.dirname(__file__), "go_scanner")
+        go_scanner_path = os.path.join(go_scanner_dir, "soma_scanner")
+        if not os.path.exists(go_scanner_path) or not os.access(go_scanner_path, os.X_OK):
+            build_go_scanner(go_scanner_dir)
+
+        self.process = subprocess.Popen(
+            [go_scanner_path, "daemon"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+            bufsize=1
+        )
+
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    def call(self, method, *args):
+        req_id = str(uuid.uuid4())
+        req = {
+            "id": req_id,
+            "method": method,
+            "args": list(args)
+        }
+        self.process.stdin.write(json.dumps(req) + "\n")
+        self.process.stdin.flush()
+
+        line = self.process.stdout.readline()
+        if not line:
+            raise Exception("Daemon process terminated unexpectedly")
+
+        resp = json.loads(line)
+        if resp.get("error"):
+            raise Exception(resp["error"])
+
+        return resp.get("data", "")
+
+def stop_daemon():
+    if GoDaemon._instance:
+        GoDaemon._instance.process.terminate()
+        GoDaemon._instance = None
+
+
 # -- Chat helpers ------------------------------------------------------------
 def extract_tool_calls(content):
     tool_calls = []
@@ -411,15 +462,10 @@ async def run_chat(user_prompt, history):
 
 def get_git_status(project_root):
     try:
-        go_scanner_dir = os.path.join(os.path.dirname(__file__), "go_scanner")
-        go_scanner_path = os.path.join(go_scanner_dir, "soma_scanner")
-        if not os.path.exists(go_scanner_path) or not os.access(go_scanner_path, os.X_OK):
-            build_go_scanner(go_scanner_dir)
-        res = subprocess.run([go_scanner_path, "git-status", project_root], capture_output=True, text=True, timeout=5)
-        if res.returncode == 0:
-            status = res.stdout.strip()
-            if status:
-                return status
+        daemon = GoDaemon.get_instance()
+        status = daemon.call("git-status", project_root).strip()
+        if status:
+            return status
     except Exception:
         pass
     return None
@@ -427,14 +473,10 @@ def get_git_status(project_root):
 
 def get_git_diff_summary(project_root, terms=None):
     try:
-        go_scanner_dir = os.path.join(os.path.dirname(__file__), "go_scanner")
-        go_scanner_path = os.path.join(go_scanner_dir, "soma_scanner")
-        if not os.path.exists(go_scanner_path) or not os.access(go_scanner_path, os.X_OK):
-            build_go_scanner(go_scanner_dir)
-        args = [go_scanner_path, "git-diff", project_root] + (terms or [])
-        res = subprocess.run(args, capture_output=True, text=True, timeout=10)
-        if res.returncode == 0:
-            return json.loads(res.stdout)
+        daemon = GoDaemon.get_instance()
+        args = [project_root] + (terms or [])
+        stdout = daemon.call("git-diff", *args)
+        return json.loads(stdout)
     except Exception:
         pass
     return None
@@ -485,6 +527,31 @@ def find_errors(text):
                     out.append(stripped)
                 break
     return out
+
+
+def group_compile_errors(errors):
+    """Deduplicates and sanitizes compile errors into concise summaries."""
+    grouped = []
+    seen = set()
+    for error in errors:
+        # Simplistic grouping: strip file paths and numbers to group similar errors
+        sanitized = re.sub(r'/[a-zA-Z0-9_./-]+:[0-9]+:[0-9]+: ', '', error)
+        sanitized = re.sub(r'\(at .*\)', '', sanitized)
+        sanitized = sanitized.strip()
+        if sanitized not in seen and len(sanitized) > 5:
+            seen.add(sanitized)
+            grouped.append(sanitized)
+    return grouped
+
+
+def get_unity_logs(path):
+    try:
+        daemon = GoDaemon.get_instance()
+        stdout = daemon.call("tail-logs", path)
+        return json.loads(stdout)
+    except Exception:
+        pass
+    return []
 
 
 def prompt_terms(prompt):
@@ -614,14 +681,10 @@ def build_go_scanner(go_scanner_dir):
     return go_scanner_path
 
 def iter_project_files(project_root):
-    go_scanner_dir = os.path.join(os.path.dirname(__file__), "go_scanner")
-    go_scanner_path = os.path.join(go_scanner_dir, "soma_scanner")
-    if not os.path.exists(go_scanner_path) or not os.access(go_scanner_path, os.X_OK):
-        build_go_scanner(go_scanner_dir)
     try:
-        res = subprocess.run([go_scanner_path, "scan-files", project_root], capture_output=True, text=True, timeout=10)
-        if res.returncode == 0:
-            return json.loads(res.stdout)
+        daemon = GoDaemon.get_instance()
+        stdout = daemon.call("scan-files", project_root)
+        return json.loads(stdout)
     except Exception:
         pass
     return []
@@ -648,27 +711,46 @@ def file_digest(path):
 
 def extract_symbols(path, text=None):
     try:
-        go_scanner_dir = os.path.join(os.path.dirname(__file__), "go_scanner")
-        go_scanner_path = os.path.join(go_scanner_dir, "soma_scanner")
-        if not os.path.exists(go_scanner_path) or not os.access(go_scanner_path, os.X_OK):
-            build_go_scanner(go_scanner_dir)
-        res = subprocess.run([go_scanner_path, "extract-symbols", path], capture_output=True, text=True, timeout=5)
-        if res.returncode == 0:
-            return json.loads(res.stdout)
+        daemon = GoDaemon.get_instance()
+        stdout = daemon.call("extract-symbols", path)
+        return json.loads(stdout)
     except Exception:
         pass
     return []
 
 
+def build_rust_scanner(rust_scanner_dir):
+    rust_scanner_path = os.path.join(rust_scanner_dir, "target", "release", "rust_scanner")
+    try:
+        subprocess.run(
+            ["cargo", "build", "--release"],
+            cwd=rust_scanner_dir,
+            capture_output=True,
+            timeout=120
+        )
+    except Exception:
+        pass
+    return rust_scanner_path
+
 def extract_unity_refs(path, text=None):
     try:
-        go_scanner_dir = os.path.join(os.path.dirname(__file__), "go_scanner")
-        go_scanner_path = os.path.join(go_scanner_dir, "soma_scanner")
-        if not os.path.exists(go_scanner_path) or not os.access(go_scanner_path, os.X_OK):
-            build_go_scanner(go_scanner_dir)
-        res = subprocess.run([go_scanner_path, "extract-unity-refs", path], capture_output=True, text=True, timeout=5)
-        if res.returncode == 0:
-            return json.loads(res.stdout)
+        if Path(path).suffix.lower() in {".unity", ".prefab", ".asset"}:
+            try:
+                stat = os.stat(path)
+                if stat.st_size > 10 * 1024:
+                    rust_scanner_dir = os.path.join(os.path.dirname(__file__), "rust_scanner")
+                    rust_scanner_path = os.path.join(rust_scanner_dir, "target", "release", "rust_scanner")
+                    if not os.path.exists(rust_scanner_path) or not os.access(rust_scanner_path, os.X_OK):
+                        build_rust_scanner(rust_scanner_dir)
+                    res = subprocess.run([rust_scanner_path, "extract-unity-refs", path], capture_output=True, text=True, timeout=10)
+                    if res.returncode == 0:
+                        return json.loads(res.stdout)
+            except Exception:
+                pass
+
+        daemon = GoDaemon.get_instance()
+        stdout = daemon.call("extract-unity-refs", path)
+        return json.loads(stdout)
     except Exception:
         pass
     return []
@@ -813,16 +895,11 @@ def file_rank(item, terms, intent, project_type, packet_mode="debug", changed_pa
 
 def read_text_file(path):
     try:
-        go_scanner_dir = os.path.join(os.path.dirname(__file__), "go_scanner")
-        go_scanner_path = os.path.join(go_scanner_dir, "soma_scanner")
-        if not os.path.exists(go_scanner_path) or not os.access(go_scanner_path, os.X_OK):
-            build_go_scanner(go_scanner_dir)
-        res = subprocess.run([go_scanner_path, "read-text", path], capture_output=True, timeout=5)
-        if res.returncode == 0:
-            return res.stdout.decode("utf-8", errors="replace")
+        daemon = GoDaemon.get_instance()
+        stdout = daemon.call("read-text", path)
+        return stdout
     except Exception as exc:
         return f"[Unable to read file: {exc}]"
-    return f"[Unable to read file: Go scanner failed]"
 
 
 def excerpt_for_text(text, terms):
@@ -999,11 +1076,19 @@ def build_preflight(prompt, project_root, project_type, discovered, repo_index, 
     for item in discovered:
         if item.get("category") != "log":
             continue
-        preview = excerpt_for_log(read_text_file(item["path"]), prompt_terms(prompt))[0]
-        errors = find_errors(preview)
+        # Use Go daemon for fast log tailing instead of python excerpt_for_log
+        errors = get_unity_logs(item["path"])
+        if not errors:
+            # Fallback to python parsing if fast tail fails or finds nothing
+            preview = excerpt_for_log(read_text_file(item["path"]), prompt_terms(prompt))[0]
+            errors = find_errors(preview)
+
         if errors:
             error_paths.add(normalize_path(item["path"]))
-        log_candidates.append({"path": item["path"], "errors": errors[:MAX_ERROR_LINES]})
+            grouped_errors = group_compile_errors(errors)
+            log_candidates.append({"path": item["path"], "errors": grouped_errors[:MAX_ERROR_LINES]})
+        else:
+            log_candidates.append({"path": item["path"], "errors": []})
 
     candidate_paths = [
         item.get("path")

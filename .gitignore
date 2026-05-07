@@ -44,3 +44,5 @@ env/
 Soma/go_scanner/soma_scanner
 Soma/go_scanner/soma_scanner
 Soma/go_scanner/soma_scanner
+Soma/rust_scanner/target/
+Soma/rust_scanner/Cargo.lock
