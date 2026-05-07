@@ -39,8 +39,8 @@ class SomaMCPServerTests(unittest.TestCase):
         return tmp, root
 
     def test_tool_catalog_stays_small_and_soma_scoped(self):
-        tools = soma_mcp_server.mcp._tool_manager.list_tools()
-        names = [tool.name for tool in tools]
+        status_payload = soma_mcp_server.build_status_payload()
+        names = status_payload["server"]["tool_names"]
 
         self.assertEqual(len(names), 12)
         self.assertIn("soma_prepare_context", names)
