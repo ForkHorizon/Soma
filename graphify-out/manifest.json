@@ -1,0 +1,50 @@
+{
+  "/Users/daliys/Daliys/Swift/Soma/tests/test_scout_pipeline.py": {
+    "mtime": 1777367324.515048,
+    "hash": "279436876ccbf567da84fbd879bdb321"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/scout_pipeline.py": {
+    "mtime": 1777367902.4102294,
+    "hash": "c247344bd22f029dc747072f65f433cf"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/benchmark_ollama.py": {
+    "mtime": 1777377192.5974853,
+    "hash": "35da8caa0ff2670cd96eb5f7ef05169c"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/relay.py": {
+    "mtime": 1777367678.0394194,
+    "hash": "81b00b1802e4fa7ce157e904b35e3461"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/SomaApp.swift": {
+    "mtime": 1777043584.2370853,
+    "hash": "caa5f8ef73cf99ba0995cfd6fdb6f98b"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/ContentView.swift": {
+    "mtime": 1777367290.2243643,
+    "hash": "1be932550f4a588d82227d4bb5570c64"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/ollama_final.txt": {
+    "mtime": 1777043584.2375615,
+    "hash": "7195d962c3b71398b1182eb4cdfe1b15"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/ollama_logs.txt": {
+    "mtime": 1777043584.2376645,
+    "hash": "5c695a86d8e665aa039215f385448721"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Prompt.txt": {
+    "mtime": 1777045172.695021,
+    "hash": "02652d7e9edd13bc267eb587f895f577"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/README.md": {
+    "mtime": 1777377176.9901183,
+    "hash": "bec95ff953480ec4a1b62b879af5dcdc"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/GEMINI.md": {
+    "mtime": 1777927448.2138677,
+    "hash": "8ee39dcfe68a23b3797b02648930d699"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/ollama_out.txt": {
+    "mtime": 1777043584.2377772,
+    "hash": "b254d54ac4f0a6125b31e821a69cf494"
+  }
+}
