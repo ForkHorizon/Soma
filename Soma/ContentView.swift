@@ -3,59 +3,44 @@ import Combine
 import Foundation
 import SwiftUI
 
-
 struct ContentView: View {
     @StateObject private var ollama = OllamaManager()
-    @StateObject private var viewModel = SomaViewModel()
-    @State private var mode: AppMode = .relay
+    @ObservedObject var viewModel: SomaViewModel
+    @State private var selectedRoute: AppRoute? = .relay
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        VStack(spacing: 0) {
-            headerBar
-            Divider()
-            Group {
-                if mode == .scout { scoutView }
-                else { relayView }
+        NavigationSplitView {
+            SidebarView(viewModel: viewModel, ollama: ollama, selectedRoute: $selectedRoute)
+                .navigationTitle("Soma")
+        } detail: {
+            VStack(spacing: 0) {
+                GlobalSettingsBar(viewModel: viewModel, ollama: ollama)
+                
+                if let route = selectedRoute {
+                    switch route {
+                    case .scout:
+                        scoutView
+                            .navigationTitle(route.rawValue)
+                    case .relay:
+                        relayView
+                            .navigationTitle(route.rawValue)
+                    case .systemStatus:
+                        SystemStatusView(viewModel: viewModel)
+                            .navigationTitle(route.rawValue)
+                    }
+                } else {
+                    Spacer()
+                    Text("Select a tool from the sidebar")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
             }
         }
-        .frame(minWidth: 640, minHeight: 780)
-        .background(Color(NSColor.windowBackgroundColor))
+        .frame(minWidth: 800, minHeight: 600)
         .task {
             viewModel.hydrateProjectRootsIfNeeded()
         }
-    }
-
-    // MARK: - Header
-
-    private var headerBar: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Soma").font(.headline).bold()
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(ollama.isOllamaRunning ? (ollama.isModelLoaded ? Color.green : Color.orange) : Color.red)
-                        .frame(width: 7, height: 7)
-                    Text(ollama.isOllamaRunning ? (ollama.isModelLoaded ? "Model ready" : "Ollama idle") : "Offline")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-            }
-            Spacer()
-            Picker("Mode", selection: $mode) {
-                ForEach(AppMode.allCases) { mode in Text(mode.rawValue).tag(mode) }
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 220)
-            .onChange(of: mode) { _, _ in viewModel.resetState() }
-            Spacer()
-            Button(action: ollamaAction) {
-                if ollama.isBusy { ProgressView().controlSize(.small).frame(width: 80) }
-                else { Text(ollama.isOllamaRunning ? (ollama.isModelLoaded ? "Stop AI" : "Start AI") : "Launch").frame(width: 80) }
-            }
-            .buttonStyle(BorderedButtonStyle()).controlSize(.small).disabled(ollama.isBusy)
-        }
-        .padding(.horizontal, 16).padding(.vertical, 10)
-        .background(Color(NSColor.windowBackgroundColor))
     }
 
     // MARK: - Scout View
@@ -91,8 +76,6 @@ struct ContentView: View {
 
     private var relayView: some View {
         VStack(spacing: 0) {
-            projectRootPanel
-            mcpGatewayPanel
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if viewModel.relayPhase == .idle && viewModel.gatherBundle == nil && viewModel.relayResponse == nil && viewModel.relayError == nil {
@@ -129,137 +112,12 @@ struct ContentView: View {
                     }
                 }.padding()
             }
-            .background(Color(NSColor.textBackgroundColor).opacity(0.5)).cornerRadius(8).padding(.horizontal)
+            .background(Color(NSColor.textBackgroundColor).opacity(0.5)).padding()
+            
             inputBar(text: $viewModel.relayPrompt, placeholder: "Describe the bug or task; Soma will prepare a compact Codex packet", disabled: relayIsBusy, buttonLabel: "Prepare Packet", icon: "doc.text.magnifyingglass") {
                 viewModel.runRelay(ollama: ollama)
             }
         }
-    }
-
-    private var projectRootPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("Project Root", systemImage: "folder").font(.subheadline.bold())
-                Spacer()
-                if !viewModel.recentProjectRoots.isEmpty {
-                    Menu("Recent Roots") {
-                        ForEach(viewModel.recentProjectRoots, id: \.self) { root in
-                            Button(shortPath(root)) { viewModel.selectProjectRoot(root) }
-                        }
-                    }.controlSize(.small)
-                }
-                Button("Choose Folder", action: chooseProjectRoot).buttonStyle(BorderedProminentButtonStyle()).controlSize(.small)
-                if !viewModel.selectedProjectRoot.isEmpty { Button("Clear", action: viewModel.clearProjectRoot).buttonStyle(BorderedButtonStyle()).controlSize(.small) }
-            }
-            if viewModel.selectedProjectRoot.isEmpty {
-                Text("Select a project root for debugging, investigation, or log-driven packets.").font(.caption).foregroundColor(.secondary)
-            } else {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Selected").font(.caption.bold()).foregroundColor(.secondary)
-                    Text(viewModel.selectedProjectRoot).font(.caption).textSelection(.enabled)
-                }
-            }
-            if !viewModel.recentProjectRoots.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(viewModel.recentProjectRoots, id: \.self) { root in
-                            recentRootButton(root)
-                        }
-                    }.padding(.vertical, 2)
-                }
-            }
-            Picker("Analysis", selection: $viewModel.analysisDepth) {
-                ForEach(AnalysisDepth.allCases) { depth in
-                    Text(depth.label).tag(depth)
-                }
-            }
-            .pickerStyle(.segmented)
-            .controlSize(.small)
-        }
-        .padding(12).background(Color.secondary.opacity(0.06)).overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.15))).cornerRadius(10).padding(.horizontal).padding(.top)
-    }
-
-    private var mcpGatewayPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(viewModel.somaServerRunning ? Color.green : Color.secondary.opacity(0.5))
-                    .frame(width: 8, height: 8)
-                Label("Soma MCP Gateway", systemImage: "point.3.connected.trianglepath.dotted")
-                    .font(.subheadline.bold())
-                Spacer()
-                if viewModel.somaServerRunning {
-                    Button("Stop") { viewModel.stopSomaServer() }
-                        .buttonStyle(BorderedButtonStyle())
-                        .controlSize(.small)
-                        .disabled(viewModel.somaServerBusy)
-                } else {
-                    Button("Start") { viewModel.startSomaServer() }
-                        .buttonStyle(BorderedProminentButtonStyle())
-                        .controlSize(.small)
-                        .disabled(viewModel.somaServerBusy || viewModel.selectedProjectRoot.isEmpty)
-                }
-                Button("Refresh") { viewModel.refreshSomaStatus() }
-                    .buttonStyle(BorderedButtonStyle())
-                    .controlSize(.small)
-                    .disabled(viewModel.somaServerBusy)
-                Button("Verify Client") { viewModel.verifyCodexConfig() }
-                    .buttonStyle(BorderedButtonStyle())
-                    .controlSize(.small)
-                    .disabled(viewModel.somaServerBusy)
-                Button("Install Codex") { viewModel.installCodexConfig() }
-                    .buttonStyle(BorderedButtonStyle())
-                    .controlSize(.small)
-                    .disabled(viewModel.somaServerBusy || viewModel.selectedProjectRoot.isEmpty)
-                Button("Rollback Codex") { viewModel.rollbackCodexConfig() }
-                    .buttonStyle(BorderedButtonStyle())
-                    .controlSize(.small)
-                    .disabled(viewModel.somaServerBusy)
-                Button("Run Live Verify") { viewModel.runLiveVerify() }
-                    .buttonStyle(BorderedButtonStyle())
-                    .controlSize(.small)
-                    .disabled(viewModel.somaServerBusy || viewModel.selectedProjectRoot.isEmpty)
-                Menu("Copy Config") {
-                    Button("Codex") { viewModel.copyMCPConfig(client: "codex") }
-                    Button("Gemini") { viewModel.copyMCPConfig(client: "gemini") }
-                    Button("Claude") { viewModel.copyMCPConfig(client: "claude") }
-                }
-                .controlSize(.small)
-                .disabled(viewModel.selectedProjectRoot.isEmpty)
-            }
-
-            HStack(spacing: 10) {
-                badge(text: viewModel.somaServerRunning ? "server running" : "server stopped")
-                badge(text: viewModel.nexusConnected ? "nexus connected" : "nexus offline")
-                badge(text: viewModel.graphAvailable ? (viewModel.graphStale ? "graph stale" : "graph ready") : "graph missing")
-                if let pid = viewModel.somaServerPID { badge(text: "pid \(pid)") }
-                if let port = viewModel.somaServerPort { badge(text: "sse \(port)") }
-            }
-
-            if let status = viewModel.mcpInstallStatus, !status.isEmpty {
-                Text(status)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .textSelection(.enabled)
-            }
-            if let config = viewModel.mcpConfigPreview, !config.isEmpty {
-                Text(config)
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundColor(.secondary)
-                    .lineLimit(8)
-                    .textSelection(.enabled)
-                    .padding(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(NSColor.textBackgroundColor))
-                    .cornerRadius(8)
-            }
-        }
-        .padding(12)
-        .background(Color.blue.opacity(0.05))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.blue.opacity(0.16)))
-        .cornerRadius(10)
-        .padding(.horizontal)
-        .padding(.top, 8)
     }
 
     // MARK: - Components
@@ -427,19 +285,6 @@ struct ContentView: View {
         Text(text).font(.caption2.bold()).padding(.horizontal, 8).padding(.vertical, 4).background(Color.secondary.opacity(0.12)).cornerRadius(999)
     }
 
-    @ViewBuilder
-    private func recentRootButton(_ root: String) -> some View {
-        if root == viewModel.selectedProjectRoot {
-            Button(action: { viewModel.selectProjectRoot(root) }) { Text(shortPath(root)).lineLimit(1) }
-                .buttonStyle(BorderedProminentButtonStyle())
-                .controlSize(.small)
-        } else {
-            Button(action: { viewModel.selectProjectRoot(root) }) { Text(shortPath(root)).lineLimit(1) }
-                .buttonStyle(BorderedButtonStyle())
-                .controlSize(.small)
-        }
-    }
-
     private func labeledBlock(title: String, text: String) -> some View {
         VStack(alignment: .leading, spacing: 4) { Text(title).font(.subheadline).bold(); Text(text).font(.caption).foregroundColor(.secondary).textSelection(.enabled) }
     }
@@ -468,26 +313,12 @@ struct ContentView: View {
                 TextEditor(text: text).font(.body).frame(minHeight: 60, maxHeight: 100).padding(4).background(Color.clear).onSubmit { if !disabled { action() } }
             }.background(Color(NSColor.controlBackgroundColor)).cornerRadius(6).overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.2)))
             HStack {
-                if mode == .relay { Button("Clear", action: viewModel.resetState).buttonStyle(BorderedButtonStyle()).controlSize(.small) }
+                if selectedRoute == .relay { Button("Clear", action: viewModel.resetState).buttonStyle(BorderedButtonStyle()).controlSize(.small) }
                 Spacer()
                 Button(action: action) { HStack { Image(systemName: icon); Text(buttonLabel) }.bold().padding(.horizontal, 8) }.buttonStyle(BorderedProminentButtonStyle()).controlSize(.regular).disabled(disabled || text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).keyboardShortcut(.return, modifiers: .command)
             }
         }.padding()
     }
 
-    private func ollamaAction() { if !ollama.isOllamaRunning { ollama.launchOllama() } else if ollama.isModelLoaded { ollama.stopModel() } else { ollama.startModel() } }
-    private func chooseProjectRoot() {
-        let panel = NSOpenPanel(); panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.allowsMultipleSelection = false; panel.prompt = "Choose Project Root"
-        guard panel.runModal() == .OK, let path = panel.url?.path else { return }
-        viewModel.selectProjectRoot(path)
-    }
-    private func shortPath(_ path: String) -> String {
-        let home = NSHomeDirectory()
-        if path == home { return "~" }
-        if path.hasPrefix(home + "/") { return "~/" + path.dropFirst(home.count + 1) }
-        return path
-    }
     private func copyToClipboard(_ text: String) { let pb = NSPasteboard.general; pb.clearContents(); pb.setString(text, forType: .string) }
 }
-
-

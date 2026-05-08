@@ -29,7 +29,6 @@ class SomaMCPCoordinator {
     private let scoutPipelinePath: String
 
     init() {
-        let basePath = Bundle.main.bundlePath
         // In a real setup, this path would be more robust. Using a relative path for now.
         scoutPipelinePath = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -40,7 +39,7 @@ class SomaMCPCoordinator {
         let inputHandle = FileHandle.standardInput
         let outputHandle = FileHandle.standardOutput
 
-        let reader = inputHandle.readabilityHandler = { [weak self] handle in
+        inputHandle.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty else { return } // EOF
 

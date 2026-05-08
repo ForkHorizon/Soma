@@ -9,9 +9,15 @@ import SwiftUI
 
 @main
 struct SomaApp: App {
+    @StateObject private var viewModel = SomaViewModel()
+    
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(viewModel: viewModel)
+        }
+        
+        Window("Token Calculator", id: "token-calculator") {
+            TokenCalculatorView(viewModel: viewModel)
         }
     }
 }

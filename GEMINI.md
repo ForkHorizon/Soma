@@ -4,6 +4,9 @@
 
 Soma is the local-first evidence compiler and MCP gateway for NexusSoma.
 
+**Note on Nexus Integration:**
+Nexus is a separate repository providing an MCP server for the Unity Editor. Soma functions independently as a codebase analyzer (using Graphify, AST scanners, and git), but is also designed to integrate seamlessly with Nexus. When used together, Soma acts as a unified gateway, hiding the raw, verbose Nexus tools from Big AI and wrapping them in compact, efficient workflows.
+
 Primary rule:
 
 ```text

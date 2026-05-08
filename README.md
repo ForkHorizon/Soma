@@ -2,7 +2,10 @@
 
 Soma is a local-first evidence compiler and MCP gateway for large coding models such as Codex, Gemini, Claude, GPT-5.5, Opus, and Gemini Pro.
 
-The current product direction is **NexusSoma**:
+**Note on Nexus Integration:**
+Nexus is a separate repository containing an MCP server specifically for the Unity Editor. Soma is designed to work both **independently** (as a general codebase analyzer using Graphify and local tools) and **together with Nexus** (as a unified gateway). When used together, Soma hides the raw, verbose Nexus tools from the AI, instead composing them into compact, evidence-backed packets for Unity-specific queries.
+
+The current product direction is **NexusSoma** (when used together):
 
 ```text
 Big AI client
@@ -10,7 +13,7 @@ Big AI client
   -> deterministic Scout Pipeline
   -> Graphify project graph
   -> optional local model ranker/analyst
-  -> hidden Nexus Unity tools when Unity is online
+  -> hidden Nexus Unity tools (when Unity is online)
 ```
 
 The goal is not to replace Big AI with a small local model. The goal is to make Big AI spend fewer tokens by giving it exact, compact, evidence-backed packets instead of raw repo dumps, full diffs, long logs, full Unity scene dumps, or 85+ raw Nexus tool definitions.
@@ -24,7 +27,7 @@ The goal is not to replace Big AI with a small local model. The goal is to make 
 | Swift app controls | Start/stop/status/config/live verify implemented |
 | Codex config install/verify/rollback | Implemented, explicit only |
 | Gemini/Claude config | Copy-only snippets |
-| Nexus Unity | Hidden behind Soma tools; currently requires manual Unity server start |
+| Nexus Unity | Separate repository; hidden behind Soma tools; currently requires manual Unity server start |
 | Graphify | Project graph support implemented |
 | Local models | Optional after deterministic compression |
 | Current tests | Python suite last known: `30 tests OK` |
@@ -74,6 +77,8 @@ Do not scan the whole repo or call raw Unity tools.
 
 ## Architecture
 
+Soma can operate as a standalone codebase assistant or act as a unified gateway when paired with Nexus Unity.
+
 ```mermaid
 flowchart TD
     Client["Big AI client<br/>Codex / Gemini / Claude"] --> Soma["Soma MCP gateway<br/>12 soma_* tools"]
@@ -81,9 +86,16 @@ flowchart TD
     Soma --> Graphify["Graphify<br/>project graph"]
     Soma --> Memory["Soma memory<br/>project + private"]
     Soma --> Ollama["Ollama<br/>ranker / analyst"]
-    Soma --> Nexus["Nexus Unity<br/>hidden HTTP JSON-RPC layer"]
-    Nexus --> Unity["Unity Editor"]
+    Soma -.->|"Optional Unity Path"| Nexus["Nexus Unity<br/>(Separate Repository)"]
+    Nexus -.->|"Hidden JSON-RPC"| Unity["Unity Editor"]
 ```
+
+### How Soma and Nexus Work Together
+
+While Soma is powerful on its own for Python, Swift, Go, or general projects, its value multiplies when used with Unity via the **Nexus repository**.
+
+1. **Standalone (Without Nexus):** Soma relies on Graphify, Git summaries, Go/Rust AST scanners, and log parsers to build context.
+2. **Integrated (With Nexus):** When a Unity project is selected and the Nexus Editor server is running, Soma automatically detects it. It hides the 85+ raw Nexus MCP tools from Big AI. Instead, if Big AI calls a tool like `soma_scene` or `soma_inspect`, Soma orchestrates the corresponding Nexus calls in the background, truncates the verbose JSON, and returns only the critical components (e.g., just the transform hierarchies or specific script values).
 
 ### Main Components
 
@@ -327,16 +339,17 @@ PYTHONDONTWRITEBYTECODE=1 /opt/homebrew/bin/python3 Soma/scout_pipeline.py \
 
 ## Nexus Unity Workflow
 
-Soma composes Nexus Unity instead of exposing raw Nexus tools to Big AI.
+Soma composes Nexus Unity instead of exposing raw Nexus tools to Big AI. **Note: Nexus is a separate repository that must be installed and running in the Unity Editor for these features to activate.**
 
 For live Unity work:
 
-1. Open UnityTestForNexus.
-2. Open `Window > Nexus Unity`.
-3. Click `START SERVER`.
-4. In Soma, click `Refresh`.
-5. Confirm Nexus is connected.
-6. Run `Run Live Verify`.
+1. Clone and install the Nexus repository into your Unity project.
+2. Open the Unity project.
+3. Open `Window > Nexus Unity`.
+4. Click `START SERVER`.
+5. In Soma, click `Refresh`.
+6. Confirm Nexus is connected (System Status tab).
+7. Run `Run Live Verify`.
 
 When online, Soma can call Nexus for:
 
