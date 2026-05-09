@@ -55,6 +55,26 @@ func main() {
 			os.Exit(1)
 		}
 		tailLogsCmd(os.Args[2])
+	case "find-errors":
+		if len(os.Args) < 3 {
+			os.Exit(1)
+		}
+		findErrorsCmd(os.Args[2])
+	case "group-compile-errors":
+		if len(os.Args) < 3 {
+			os.Exit(1)
+		}
+		groupCompileErrorsCmd(os.Args[2])
+	case "excerpt-for-text":
+		if len(os.Args) < 4 {
+			os.Exit(1)
+		}
+		excerptForTextCmd(os.Args[2], os.Args[3])
+	case "excerpt-for-log":
+		if len(os.Args) < 4 {
+			os.Exit(1)
+		}
+		excerptForLogCmd(os.Args[2], os.Args[3])
 	case "daemon":
 		runDaemon()
 	default:
