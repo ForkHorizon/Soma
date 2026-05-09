@@ -48,7 +48,8 @@ func pythonPath() -> String {
 
 func scriptEnvironment(projectRoot: String? = nil) -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
-        environment["PATH"] = (environment["PATH"] ?? "") + ":/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/Users/daliys/.local/bin:/Users/daliys/.nvm/versions/node/v22.21.0/bin"
+        let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
+        environment["PATH"] = (environment["PATH"] ?? "") + ":/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:\(homeDir)/.local/bin"
         environment["PYTHONDONTWRITEBYTECODE"] = "1"
         environment["SOMA_LOCAL_MODEL"] = environment["SOMA_LOCAL_MODEL"] ?? "gemma4:e4b"
         environment["SOMA_RANKER_MODEL"] = environment["SOMA_RANKER_MODEL"] ?? "gemma4:e4b"
