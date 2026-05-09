@@ -27,8 +27,8 @@ func readTextFile(path string) string {
 	return string(buf[:n])
 }
 
-func readTextCmd(path string) {
-	fmt.Print(readTextFile(path))
+func readTextCmd(path string) (string, error) {
+	return readTextFile(path), nil
 }
 
 func extractSymbols(path string, text string) []string {
@@ -118,7 +118,7 @@ func extractUnityRefs(path string, text string) []string {
 	return refs
 }
 
-func extractSymbolsCmd(path string) {
+func extractSymbolsCmd(path string) (string, error) {
 	text := readTextFile(path)
 	symbols := extractSymbols(path, text)
 	if symbols == nil {
@@ -126,13 +126,13 @@ func extractSymbolsCmd(path string) {
 	}
 	out, err := json.Marshal(symbols)
 	if err == nil {
-		fmt.Println(string(out))
+		return string(out), nil
 	} else {
-		fmt.Println("[]")
+		return "[]", nil
 	}
 }
 
-func extractUnityRefsCmd(path string) {
+func extractUnityRefsCmd(path string) (string, error) {
 	text := readTextFile(path)
 	refs := extractUnityRefs(path, text)
 	if refs == nil {
@@ -140,8 +140,8 @@ func extractUnityRefsCmd(path string) {
 	}
 	out, err := json.Marshal(refs)
 	if err == nil {
-		fmt.Println(string(out))
+		return string(out), nil
 	} else {
-		fmt.Println("[]")
+		return "[]", nil
 	}
 }
