@@ -12,17 +12,6 @@ final class SomaViewModel: ObservableObject {
     var somaServerInput: Pipe?
     var logRefreshTimer: Timer?
 
-    @Published var scoutPrompt = ""
-    @Published var scoutTranscript = ""
-    @Published var scoutHistory: [[String: AnyCodable]] = []
-    @Published var scoutLoading = false
-
-    @Published var relayPrompt = ""
-    @Published var relayPhase: RelayPhase = .idle
-    @Published var gatherBundle: GatherBundle?
-    @Published var relayResponse: RelayResponse?
-    @Published var showContextPanel = false
-    @Published var relayError: String?
     @Published var selectedProjectRoot = ""
     @Published var recentProjectRoots: [String] = []
     @Published var analysisDepth: AnalysisDepth = .deterministic
@@ -52,17 +41,6 @@ final class SomaViewModel: ObservableObject {
     init() {}
 
     func resetState() {
-        scoutPrompt = ""
-        scoutTranscript = ""
-        scoutHistory = []
-        scoutLoading = false
-
-        relayPrompt = ""
-        relayPhase = .idle
-        gatherBundle = nil
-        relayResponse = nil
-        showContextPanel = false
-        relayError = nil
         activityLogs = []
     }
 
