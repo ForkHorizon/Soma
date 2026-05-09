@@ -3,20 +3,26 @@ package main
 import (
 	"bufio"
 	"encoding/json"
-	"fmt"
 	"os"
 	"strings"
 )
 
-func tailLogs(path string) []string {
+// tailLogsCmd reads log files and uses streaming serialization to avoid memory spikes.
+// Instead of buffering thousands of error lines in memory (which was causing massive memory
+// usage for large log files), it streams the JSON array elements directly to stdout.
+func tailLogsCmd(path string) {
 	file, err := os.Open(path)
 	if err != nil {
-		return []string{}
+		fmt.Println("[]")
+		return
 	}
 	defer file.Close()
 
-	var errors []string
 	tokens := []string{"ERROR", "EXCEPTION", "FATAL", "TRACEBACK", "CRASH"}
+
+	fmt.Print("[")
+	first := true
+	count := 0
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -26,14 +32,20 @@ func tailLogs(path string) []string {
 			if strings.Contains(upper, token) {
 				stripped := strings.TrimSpace(line)
 				if len(stripped) > 5 {
-					errors = append(errors, stripped)
-					// Avoid storing too many errors in memory
-					if len(errors) >= 1000 {
-						return errors
+					if !first {
+						fmt.Print(",")
 					}
+					out, _ := json.Marshal(stripped)
+					fmt.Print(string(out))
+					first = false
+					count++
 				}
 				break
 			}
+		}
+		// Limit to 1000 results even while streaming, to avoid unlimited output
+		if count >= 1000 {
+			break
 		}
 	}
 
@@ -41,15 +53,16 @@ func tailLogs(path string) []string {
 		// Log parsing error
 	}
 
+	fmt.Println("]")
 	return errors
 }
 
-func tailLogsCmd(path string) {
+func tailLogsCmd(path string) (string, error) {
 	errors := tailLogs(path)
 	out, err := json.Marshal(errors)
 	if err == nil {
-		fmt.Println(string(out))
+		return string(out), nil
 	} else {
-		fmt.Println("[]")
+		return "[]", nil
 	}
 }
