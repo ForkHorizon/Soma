@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"encoding/json"
-	"fmt"
 	"os"
 	"strings"
 )
@@ -44,12 +43,12 @@ func tailLogs(path string) []string {
 	return errors
 }
 
-func tailLogsCmd(path string) {
+func tailLogsCmd(path string) (string, error) {
 	errors := tailLogs(path)
 	out, err := json.Marshal(errors)
 	if err == nil {
-		fmt.Println(string(out))
+		return string(out), nil
 	} else {
-		fmt.Println("[]")
+		return "[]", nil
 	}
 }

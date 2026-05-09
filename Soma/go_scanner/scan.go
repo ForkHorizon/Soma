@@ -126,7 +126,7 @@ func categorizePath(path, name string) string {
 	return ""
 }
 
-func scanFiles(root string) {
+func scanFiles(root string) (string, error) {
 	var discovered []FileItem
 
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
@@ -169,14 +169,12 @@ func scanFiles(root string) {
 	})
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error walking directory: %v\n", err)
-		os.Exit(1)
+		return "", fmt.Errorf("error walking directory: %v", err)
 	}
 
 	out, err := json.Marshal(discovered)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error marshaling JSON: %v\n", err)
-		os.Exit(1)
+		return "", fmt.Errorf("error marshaling JSON: %v", err)
 	}
-	fmt.Println(string(out))
+	return string(out), nil
 }
