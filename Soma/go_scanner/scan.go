@@ -67,6 +67,8 @@ type FileItem struct {
 	Name     string  `json:"name"`
 	Category string  `json:"category"`
 	Mtime    float64 `json:"mtime"`
+	Size     int64   `json:"size"`
+	MtimeNs  int64   `json:"mtime_ns"`
 }
 
 func shouldSkipDir(name string) bool {
@@ -154,16 +156,24 @@ func scanFiles(root string) (string, error) {
 		if category != "" {
 			info, err := d.Info()
 			var mtime float64 = 0
+			var size int64 = 0
+			var mtimeNs int64 = 0
 			if err == nil {
 				mtime = float64(info.ModTime().UnixNano()) / 1e9
+				size = info.Size()
+				mtimeNs = info.ModTime().UnixNano()
 			}
 
-			discovered = append(discovered, FileItem{
-				Path:     path,
-				Name:     name,
-				Category: category,
-				Mtime:    mtime,
-			})
+			if len(discovered) < MaxDiscoveredFiles {
+				discovered = append(discovered, FileItem{
+					Path:     path,
+					Name:     name,
+					Category: category,
+					Mtime:    mtime,
+					Size:     size,
+					MtimeNs:  mtimeNs,
+				})
+			}
 		}
 		return nil
 	})

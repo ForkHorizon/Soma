@@ -108,11 +108,9 @@ def build_repo_index(project_root, discovered):
     changed_count = 0
     for item in discovered:
         path = item['path']
-        try:
-            stat = os.stat(path)
-        except OSError:
-            continue
-        cache_id = f'{path}:{stat.st_size}:{stat.st_mtime_ns}'
+        size = item.get('size', 0)
+        mtime_ns = item.get('mtime_ns', 0)
+        cache_id = f'{path}:{size}:{mtime_ns}'
         cached = files_cache.get(path)
         if (cached and (cached.get('cache_id') == cache_id)):
             indexed = cached
@@ -121,7 +119,7 @@ def build_repo_index(project_root, discovered):
             text = ''
             if ((os.path.splitext(path)[1].lower() in TEXT_EXTENSIONS) or (item['category'] in {'source', 'script', 'config', 'manifest', 'unity'})):
                 text = read_text_file(path)
-            indexed = {'cache_id': cache_id, 'path': path, 'category': item['category'], 'size': stat.st_size, 'mtime': item['mtime'], 'digest': file_digest(path), 'symbols': extract_symbols(path, text), 'unity_refs': extract_unity_refs(path, text)}
+            indexed = {'cache_id': cache_id, 'path': path, 'category': item['category'], 'size': size, 'mtime': item.get('mtime', 0), 'digest': file_digest(path), 'symbols': extract_symbols(path, text), 'unity_refs': extract_unity_refs(path, text)}
         new_files_cache[path] = indexed
         indexed_files.append(indexed)
     next_cache = {'project_root': normalize_path(project_root), 'updated_at': (int(os.path.getmtime(project_root)) if os.path.exists(project_root) else 0), 'files': new_files_cache}
