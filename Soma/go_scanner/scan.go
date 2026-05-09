@@ -62,8 +62,6 @@ var (
 	}
 )
 
-const MaxDiscoveredFiles = 1500
-
 type FileItem struct {
 	Path     string  `json:"path"`
 	Name     string  `json:"name"`
@@ -152,10 +150,6 @@ func scanFiles(root string) {
 			return nil
 		}
 
-		if len(discovered) >= MaxDiscoveredFiles {
-			return filepath.SkipAll
-		}
-
 		category := categorizePath(path, name)
 		if category != "" {
 			info, err := d.Info()
@@ -164,14 +158,12 @@ func scanFiles(root string) {
 				mtime = float64(info.ModTime().UnixNano()) / 1e9
 			}
 
-			if len(discovered) < MaxDiscoveredFiles {
-				discovered = append(discovered, FileItem{
-					Path:     path,
-					Name:     name,
-					Category: category,
-					Mtime:    mtime,
-				})
-			}
+			discovered = append(discovered, FileItem{
+				Path:     path,
+				Name:     name,
+				Category: category,
+				Mtime:    mtime,
+			})
 		}
 		return nil
 	})
