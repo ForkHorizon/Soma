@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"encoding/json"
-	"fmt"
 	"os"
 	"strings"
 )
@@ -57,11 +56,16 @@ func containsToken(b []byte) bool {
 func tailLogs(path string) []string {
 	file, err := os.Open(path)
 	if err != nil {
-		return []string{}
+		fmt.Println("[]")
+		return
 	}
 	defer file.Close()
 
 	var errors []string
+
+	fmt.Print("[")
+	first := true
+	count := 0
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -79,21 +83,26 @@ func tailLogs(path string) []string {
 				}
 			}
 		}
+		// Limit to 1000 results even while streaming, to avoid unlimited output
+		if count >= 1000 {
+			break
+		}
 	}
 
 	if err := scanner.Err(); err != nil {
 		// Log parsing error
 	}
 
+	fmt.Println("]")
 	return errors
 }
 
-func tailLogsCmd(path string) {
+func tailLogsCmd(path string) (string, error) {
 	errors := tailLogs(path)
 	out, err := json.Marshal(errors)
 	if err == nil {
-		fmt.Println(string(out))
+		return string(out), nil
 	} else {
-		fmt.Println("[]")
+		return "[]", nil
 	}
 }

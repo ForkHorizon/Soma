@@ -2,6 +2,7 @@
 
 
 
+import sys
 import json
 
 
@@ -23,7 +24,8 @@ def find_errors(text):
         daemon = GoDaemon.get_instance()
         stdout = daemon.call('find-errors', text)
         return json.loads(stdout)
-    except Exception:
+    except Exception as exc:
+        print(f"find_errors failed: {exc}", file=sys.stderr)
         return []
 
 
@@ -36,7 +38,8 @@ def group_compile_errors(errors):
         daemon = GoDaemon.get_instance()
         stdout = daemon.call('group-compile-errors', json.dumps(errors))
         return json.loads(stdout)
-    except Exception:
+    except Exception as exc:
+        print(f"group_compile_errors failed: {exc}", file=sys.stderr)
         return []
 
 
@@ -46,7 +49,8 @@ def get_unity_logs(path):
         daemon = GoDaemon.get_instance()
         stdout = daemon.call('tail-logs', path)
         return json.loads(stdout)
-    except Exception:
+    except Exception as exc:
+        print(f"get_unity_logs failed: {exc}", file=sys.stderr)
         pass
     return []
 
@@ -70,7 +74,8 @@ def excerpt_for_text(text, terms):
         stdout = daemon.call('excerpt-for-text', text, json.dumps(terms))
         res = json.loads(stdout)
         return (res.get('text', ''), res.get('start_line'), res.get('end_line'))
-    except Exception:
+    except Exception as exc:
+        print(f"excerpt_for_text failed: {exc}", file=sys.stderr)
         # Fallback
         lines = text.splitlines()
         preview = text[:MAX_PREVIEW_CHARS].strip()
@@ -85,7 +90,8 @@ def excerpt_for_log(text, terms):
         stdout = daemon.call('excerpt-for-log', text, json.dumps(terms))
         res = json.loads(stdout)
         return (res.get('text', ''), res.get('start_line'), res.get('end_line'))
-    except Exception:
+    except Exception as exc:
+        print(f"excerpt_for_log failed: {exc}", file=sys.stderr)
         # Fallback
         lines = text.splitlines()
         start = max(0, (len(lines) - 80))
@@ -107,5 +113,6 @@ def extract_json_object(text):
         return None
     try:
         return json.loads(text[start:(end + 1)])
-    except Exception:
+    except Exception as exc:
+        print(f"extract_json_object failed: {exc}", file=sys.stderr)
         return None

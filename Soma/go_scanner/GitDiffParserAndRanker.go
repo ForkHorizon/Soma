@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -220,7 +219,7 @@ func rankDiffHunks(hunks []Hunk, terms []string, maxHunks int) []Hunk {
 	return result
 }
 
-func gitDiff(projectRoot string, terms []string) {
+func gitDiff(projectRoot string, terms []string) (string, error) {
 	nameStatusCmd := exec.Command("git", "diff", "HEAD", "--name-status")
 	nameStatusCmd.Dir = projectRoot
 	var nameStatusOut bytes.Buffer
@@ -237,8 +236,7 @@ func gitDiff(projectRoot string, terms []string) {
 	diffCmd.Stdout = &diffOut
 
 	if err := nameStatusCmd.Run(); err != nil {
-		fmt.Println("null")
-		return
+		return "null", nil
 	}
 
 	var changedFiles []ChangedFile
@@ -314,8 +312,7 @@ func gitDiff(projectRoot string, terms []string) {
 
 	out, err := json.Marshal(summary)
 	if err != nil {
-		fmt.Println("null")
-		return
+		return "null", nil
 	}
-	fmt.Println(string(out))
+	return string(out), nil
 }

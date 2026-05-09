@@ -15,7 +15,19 @@
 from .config import *
 
 
+try:
+    import tiktoken
+    _enc = tiktoken.get_encoding("cl100k_base")
+except ImportError:
+    _enc = None
+
+
 def estimate_tokens(text):
+    if _enc is not None:
+        try:
+            return max(1, len(_enc.encode(text, allowed_special="all")))
+        except Exception:
+            pass
     return max(1, int((len(text) / 4)))
 
 

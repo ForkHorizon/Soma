@@ -23,11 +23,10 @@ class GoDaemon():
     _instance = None
 
     def __init__(self):
-        from .discovery import build_go_scanner
         go_scanner_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'go_scanner')
         go_scanner_path = os.path.join(go_scanner_dir, 'soma_scanner')
         if ((not os.path.exists(go_scanner_path)) or (not os.access(go_scanner_path, os.X_OK))):
-            build_go_scanner(go_scanner_dir)
+            raise RuntimeError(f"soma_scanner binary not found at {go_scanner_path}. It must be pre-compiled during the build phase.")
         self.process = subprocess.Popen([go_scanner_path, 'daemon'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
 
     @classmethod
