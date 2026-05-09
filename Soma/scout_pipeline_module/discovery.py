@@ -21,13 +21,16 @@ from .config import *
 
 
 def detect_project_type(project_root):
-    root = Path(project_root)
-    names = ({child.name for child in root.iterdir()} if root.exists() else set())
+    try:
+        # Performance: avoid Path instantiation and iterdir for simple directory listing
+        names = set(os.listdir(project_root))
+    except Exception:
+        names = set()
     if (('Assets' in names) and ('ProjectSettings' in names)):
         return ('unity', 'Detected Unity project markers (`Assets` and `ProjectSettings`).')
     if (('Package.swift' in names) or any(((name.endswith('.xcodeproj') or name.endswith('.xcworkspace')) for name in names))):
         return ('swift', 'Detected Swift/Xcode markers in the project root.')
-    if (('pyproject.toml' in names) or ('requirements.txt' in names) or ('Pipfile' in names) or any(((child.suffix == '.py') for child in root.iterdir()))):
+    if (('pyproject.toml' in names) or ('requirements.txt' in names) or ('Pipfile' in names) or any((name.endswith('.py') for name in names))):
         return ('python', 'Detected Python manifests or Python source files.')
     if (('package.json' in names) or ('pnpm-lock.yaml' in names) or ('yarn.lock' in names)):
         return ('javascript', 'Detected JavaScript/TypeScript package manifests.')
