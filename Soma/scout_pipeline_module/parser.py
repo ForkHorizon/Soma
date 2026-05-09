@@ -18,31 +18,26 @@ from .config import *
 
 
 def find_errors(text):
-    out = []
-    tokens = ['ERROR', 'EXCEPTION', 'FATAL', 'TRACEBACK', 'CRASH']
-    for line in text.splitlines():
-        upper = line.upper()
-        for token in tokens:
-            if (token in upper):
-                stripped = line.strip()
-                if (len(stripped) > 5):
-                    out.append(stripped)
-                break
-    return out
+    from .daemon import GoDaemon
+    try:
+        daemon = GoDaemon.get_instance()
+        stdout = daemon.call('find-errors', text)
+        return json.loads(stdout)
+    except Exception:
+        return []
 
 
 def group_compile_errors(errors):
     'Deduplicates and sanitizes compile errors into concise summaries.'
-    grouped = []
-    seen = set()
-    for error in errors:
-        sanitized = re.sub('/[a-zA-Z0-9_./-]+:[0-9]+:[0-9]+: ', '', error)
-        sanitized = re.sub('\\(at .*\\)', '', sanitized)
-        sanitized = sanitized.strip()
-        if ((sanitized not in seen) and (len(sanitized) > 5)):
-            seen.add(sanitized)
-            grouped.append(sanitized)
-    return grouped
+    if not errors:
+        return []
+    from .daemon import GoDaemon
+    try:
+        daemon = GoDaemon.get_instance()
+        stdout = daemon.call('group-compile-errors', json.dumps(errors))
+        return json.loads(stdout)
+    except Exception:
+        return []
 
 
 def get_unity_logs(path):
@@ -69,35 +64,32 @@ def read_text_file(path):
 def excerpt_for_text(text, terms):
     if (not text):
         return ('', None, None)
-    lines = text.splitlines()
-    lowered = text.lower()
-    for term in terms:
-        idx = lowered.find(term)
-        if (idx != (- 1)):
-            start = max(0, (idx - 250))
-            end = min(len(text), (idx + MAX_PREVIEW_CHARS))
-            start_line = (text[:start].count('\n') + 1)
-            end_line = (text[:end].count('\n') + 1)
-            return (text[start:end].strip(), start_line, end_line)
-    preview = text[:MAX_PREVIEW_CHARS].strip()
-    end_line = (min(len(lines), max(1, (preview.count('\n') + 1))) if preview else None)
-    return (preview, (1 if preview else None), end_line)
+    from .daemon import GoDaemon
+    try:
+        daemon = GoDaemon.get_instance()
+        stdout = daemon.call('excerpt-for-text', text, json.dumps(terms))
+        res = json.loads(stdout)
+        return (res.get('text', ''), res.get('start_line'), res.get('end_line'))
+    except Exception:
+        # Fallback
+        lines = text.splitlines()
+        preview = text[:MAX_PREVIEW_CHARS].strip()
+        end_line = (min(len(lines), max(1, (preview.count('\n') + 1))) if preview else None)
+        return (preview, (1 if preview else None), end_line)
 
 
 def excerpt_for_log(text, terms):
-    lines = text.splitlines()
-    error_lines = [line for line in lines if find_errors(line)]
-    if error_lines:
-        return ('\n'.join(error_lines[:12])[:MAX_PREVIEW_CHARS], None, None)
-    lowered_lines = [line.lower() for line in lines]
-    for term in terms:
-        for (idx, line) in enumerate(lowered_lines):
-            if (term in line):
-                start = max(0, (idx - 8))
-                end = min(len(lines), (idx + 12))
-                return ('\n'.join(lines[start:end])[:MAX_PREVIEW_CHARS], (start + 1), end)
-    start = max(0, (len(lines) - 80))
-    return ('\n'.join(lines[start:])[:MAX_PREVIEW_CHARS], ((start + 1) if lines else None), (len(lines) if lines else None))
+    from .daemon import GoDaemon
+    try:
+        daemon = GoDaemon.get_instance()
+        stdout = daemon.call('excerpt-for-log', text, json.dumps(terms))
+        res = json.loads(stdout)
+        return (res.get('text', ''), res.get('start_line'), res.get('end_line'))
+    except Exception:
+        # Fallback
+        lines = text.splitlines()
+        start = max(0, (len(lines) - 80))
+        return ('\n'.join(lines[start:])[:MAX_PREVIEW_CHARS], ((start + 1) if lines else None), (len(lines) if lines else None))
 
 
 def format_line_range(item):

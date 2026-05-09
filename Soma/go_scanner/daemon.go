@@ -113,6 +113,30 @@ func runDaemon() {
 			} else {
 				tailLogsCmd(req.Args[0])
 			}
+		case "find-errors":
+			if len(req.Args) < 1 {
+				err = fmt.Errorf("missing argument")
+			} else {
+				findErrorsCmd(req.Args[0])
+			}
+		case "group-compile-errors":
+			if len(req.Args) < 1 {
+				err = fmt.Errorf("missing argument")
+			} else {
+				groupCompileErrorsCmd(req.Args[0])
+			}
+		case "excerpt-for-text":
+			if len(req.Args) < 2 {
+				err = fmt.Errorf("missing argument")
+			} else {
+				excerptForTextCmd(req.Args[0], req.Args[1])
+			}
+		case "excerpt-for-log":
+			if len(req.Args) < 2 {
+				err = fmt.Errorf("missing argument")
+			} else {
+				excerptForLogCmd(req.Args[0], req.Args[1])
+			}
 		default:
 			err = fmt.Errorf("unknown method: %s", req.Method)
 		}
