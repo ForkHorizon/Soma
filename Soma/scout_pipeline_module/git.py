@@ -2,6 +2,7 @@
 
 
 
+import sys
 import json
 
 
@@ -23,7 +24,8 @@ def get_git_status(project_root):
         status = daemon.call('git-status', project_root).strip()
         if status:
             return status
-    except Exception:
+    except Exception as exc:
+        print(f"get_git_status failed: {exc}", file=sys.stderr)
         pass
     return None
 
@@ -35,7 +37,8 @@ def get_git_diff_summary(project_root, terms=None):
         args = ([project_root] + (terms or []))
         stdout = daemon.call('git-diff', *args)
         return json.loads(stdout)
-    except Exception:
+    except Exception as exc:
+        print(f"get_git_diff_summary failed: {exc}", file=sys.stderr)
         pass
     return None
 

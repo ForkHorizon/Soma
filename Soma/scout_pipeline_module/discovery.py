@@ -1,6 +1,7 @@
 
 
 
+import sys
 import hashlib
 
 import json
@@ -42,7 +43,16 @@ def detect_project_type(project_root):
                     has_python = True
         if has_python:
             return ('python', 'Detected Python manifests or Python source files.')
-    except Exception:
+    except Exception as exc:
+        print(f"detect_project_type failed: {exc}", file=sys.stderr)
+        pass
+
+    return ('unknown', 'No strong project markers detected; using generic file heuristics.')
+
+    try:
+        subprocess.run(['go', 'build', '-o', 'soma_scanner', '.'], cwd=go_scanner_dir, capture_output=True, timeout=30)
+    except Exception as exc:
+        print(f"build_go_scanner failed: {exc}", file=sys.stderr)
         pass
 
     return ('unknown', 'No strong project markers detected; using generic file heuristics.')
@@ -54,7 +64,8 @@ def iter_project_files(project_root):
         daemon = GoDaemon.get_instance()
         stdout = daemon.call('scan-files', project_root)
         return json.loads(stdout)
-    except Exception:
+    except Exception as exc:
+        print(f"iter_project_files failed: {exc}", file=sys.stderr)
         pass
     return []
 
@@ -75,7 +86,8 @@ def file_digest(path):
             for chunk in iter((lambda : handle.read((64 * 1024))), b''):
                 digest.update(chunk)
         return digest.hexdigest()
-    except Exception:
+    except Exception as exc:
+        print(f"file_digest failed: {exc}", file=sys.stderr)
         return None
 
 
@@ -87,7 +99,8 @@ def build_repo_index(project_root, discovered):
     cache = {}
     try:
         cache = (json.loads(cache_path.read_text()) if cache_path.exists() else {})
-    except Exception:
+    except Exception as exc:
+        print(f"build_repo_index failed: {exc}", file=sys.stderr)
         cache = {}
     indexed_files = []
     files_cache = cache.get('files', {})
@@ -115,6 +128,7 @@ def build_repo_index(project_root, discovered):
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         cache_path.write_text(json.dumps(next_cache))
-    except Exception:
+    except Exception as exc:
+        print(f"build_repo_index failed: {exc}", file=sys.stderr)
         pass
     return {'cache_path': str(cache_path), 'indexed_file_count': len(indexed_files), 'changed_index_entries': changed_count, 'files': indexed_files}

@@ -2,6 +2,7 @@
 
 
 
+import sys
 import json
 
 import os
@@ -25,9 +26,25 @@ def extract_symbols(path, text=None):
         daemon = GoDaemon.get_instance()
         stdout = daemon.call('extract-symbols', path)
         return json.loads(stdout)
-    except Exception:
+    except Exception as exc:
+        print(f"extract_symbols failed: {exc}", file=sys.stderr)
         pass
     return []
+
+
+def build_rust_scanner(rust_scanner_dir):
+    rust_scanner_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'rust_scanner')
+    rust_scanner_path = os.path.join(rust_scanner_dir, 'target', 'release', 'rust_scanner')
+
+
+
+
+    try:
+        subprocess.run(['cargo', 'build', '--release'], cwd=rust_scanner_dir, capture_output=True, timeout=120)
+    except Exception as exc:
+        print(f"build_rust_scanner failed: {exc}", file=sys.stderr)
+        pass
+    return rust_scanner_path
 
 
 def extract_unity_refs(path, text=None):
@@ -44,15 +61,18 @@ def extract_unity_refs(path, text=None):
 
 
 
-                    if ((os.path.exists(rust_scanner_path)) and (os.access(rust_scanner_path, os.X_OK))):
-                        res = subprocess.run([rust_scanner_path, 'extract-unity-refs', path], capture_output=True, text=True, timeout=10)
-                        if (res.returncode == 0):
-                            return json.loads(res.stdout)
-            except Exception:
+                    if ((not os.path.exists(rust_scanner_path)) or (not os.access(rust_scanner_path, os.X_OK))):
+                        build_rust_scanner(rust_scanner_dir)
+                    res = subprocess.run([rust_scanner_path, 'extract-unity-refs', path], capture_output=True, text=True, timeout=10)
+                    if (res.returncode == 0):
+                        return json.loads(res.stdout)
+            except Exception as exc:
+                print(f"extract_unity_refs failed: {exc}", file=sys.stderr)
                 pass
         daemon = GoDaemon.get_instance()
         stdout = daemon.call('extract-unity-refs', path)
         return json.loads(stdout)
-    except Exception:
+    except Exception as exc:
+        print(f"extract_unity_refs failed: {exc}", file=sys.stderr)
         pass
     return []
