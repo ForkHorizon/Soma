@@ -103,7 +103,7 @@ def build_repo_index(project_root, discovered):
         else:
             changed_count += 1
             text = ''
-            if ((Path(path).suffix.lower() in TEXT_EXTENSIONS) or (item['category'] in {'source', 'script', 'config', 'manifest', 'unity'})):
+            if ((os.path.splitext(path)[1].lower() in TEXT_EXTENSIONS) or (item['category'] in {'source', 'script', 'config', 'manifest', 'unity'})):
                 text = read_text_file(path)
             indexed = {'cache_id': cache_id, 'path': path, 'category': item['category'], 'size': stat.st_size, 'mtime': item['mtime'], 'digest': file_digest(path), 'symbols': extract_symbols(path, text), 'unity_refs': extract_unity_refs(path, text)}
         new_files_cache[path] = indexed

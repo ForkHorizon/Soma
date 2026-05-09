@@ -47,7 +47,7 @@ def build_rust_scanner(rust_scanner_dir):
 def extract_unity_refs(path, text=None):
     from .daemon import GoDaemon
     try:
-        if (Path(path).suffix.lower() in {'.unity', '.prefab', '.asset'}):
+        if (os.path.splitext(path)[1].lower() in {'.unity', '.prefab', '.asset'}):
             try:
                 stat = os.stat(path)
                 if (stat.st_size > (10 * 1024)):
