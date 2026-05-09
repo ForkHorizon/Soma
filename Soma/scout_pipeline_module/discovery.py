@@ -37,17 +37,6 @@ def detect_project_type(project_root):
     return ('unknown', 'No strong project markers detected; using generic file heuristics.')
 
 
-def build_go_scanner(go_scanner_dir):
-    go_scanner_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'go_scanner')
-    go_scanner_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'go_scanner')
-    go_scanner_path = os.path.join(go_scanner_dir, 'soma_scanner')
-    try:
-        subprocess.run(['go', 'build', '-o', 'soma_scanner', '.'], cwd=go_scanner_dir, capture_output=True, timeout=30)
-    except Exception:
-        pass
-    return go_scanner_path
-
-
 def iter_project_files(project_root):
     from .daemon import GoDaemon
     try:
