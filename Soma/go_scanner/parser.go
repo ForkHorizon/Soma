@@ -2,12 +2,11 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"regexp"
 	"strings"
 )
 
-func findErrorsCmd(text string) {
+func findErrorsCmd(text string) (string, error) {
 	lines := strings.Split(text, "\n")
 	tokens := []string{"ERROR", "EXCEPTION", "FATAL", "TRACEBACK", "CRASH"}
 	var out []string
@@ -31,17 +30,16 @@ func findErrorsCmd(text string) {
 
 	bytes, err := json.Marshal(out)
 	if err == nil {
-		fmt.Println(string(bytes))
+		return string(bytes), nil
 	} else {
-		fmt.Println("[]")
+		return "[]", nil
 	}
 }
 
-func groupCompileErrorsCmd(errorsJson string) {
+func groupCompileErrorsCmd(errorsJson string) (string, error) {
 	var errors []string
 	if err := json.Unmarshal([]byte(errorsJson), &errors); err != nil {
-		fmt.Println("[]")
-		return
+		return "[]", nil
 	}
 
 	var grouped []string
@@ -67,9 +65,9 @@ func groupCompileErrorsCmd(errorsJson string) {
 
 	bytes, err := json.Marshal(grouped)
 	if err == nil {
-		fmt.Println(string(bytes))
+		return string(bytes), nil
 	} else {
-		fmt.Println("[]")
+		return "[]", nil
 	}
 }
 
@@ -95,14 +93,13 @@ type ExcerptResult struct {
 	EndLine   *int   `json:"end_line"`
 }
 
-func excerptForTextCmd(text string, termsJson string) {
+func excerptForTextCmd(text string, termsJson string) (string, error) {
 	var terms []string
 	json.Unmarshal([]byte(termsJson), &terms)
 
 	if len(text) == 0 {
 		out, _ := json.Marshal(ExcerptResult{Text: ""})
-		fmt.Println(string(out))
-		return
+		return string(out), nil
 	}
 
 	lines := strings.Split(text, "\n")
@@ -122,8 +119,7 @@ func excerptForTextCmd(text string, termsJson string) {
 				EndLine:   &endLine,
 			}
 			out, _ := json.Marshal(res)
-			fmt.Println(string(out))
-			return
+			return string(out), nil
 		}
 	}
 
@@ -138,8 +134,7 @@ func excerptForTextCmd(text string, termsJson string) {
 	} else {
 		startLinePtr := (*int)(nil)
 		out, _ := json.Marshal(ExcerptResult{Text: preview, StartLine: startLinePtr, EndLine: endLinePtr})
-		fmt.Println(string(out))
-		return
+		return string(out), nil
 	}
 
 	out, _ := json.Marshal(ExcerptResult{
@@ -147,10 +142,10 @@ func excerptForTextCmd(text string, termsJson string) {
 		StartLine: &startLine,
 		EndLine:   endLinePtr,
 	})
-	fmt.Println(string(out))
+	return string(out), nil
 }
 
-func excerptForLogCmd(text string, termsJson string) {
+func excerptForLogCmd(text string, termsJson string) (string, error) {
 	var terms []string
 	json.Unmarshal([]byte(termsJson), &terms)
 
@@ -179,8 +174,7 @@ func excerptForLogCmd(text string, termsJson string) {
 			textRes = joined[:MaxPreviewChars]
 		}
 		out, _ := json.Marshal(ExcerptResult{Text: textRes})
-		fmt.Println(string(out))
-		return
+		return string(out), nil
 	}
 
 	for _, term := range terms {
@@ -196,8 +190,7 @@ func excerptForLogCmd(text string, termsJson string) {
 				sLine := start + 1
 				eLine := end
 				out, _ := json.Marshal(ExcerptResult{Text: textRes, StartLine: &sLine, EndLine: &eLine})
-				fmt.Println(string(out))
-				return
+				return string(out), nil
 			}
 		}
 	}
@@ -213,9 +206,9 @@ func excerptForLogCmd(text string, termsJson string) {
 		sLine := start + 1
 		eLine := len(lines)
 		out, _ := json.Marshal(ExcerptResult{Text: textRes, StartLine: &sLine, EndLine: &eLine})
-		fmt.Println(string(out))
+		return string(out), nil
 	} else {
 		out, _ := json.Marshal(ExcerptResult{Text: textRes})
-		fmt.Println(string(out))
+		return string(out), nil
 	}
 }
