@@ -2,21 +2,19 @@ package main
 
 import (
 	"bytes"
-	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strings"
 )
 
-func gitStatus(projectRoot string) {
+func gitStatus(projectRoot string) (string, error) {
 	cmd := exec.Command("git", "status", "--short", "--branch")
 	cmd.Dir = projectRoot
 	var out bytes.Buffer
 	cmd.Stdout = &out
 
 	if err := cmd.Run(); err != nil {
-		fmt.Println("")
-		return
+		return "", nil
 	}
 
 	lines := strings.Split(out.String(), "\n")
@@ -52,8 +50,8 @@ func gitStatus(projectRoot string) {
 
 	status := strings.TrimSpace(strings.Join(resultLines, "\n"))
 	if status != "" {
-		fmt.Println(status)
+		return status, nil
 	} else {
-		fmt.Println("Clean (No changes detected)")
+		return "Clean (No changes detected)", nil
 	}
 }
