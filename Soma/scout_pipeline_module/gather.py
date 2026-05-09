@@ -130,7 +130,7 @@ def select_evidence(project_root, prompt, project_type, repo_index=None, preflig
     explicit_paths = set(((preflight or {}).get('explicit_paths') or []))
     error_paths = set(((preflight or {}).get('error_paths') or []))
     if repo_index:
-        discovered = [{'path': item['path'], 'relative_path': rel_path(item['path'], project_root), 'name': Path(item['path']).name, 'category': item['category'], 'mtime': item.get('mtime', 0), 'symbols': (item.get('symbols') or []), 'unity_refs': (item.get('unity_refs') or [])} for item in repo_index.get('files', [])]
+        discovered = [{'path': item['path'], 'relative_path': rel_path(item['path'], project_root), 'name': os.path.basename(item['path']), 'category': item['category'], 'mtime': item.get('mtime', 0), 'symbols': (item.get('symbols') or []), 'unity_refs': (item.get('unity_refs') or [])} for item in repo_index.get('files', [])]
         indexed_by_path = {item['path']: item for item in repo_index.get('files', [])}
     else:
         discovered = iter_project_files(project_root)
@@ -160,7 +160,7 @@ def gather_external_evidence(prompt, project_root, terms):
     for path in extract_explicit_paths(prompt, project_root):
         if (not os.path.isfile(path)):
             continue
-        category = (categorize_path(Path(path)) or 'notes')
+        category = (categorize_path(path) or 'notes')
         extras.append(evidence_item_from_path(path, category, 'Included because the prompt explicitly referenced this external path.', terms))
     return extras
 
@@ -173,7 +173,7 @@ def build_preflight(prompt, project_root, project_type, discovered, repo_index, 
     explicit_paths = extract_explicit_paths(prompt, project_root)
     changed_files = ((git_diff_summary or {}).get('changed_files') or [])
     changed_paths = {item.get('path') for item in changed_files if (item.get('path') and (not is_noise_path(item.get('path'))))}
-    changed_paths.update((normalize_path((Path(project_root) / path)) for path in list(changed_paths) if (path and (not str(path).startswith('/')))))
+    changed_paths.update((normalize_path(os.path.join(project_root, path)) for path in list(changed_paths) if (path and (not str(path).startswith('/')))))
     error_paths = set()
     log_candidates = []
     for item in discovered:
