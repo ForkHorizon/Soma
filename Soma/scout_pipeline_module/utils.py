@@ -2,6 +2,7 @@
 
 
 
+import sys
 import json
 
 import os
@@ -58,7 +59,8 @@ def rel_path(path, project_root):
         if os.path.commonpath([real_path, real_root]) != real_root:
             return str(path)
         return os.path.relpath(real_path, real_root)
-    except Exception:
+    except Exception as exc:
+        print(f"rel_path failed: {exc}", file=sys.stderr)
         return str(path)
 
 
@@ -95,7 +97,8 @@ def categorize_path(path):
 def parse_recent_roots(raw_json):
     try:
         decoded = json.loads((raw_json or '[]'))
-    except Exception:
+    except Exception as exc:
+        print(f"parse_recent_roots failed: {exc}", file=sys.stderr)
         decoded = []
     roots = []
     for item in decoded:

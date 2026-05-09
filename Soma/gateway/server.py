@@ -319,6 +319,7 @@ def main():
     parser.add_argument("--verify-client-config", choices=["codex"], default=None, help="Verify a client config points to Soma only")
     parser.add_argument("--config-path", default=None, help="Override client config path for install/verify")
     parser.add_argument("--backup-path", default=None, help="Explicit backup path for Codex rollback")
+    parser.add_argument("--daemon", action="store_true", help="Run as a long-lived Python daemon over stdio")
     parser.add_argument("--run-tool", default=None, help="Tool to run")
     parser.add_argument("tool_args", nargs="*", help="Arguments for the tool (JSON)")
     args = parser.parse_args()
@@ -347,6 +348,90 @@ def main():
         raise SystemExit(0)
 
     import asyncio
+
+
+    if args.daemon:
+        async def run_daemon():
+            import sys
+            import json
+            loop = asyncio.get_running_loop()
+            while True:
+                line = await loop.run_in_executor(None, sys.stdin.readline)
+                if not line:
+                    break
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    req = json.loads(line)
+                    req_id = req.get("id")
+                    method = req.get("method")
+                    params = req.get("params", {})
+
+                    if method == "soma_prepare_context":
+                        res = await soma_prepare_context(**params)
+                    elif method == "soma_get_map":
+                        res = await soma_get_map(**params)
+                    elif method == "soma_ask":
+                        res = await soma_ask(**params)
+                    elif method == "soma_inspect":
+                        res = await soma_inspect(**params)
+                    elif method == "soma_scene":
+                        res = await soma_scene(**params)
+                    elif method == "soma_execute":
+                        res = await soma_execute(**params)
+                    elif method == "soma_debug":
+                        res = await soma_debug(**params)
+                    elif method == "soma_delta":
+                        res = await soma_delta(**params)
+                    elif method == "soma_apply":
+                        res = await soma_apply(**params)
+                    elif method == "soma_remember":
+                        res = await soma_remember(**params)
+                    elif method == "soma_review":
+                        res = await soma_review(**params)
+                    elif method == "soma_code_context":
+                        res = await soma_code_context(**params)
+                    else:
+                        res = json.dumps({"error": f"Unknown tool {method}"})
+
+                    # Convert string results to proper JSON dicts if they are json strings
+                    try:
+                        res_dict = json.loads(res)
+                        if isinstance(res_dict, dict):
+                            # The swift side expects result to be a dictionary, not a nested string.
+                            # But wait, looking at executePythonTool:
+                            # if let json = try? JSONSerialization.jsonObject(with: outputData) as? [String: Any]
+                            # it returns the dict.
+                            res_obj = res_dict
+                        else:
+                            res_obj = {"result": res}
+                    except:
+                        res_obj = {"result": res}
+
+                    response = {
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "result": res_obj
+                    }
+                    print(json.dumps(response), flush=True)
+                except Exception as e:
+                    try:
+                        req_id = json.loads(line).get("id")
+                    except:
+                        req_id = None
+                    response = {
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "error": {
+                            "code": -32000,
+                            "message": str(e)
+                        }
+                    }
+                    print(json.dumps(response), flush=True)
+
+        asyncio.run(run_daemon())
+        raise SystemExit(0)
 
     if args.run_tool:
         tool_name = args.run_tool

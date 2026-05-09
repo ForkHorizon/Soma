@@ -24,18 +24,24 @@ struct MCPErrorResponse: Codable {
     let message: String
 }
 
-class SomaMCPCoordinator {
+actor SomaMCPCoordinator {
     private let pythonExecutable: String = "/opt/homebrew/bin/python3"
     private let scoutPipelinePath: String
 
+    private var pythonProcess: Process?
+    private var pythonStdin: Pipe?
+    private var pythonStdout: Pipe?
+    private var pendingRequests: [Int: CheckedContinuation<[String: AnyCodable], Error>] = [:]
+    private var requestCounter: Int = 1000
+    private var isStartingProcess = false
+
     init() {
-        // In a real setup, this path would be more robust. Using a relative path for now.
         scoutPipelinePath = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .appendingPathComponent("scout_pipeline.py").path
     }
 
-    func startStdioServer() {
+    nonisolated func startStdioServer() {
         let inputHandle = FileHandle.standardInput
         let outputHandle = FileHandle.standardOutput
 
@@ -48,7 +54,9 @@ class SomaMCPCoordinator {
                 for line in lines where !line.isEmpty {
                     if let reqData = line.data(using: .utf8),
                        let request = try? JSONDecoder().decode(MCPRequest.self, from: reqData) {
-                        self?.handleRequest(request, outputHandle: outputHandle)
+                        Task { [weak self] in
+                            await self?.handleRequest(request, outputHandle: outputHandle)
+                        }
                     }
                 }
             }
@@ -57,50 +65,90 @@ class SomaMCPCoordinator {
         RunLoop.main.run()
     }
 
-    private func handleRequest(_ request: MCPRequest, outputHandle: FileHandle) {
-        Task {
-            var response: MCPResponse
-            do {
-                let result = try await executeTool(method: request.method, params: request.params)
-                response = MCPResponse(jsonrpc: "2.0", id: request.id, result: result, error: nil)
-            } catch {
-                let errResp = MCPErrorResponse(code: -32000, message: error.localizedDescription)
-                response = MCPResponse(jsonrpc: "2.0", id: request.id, result: nil, error: errResp)
-            }
+    private func startPythonBackendIfNeeded() async throws {
+        if let process = pythonProcess, process.isRunning {
+            return
+        }
 
-            if let respData = try? JSONEncoder().encode(response),
-               var respStr = String(data: respData, encoding: .utf8) {
-                respStr += "\n"
-                outputHandle.write(respStr.data(using: .utf8)!)
+        if isStartingProcess {
+            // Wait briefly for the process to be started by another task
+            while isStartingProcess {
+                try await Task.sleep(nanoseconds: 50_000_000) // 50ms
+            }
+            if let process = pythonProcess, process.isRunning {
+                return
+            }
+        }
+
+        isStartingProcess = true
+        defer { isStartingProcess = false }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: pythonPath())
+
+        let somaMcpServerPath = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("soma_mcp_server.py").path
+
+        process.arguments = [somaMcpServerPath, "--daemon"]
+
+        let stdin = Pipe()
+        let stdout = Pipe()
+
+        process.standardInput = stdin
+        process.standardOutput = stdout
+
+        try process.run()
+
+        self.pythonProcess = process
+        self.pythonStdin = stdin
+        self.pythonStdout = stdout
+
+        Task {
+            await readPythonDaemonOutput()
+        }
+    }
+
+    private func readPythonDaemonOutput() async {
+        guard let stdout = pythonStdout else { return }
+
+        for try await line in stdout.fileHandleForReading.bytes.lines {
+            guard let data = line.data(using: .utf8) else { continue }
+            if let response = try? JSONDecoder().decode(MCPResponse.self, from: data) {
+                if let continuation = pendingRequests.removeValue(forKey: response.id) {
+                    if let error = response.error {
+                        continuation.resume(throwing: MCPError.toolExecutionFailed(error.message))
+                    } else {
+                        continuation.resume(returning: response.result ?? [:])
+                    }
+                }
             }
         }
     }
 
+    private func handleRequest(_ request: MCPRequest, outputHandle: FileHandle) async {
+        var response: MCPResponse
+        do {
+            let result = try await executeTool(method: request.method, params: request.params)
+            response = MCPResponse(jsonrpc: "2.0", id: request.id, result: result, error: nil)
+        } catch {
+            let errResp = MCPErrorResponse(code: -32000, message: error.localizedDescription)
+            response = MCPResponse(jsonrpc: "2.0", id: request.id, result: nil, error: errResp)
+        }
+
+        if let respData = try? JSONEncoder().encode(response),
+           var respStr = String(data: respData, encoding: .utf8) {
+            respStr += "\n"
+            outputHandle.write(respStr.data(using: .utf8)!)
+        }
+    }
+
     private func executeTool(method: String, params: [String: AnyCodable]?) async throws -> [String: AnyCodable] {
-        // Implement tool execution logic here, delegating to scout_pipeline.py or direct swift implementations
         switch method {
-        case "soma_prepare_context":
-            return try await executePythonTool(tool: "soma_prepare_context", params: params)
-        case "soma_get_map":
-            return try await executePythonTool(tool: "soma_get_map", params: params)
-        case "soma_ask":
-            return try await executePythonTool(tool: "soma_ask", params: params)
-        case "soma_inspect":
-            return try await executePythonTool(tool: "soma_inspect", params: params)
-        case "soma_scene":
-            return try await executePythonTool(tool: "soma_scene", params: params)
-        case "soma_execute":
-            return try await executePythonTool(tool: "soma_execute", params: params)
-        case "soma_debug":
-            return try await executePythonTool(tool: "soma_debug", params: params)
-        case "soma_delta":
-            return try await executePythonTool(tool: "soma_delta", params: params)
-        case "soma_apply":
-            return try await executePythonTool(tool: "soma_apply", params: params)
-        case "soma_remember":
-            return try await executePythonTool(tool: "soma_remember", params: params)
-        case "soma_review":
-            return try await executePythonTool(tool: "soma_review", params: params)
+        case "soma_prepare_context", "soma_get_map", "soma_ask", "soma_inspect",
+             "soma_scene", "soma_execute", "soma_debug", "soma_delta",
+             "soma_apply", "soma_remember", "soma_review", "soma_code_context":
+            return try await executePythonTool(tool: method, params: params)
         case "tools/list":
             return listTools()
         default:
@@ -109,30 +157,21 @@ class SomaMCPCoordinator {
     }
 
     private func executePythonTool(tool: String, params: [String: AnyCodable]?) async throws -> [String: AnyCodable] {
-        // Use Process() to call soma_mcp_server.py with the tool name and arguments.
-        // Since soma_mcp_server.py has been modified to act as a CLI runner, we pass the tool via args.
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: pythonPath())
+        try await startPythonBackendIfNeeded()
 
-        let somaMcpServerPath = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .appendingPathComponent("soma_mcp_server.py").path
-
-        var args: [String] = [somaMcpServerPath, "--run-tool", tool]
-
-        // Pass params as JSON string if any
-        if let params = params,
-           let paramData = try? JSONEncoder().encode(params),
-           let paramStr = String(data: paramData, encoding: .utf8) {
-             args.append(paramStr)
+        guard let stdin = pythonStdin else {
+            throw MCPError.toolExecutionFailed("Python backend not running")
         }
 
-        process.arguments = args
+        let requestId = requestCounter
+        requestCounter += 1
 
-        let stdout = Pipe()
-        let stderr = Pipe()
-        process.standardOutput = stdout
-        process.standardError = stderr
+        let request = MCPRequest(jsonrpc: "2.0", id: requestId, method: tool, params: params)
+        let requestData = try JSONEncoder().encode(request)
+        guard var requestStr = String(data: requestData, encoding: .utf8) else {
+            throw MCPError.toolExecutionFailed("Failed to encode request")
+        }
+        requestStr += "\n"
 
         try process.run()
         process.waitUntilExit()
@@ -171,17 +210,25 @@ class SomaMCPCoordinator {
              }
 
              throw MCPError.toolExecutionFailed(errorStr)
+        return try await withCheckedThrowingContinuation { continuation in
+            pendingRequests[requestId] = continuation
+            do {
+                try stdin.fileHandleForWriting.write(contentsOf: requestStr.data(using: .utf8)!)
+            } catch {
+                pendingRequests.removeValue(forKey: requestId)
+                continuation.resume(throwing: MCPError.toolExecutionFailed("Failed to write to python backend"))
+            }
         }
     }
 
-    private func pythonPath() -> String {
+    nonisolated private func pythonPath() -> String {
         if FileManager.default.fileExists(atPath: "/opt/homebrew/bin/python3") {
             return "/opt/homebrew/bin/python3"
         }
         return "/usr/bin/python3"
     }
 
-    private func listTools() -> [String: AnyCodable] {
+    nonisolated private func listTools() -> [String: AnyCodable] {
          let tools: [[String: AnyCodable]] = [
             ["name": AnyCodable("soma_prepare_context"), "description": AnyCodable("Compile a bounded evidence packet.")],
             ["name": AnyCodable("soma_get_map"), "description": AnyCodable("Return a compact living project map.")],
@@ -193,7 +240,8 @@ class SomaMCPCoordinator {
             ["name": AnyCodable("soma_delta"), "description": AnyCodable("Return git changes plus Unity timeline and scene delta.")],
             ["name": AnyCodable("soma_apply"), "description": AnyCodable("Write Unity code files, wait for compilation, and return compiler errors.")],
             ["name": AnyCodable("soma_remember"), "description": AnyCodable("Save, list, or clear structured project memory.")],
-            ["name": AnyCodable("soma_review"), "description": AnyCodable("Prepare a bug/regression review packet.")]
+            ["name": AnyCodable("soma_review"), "description": AnyCodable("Prepare a bug/regression review packet.")],
+            ["name": AnyCodable("soma_code_context"), "description": AnyCodable("Deterministic code context.")]
         ]
         return ["tools": AnyCodable(tools)]
     }
