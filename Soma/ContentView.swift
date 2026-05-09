@@ -312,13 +312,20 @@ struct ContentView: View {
     private func inputBar(text: Binding<String>, placeholder: String, disabled: Bool, buttonLabel: String, icon: String, action: @escaping () -> Void) -> some View {
         VStack(spacing: 8) {
             ZStack(alignment: .topLeading) {
-                if text.wrappedValue.isEmpty { Text(placeholder).foregroundColor(.secondary).padding(.leading, 5).padding(.top, 8).font(.body).allowsHitTesting(false) }
-                TextEditor(text: text).font(.body).frame(minHeight: 60, maxHeight: 100).padding(4).background(Color.clear).onSubmit { if !disabled { action() } }
+                if text.wrappedValue.isEmpty { Text(placeholder).foregroundColor(.secondary).padding(.leading, 5).padding(.top, 8).font(.body).allowsHitTesting(false).accessibilityHidden(true) }
+                TextEditor(text: text).font(.body).frame(minHeight: 60, maxHeight: 100).padding(4).background(Color.clear)
+                    .accessibilityLabel(Text(placeholder))
+                    .onSubmit { if !disabled { action() } }
             }.background(Color(NSColor.controlBackgroundColor)).cornerRadius(6).overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.2)))
             HStack {
-                if selectedRoute == .relay { Button("Clear", action: viewModel.resetState).buttonStyle(BorderedButtonStyle()).controlSize(.small) }
+                if selectedRoute == .relay { Button("Clear", action: viewModel.resetState).buttonStyle(BorderedButtonStyle()).controlSize(.small).help("Clear current state") }
                 Spacer()
-                Button(action: action) { HStack { Image(systemName: icon); Text(buttonLabel) }.bold().padding(.horizontal, 8) }.buttonStyle(BorderedProminentButtonStyle()).controlSize(.regular).disabled(disabled || text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).keyboardShortcut(.return, modifiers: .command)
+                Button(action: action) { HStack { Image(systemName: icon); Text(buttonLabel) }.bold().padding(.horizontal, 8) }
+                    .buttonStyle(BorderedProminentButtonStyle())
+                    .controlSize(.regular)
+                    .disabled(disabled || text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .help(disabled ? "Currently unavailable" : (text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Enter a prompt to continue" : "Submit (⌘ ↵)"))
             }
         }.padding()
     }
