@@ -1,6 +1,7 @@
 
 
 
+import sys
 import hashlib
 
 import json
@@ -24,7 +25,8 @@ def detect_project_type(project_root):
     try:
         # Performance: avoid Path instantiation and iterdir for simple directory listing
         names = set(os.listdir(project_root))
-    except Exception:
+    except Exception as exc:
+        print(f"detect_project_type failed: {exc}", file=sys.stderr)
         names = set()
     if (('Assets' in names) and ('ProjectSettings' in names)):
         return ('unity', 'Detected Unity project markers (`Assets` and `ProjectSettings`).')
@@ -43,7 +45,8 @@ def build_go_scanner(go_scanner_dir):
     go_scanner_path = os.path.join(go_scanner_dir, 'soma_scanner')
     try:
         subprocess.run(['go', 'build', '-o', 'soma_scanner', '.'], cwd=go_scanner_dir, capture_output=True, timeout=30)
-    except Exception:
+    except Exception as exc:
+        print(f"build_go_scanner failed: {exc}", file=sys.stderr)
         pass
     return go_scanner_path
 
@@ -54,7 +57,8 @@ def iter_project_files(project_root):
         daemon = GoDaemon.get_instance()
         stdout = daemon.call('scan-files', project_root)
         return json.loads(stdout)
-    except Exception:
+    except Exception as exc:
+        print(f"iter_project_files failed: {exc}", file=sys.stderr)
         pass
     return []
 
@@ -75,7 +79,8 @@ def file_digest(path):
             for chunk in iter((lambda : handle.read((64 * 1024))), b''):
                 digest.update(chunk)
         return digest.hexdigest()
-    except Exception:
+    except Exception as exc:
+        print(f"file_digest failed: {exc}", file=sys.stderr)
         return None
 
 
@@ -87,7 +92,8 @@ def build_repo_index(project_root, discovered):
     cache = {}
     try:
         cache = (json.loads(cache_path.read_text()) if cache_path.exists() else {})
-    except Exception:
+    except Exception as exc:
+        print(f"build_repo_index failed: {exc}", file=sys.stderr)
         cache = {}
     indexed_files = []
     files_cache = cache.get('files', {})
@@ -115,6 +121,7 @@ def build_repo_index(project_root, discovered):
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         cache_path.write_text(json.dumps(next_cache))
-    except Exception:
+    except Exception as exc:
+        print(f"build_repo_index failed: {exc}", file=sys.stderr)
         pass
     return {'cache_path': str(cache_path), 'indexed_file_count': len(indexed_files), 'changed_index_entries': changed_count, 'files': indexed_files}
