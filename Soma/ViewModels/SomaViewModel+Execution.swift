@@ -94,43 +94,60 @@ func runRelay(ollama: OllamaManager) {
     }
 
 func runPythonChat(prompt: String, history: [[String: AnyCodable]]) async throws -> OllamaResponse {
-        let script = try scriptURL(named: "scout_pipeline")
-        let historyJSON = (try? String(data: JSONEncoder().encode(history), encoding: .utf8)) ?? "[]"
-        let output = try await runScript(path: pythonPath(), args: [script.path, prompt, historyJSON])
-        return try JSONDecoder().decode(OllamaResponse.self, from: output)
+        let scriptPath = try scriptURL(named: "scout_pipeline").path
+        let pyPath = pythonPath()
+        let env = scriptEnvironment()
+
+        return try await Task.detached(priority: .userInitiated) {
+            let historyJSON = (try? String(data: JSONEncoder().encode(history), encoding: .utf8)) ?? "[]"
+            let output = try await Self.executeProcess(path: pyPath, args: [scriptPath, prompt, historyJSON], environment: env)
+            return try JSONDecoder().decode(OllamaResponse.self, from: output)
+        }.value
     }
 
 func runGather(prompt: String, projectRoot: String, recentRoots: [String]) async throws -> GatherBundle {
-        let script = try scriptURL(named: "scout_pipeline")
-        let recentRootsJSON = (try? String(data: JSONEncoder().encode(recentRoots), encoding: .utf8)) ?? "[]"
-        let output = try await runScript(
-            path: pythonPath(),
-            args: [
-                script.path,
-                prompt,
-                "--mode", "gather",
-                "--project-root", projectRoot,
-                "--recent-roots-json", recentRootsJSON,
-                "--token-budget", "balanced",
-                "--analysis-depth", analysisDepth.rawValue,
-            ]
-        )
-        return try JSONDecoder().decode(GatherBundle.self, from: output)
+        let scriptPath = try scriptURL(named: "scout_pipeline").path
+        let pyPath = pythonPath()
+        let env = scriptEnvironment(projectRoot: projectRoot)
+        let depth = analysisDepth.rawValue
+
+        return try await Task.detached(priority: .userInitiated) {
+            let recentRootsJSON = (try? String(data: JSONEncoder().encode(recentRoots), encoding: .utf8)) ?? "[]"
+            let output = try await Self.executeProcess(
+                path: pyPath,
+                args: [
+                    scriptPath,
+                    prompt,
+                    "--mode", "gather",
+                    "--project-root", projectRoot,
+                    "--recent-roots-json", recentRootsJSON,
+                    "--token-budget", "balanced",
+                    "--analysis-depth", depth,
+                ],
+                environment: env
+            )
+            return try JSONDecoder().decode(GatherBundle.self, from: output)
+        }.value
     }
 
 func runRelayScript(bundle: GatherBundle) async throws -> RelayResponse {
-        let script = try scriptURL(named: "relay")
-        let bundleJSON = (try? String(data: JSONEncoder().encode(bundle), encoding: .utf8)) ?? "{}"
-        let output = try await runScript(path: pythonPath(), args: [script.path, bundleJSON])
-        return try JSONDecoder().decode(RelayResponse.self, from: output)
+        let scriptPath = try scriptURL(named: "relay").path
+        let pyPath = pythonPath()
+        let env = scriptEnvironment()
+
+        return try await Task.detached(priority: .userInitiated) {
+            let bundleJSON = (try? String(data: JSONEncoder().encode(bundle), encoding: .utf8)) ?? "{}"
+            let output = try await Self.executeProcess(path: pyPath, args: [scriptPath, bundleJSON], environment: env)
+            return try JSONDecoder().decode(RelayResponse.self, from: output)
+        }.value
     }
 
 func runSomaHelper(args: [String]) async throws -> Data {
-        let script = try scriptURL(named: "soma_mcp_server")
-        return try await runScript(path: pythonPath(), args: [script.path] + args)
+        let scriptPath = try scriptURL(named: "soma_mcp_server").path
+        return try await runScript(path: pythonPath(), args: [scriptPath] + args)
     }
 
-func scriptURL(named name: String) throws -> URL {
+nonisolated func scriptURL(named name: String) throws -> URL {
         // Prefer source directory — gateway/ package must be co-located with soma_mcp_server.py.
         // #filePath resolves to: …/Soma/Soma/ViewModels/SomaViewModel+Execution.swift
         // Two .deletingLastPathComponent() calls reach: …/Soma/Soma/
@@ -148,7 +165,7 @@ func scriptURL(named name: String) throws -> URL {
         throw SomaError("\(name).py not found in source or bundle")
     }
 
-func pythonPath() -> String {
+nonisolated func pythonPath() -> String {
         if FileManager.default.fileExists(atPath: "/opt/homebrew/bin/python3") {
             return "/opt/homebrew/bin/python3"
         }
@@ -171,11 +188,16 @@ func scriptEnvironment(projectRoot: String? = nil) -> [String: String] {
     }
 
 func runScript(path: String, args: [String], workingDirectory: String? = nil) async throws -> Data {
+        let env = scriptEnvironment()
+        return try await Self.executeProcess(path: path, args: args, workingDirectory: workingDirectory, environment: env)
+    }
+
+private static func executeProcess(path: String, args: [String], workingDirectory: String? = nil, environment: [String: String]) async throws -> Data {
         try await withCheckedThrowingContinuation { continuation in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: path)
             process.arguments = args
-            process.environment = scriptEnvironment()
+            process.environment = environment
             if let wd = workingDirectory {
                 process.currentDirectoryURL = URL(fileURLWithPath: wd)
             }
