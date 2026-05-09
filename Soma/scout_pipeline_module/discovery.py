@@ -22,20 +22,31 @@ from .config import *
 
 
 def detect_project_type(project_root):
+    # Performance: O(1) existence checks for common markers instead of enumerating the entire directory
+    if os.path.exists(os.path.join(project_root, 'Assets')) and os.path.exists(os.path.join(project_root, 'ProjectSettings')):
+        return ('unity', 'Detected Unity project markers (`Assets` and `ProjectSettings`).')
+    if os.path.exists(os.path.join(project_root, 'Package.swift')):
+        return ('swift', 'Detected Swift/Xcode markers in the project root.')
+    if os.path.exists(os.path.join(project_root, 'pyproject.toml')) or os.path.exists(os.path.join(project_root, 'requirements.txt')) or os.path.exists(os.path.join(project_root, 'Pipfile')):
+        return ('python', 'Detected Python manifests or Python source files.')
+    if os.path.exists(os.path.join(project_root, 'package.json')) or os.path.exists(os.path.join(project_root, 'pnpm-lock.yaml')) or os.path.exists(os.path.join(project_root, 'yarn.lock')):
+        return ('javascript', 'Detected JavaScript/TypeScript package manifests.')
+
     try:
-        # Performance: avoid Path instantiation and iterdir for simple directory listing
-        names = set(os.listdir(project_root))
+        # Fallback to O(N) scan for wildcard markers. Swift has precedence over Python.
+        has_python = False
+        with os.scandir(project_root) as it:
+            for entry in it:
+                if entry.name.endswith('.xcodeproj') or entry.name.endswith('.xcworkspace'):
+                    return ('swift', 'Detected Swift/Xcode markers in the project root.')
+                if entry.name.endswith('.py'):
+                    has_python = True
+        if has_python:
+            return ('python', 'Detected Python manifests or Python source files.')
     except Exception as exc:
         print(f"detect_project_type failed: {exc}", file=sys.stderr)
-        names = set()
-    if (('Assets' in names) and ('ProjectSettings' in names)):
-        return ('unity', 'Detected Unity project markers (`Assets` and `ProjectSettings`).')
-    if (('Package.swift' in names) or any(((name.endswith('.xcodeproj') or name.endswith('.xcworkspace')) for name in names))):
-        return ('swift', 'Detected Swift/Xcode markers in the project root.')
-    if (('pyproject.toml' in names) or ('requirements.txt' in names) or ('Pipfile' in names) or any((name.endswith('.py') for name in names))):
-        return ('python', 'Detected Python manifests or Python source files.')
-    if (('package.json' in names) or ('pnpm-lock.yaml' in names) or ('yarn.lock' in names)):
-        return ('javascript', 'Detected JavaScript/TypeScript package manifests.')
+        pass
+
     return ('unknown', 'No strong project markers detected; using generic file heuristics.')
 
 
