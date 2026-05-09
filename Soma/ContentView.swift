@@ -28,6 +28,9 @@ struct ContentView: View {
                     case .systemStatus:
                         SystemStatusView(viewModel: viewModel)
                             .navigationTitle(route.rawValue)
+                    case .logs:
+                        LogsView(viewModel: viewModel)
+                            .navigationTitle(route.rawValue)
                     }
                 } else {
                     Spacer()

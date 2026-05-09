@@ -1,6 +1,16 @@
 import Foundation
 import SwiftUI
 
+extension DateFormatter {
+    static let somaDate: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd"
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
+}
+
+
 struct ChatMessage: Codable, Sendable {
     let role: String
     let content: String?
@@ -231,4 +241,48 @@ struct LiveVerifyCall: Codable, Sendable {
     let summary: String?
     let instance_id: Int?
     let path: String?
+}
+
+// Structured log entry from ~/.soma/logs/soma_YYYYMMDD.jsonl
+struct SomaLogEntry: Identifiable, Sendable {
+    let id: UUID = UUID()
+    let ts: String
+    let event: String
+    let tool: String?
+    let method: String?
+    let status: String
+    let duration_ms: Double?
+    let input_tokens: Int?
+    let output_tokens: Int?
+    let error: String?
+
+    var displayName: String { tool ?? method ?? event }
+    var totalTokens: Int { (input_tokens ?? 0) + (output_tokens ?? 0) }
+    var isError: Bool { status == "error" }
+    var isDegraded: Bool { status == "degraded" }
+    var shortTime: String { String(ts.prefix(19)).replacingOccurrences(of: "T", with: " ") }
+
+    init?(from dict: [String: Any]) {
+        guard let ts = dict["ts"] as? String,
+              let event = dict["event"] as? String else { return nil }
+        self.ts = ts
+        self.event = event
+        self.tool = dict["tool"] as? String
+        self.method = dict["method"] as? String
+        self.status = (dict["status"] as? String) ?? "ok"
+        self.duration_ms = dict["duration_ms"] as? Double
+        self.input_tokens = dict["input_tokens"] as? Int
+        self.output_tokens = dict["output_tokens"] as? Int
+        self.error = dict["error"] as? String
+    }
+}
+
+struct SomaToolStat: Identifiable, Sendable {
+    let id: String
+    let calls: Int
+    let errors: Int
+    let avgDuration: Double
+    let totalTokens: Int
+
+    var errorRate: Double { calls > 0 ? Double(errors) / Double(calls) : 0 }
 }

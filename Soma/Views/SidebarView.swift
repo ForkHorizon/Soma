@@ -31,6 +31,7 @@ struct SidebarView: View {
         case .relay: return "doc.text.magnifyingglass"
         case .scout: return "magnifyingglass"
         case .systemStatus: return "info.circle"
+        case .logs: return "chart.bar.doc.horizontal"
         }
     }
 }

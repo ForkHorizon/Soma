@@ -1,12 +1,12 @@
-# NexusSoma Implementation Report: Etap 1-4
+# NexusSoma Implementation Report: Etap 1-5
 
-Generated: 2026-05-05
+Generated: 2026-05-09
 
 ## 1. Executive Summary
 
 NexusSoma is being built so Big AI clients such as Codex, Gemini, Claude, GPT-5.5, Opus, and Gemini Pro connect to **Soma only**, not directly to raw Nexus Unity. Soma becomes the single MCP gateway that gathers, filters, compresses, and routes project context before expensive models see it.
 
-The core reason for this architecture is token control. Raw Nexus Unity exposes 85+ powerful Unity tools. If those tools are registered directly in a Big AI client, the client pays for large tool schemas, exploratory scene/tool calls, full component dumps, raw logs, raw diffs, and repeated cold-start rediscovery. Soma reduces this by exposing a stable 12-tool catalog, producing compact evidence packets, using deterministic Scout Pipeline compression, enriching with Graphify, and only using local models after context has already been narrowed.
+During Etap 5, the Soma gateway was fully modularized. The monolithic `soma_mcp_server.py` was split into a structured `gateway/` package, and `SomaViewModel.swift` was split into focused extensions. Critical JSON-RPC initialization bugs (such as the "invalid character 'C'" leak from `runpy`) were resolved, ensuring stable MCP handshakes. The UI was also enhanced to support direct Graphify graph initialization and updates.
 
 Current state:
 

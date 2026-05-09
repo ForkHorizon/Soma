@@ -22,6 +22,8 @@ Soma exposes a small, stable MCP tool catalog and hides raw Nexus Unity tools be
 - Soma MCP gateway: `/Users/daliys/Daliys/Swift/Soma/Soma/soma_mcp_server.py`
 - Scout Pipeline: `/Users/daliys/Daliys/Swift/Soma/Soma/scout_pipeline.py`
 - Live verifier: `/Users/daliys/Daliys/Swift/Soma/Soma/verify_soma_live_workflow.py`
+- Logging & Analytics: `/Users/daliys/Daliys/Swift/Soma/Soma/soma_logger.py` & `soma_analytics.py`
+- Acceptance Suite: `/Users/daliys/Daliys/Swift/Soma/Soma/soma_acceptance.py`
 - Detailed report: `/Users/daliys/Daliys/Swift/Soma/reportD.md`
 
 The app controls:
@@ -114,7 +116,7 @@ PYTHONDONTWRITEBYTECODE=1 /opt/homebrew/bin/python3 -m unittest discover -s test
 Expected current result:
 
 ```text
-Ran 30 tests
+Ran 31 tests
 OK
 ```
 

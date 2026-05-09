@@ -30,7 +30,7 @@ The goal is not to replace Big AI with a small local model. The goal is to make 
 | Nexus Unity | Separate repository; hidden behind Soma tools; currently requires manual Unity server start |
 | Graphify | Project graph support implemented |
 | Local models | Optional after deterministic compression |
-| Current tests | Python suite last known: `30 tests OK` |
+| Current tests | Python suite last known: `31 tests OK` |
 | Current build | Swift build last known: succeeded |
 
 Important current truth:
@@ -105,6 +105,8 @@ While Soma is powerful on its own for Python, Swift, Go, or general projects, it
 | Soma MCP server | `Soma/soma_mcp_server.py` | Single MCP gateway exposed to Big AI |
 | Scout Pipeline | `Soma/scout_pipeline.py` | Deterministic packet compilation and optional ranker/analyst stages |
 | Live verifier | `Soma/verify_soma_live_workflow.py` | Real stdio MCP smoke and live Unity acceptance |
+| Logging & Analytics | `Soma/soma_logger.py` & `soma_analytics.py` | Structured logging and token telemetry |
+| Acceptance | `Soma/soma_acceptance.py` | E2E validation suite producing acceptance reports |
 | Local relay | `Soma/relay.py` | Optional local chat/relay path |
 | Benchmark harness | `Soma/benchmark_ollama.py` | Local model timing and JSON reliability checks |
 | Tests | `tests/` | Python regression coverage |
@@ -395,7 +397,7 @@ PYTHONDONTWRITEBYTECODE=1 /opt/homebrew/bin/python3 -m unittest discover -s test
 Expected current result:
 
 ```text
-Ran 30 tests
+Ran 31 tests
 OK
 ```
 
@@ -440,8 +442,6 @@ For Soma, the best model is not always the smartest model. The best model:
 - Real Codex config can still expose direct Nexus until `Install Codex` is clicked.
 - Final live Unity acceptance requires starting the Nexus Unity server manually.
 - The live verifier proves Soma stdio behavior, but does not yet launch from the exact real Codex config.
-- Token savings are architectural/estimated; full telemetry is not first-class yet.
-- Graphify queries still use a CLI boundary in the current adapter.
 - MLX is not integrated into production.
 - Dynamic per-intent tool filtering is deferred because v1 keeps `tools/list` stable.
 

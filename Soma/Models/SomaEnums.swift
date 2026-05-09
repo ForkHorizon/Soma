@@ -41,4 +41,5 @@ enum AppRoute: String, Hashable, CaseIterable {
     case relay = "Evidence Relay"
     case scout = "Scout Mode"
     case systemStatus = "System Status"
+    case logs = "Logs & Analytics"
 }

@@ -1,27 +1,255 @@
 {
+  "/Users/daliys/Daliys/Swift/Soma/tests/test_soma_mcp_server.py": {
+    "mtime": 1778277173.3776834,
+    "hash": "efdd8f05ef4cb2e66c93a11b93668232"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/tests/test_mcp_e2e.py": {
+    "mtime": 1778276259.6208313,
+    "hash": "404fd9fc1ed391aca5e25dc83d6972d9"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/tests/test_go_scanner.py": {
+    "mtime": 1778274615.050578,
+    "hash": "60d4211f204e5a49e408803ea30ce527"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/tests/test_verify_soma_live_workflow.py": {
+    "mtime": 1777935412.9282823,
+    "hash": "ed23ca9fb9948a32f00d1dc2ee978413"
+  },
   "/Users/daliys/Daliys/Swift/Soma/tests/test_scout_pipeline.py": {
-    "mtime": 1777367324.515048,
-    "hash": "279436876ccbf567da84fbd879bdb321"
+    "mtime": 1778274600.6965835,
+    "hash": "af8ffb9f3358da6e56c44c5be65862c9"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/verify_soma_live_workflow.py": {
+    "mtime": 1777935468.0728025,
+    "hash": "4a54ad0d0adaef883488a84553dd2d08"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/soma_acceptance.py": {
+    "mtime": 1778276269.940507,
+    "hash": "cc1e8e197195a7eb8afee84dad70e507"
   },
   "/Users/daliys/Daliys/Swift/Soma/Soma/scout_pipeline.py": {
-    "mtime": 1777367902.4102294,
-    "hash": "c247344bd22f029dc747072f65f433cf"
+    "mtime": 1778276175.7124715,
+    "hash": "1f4d2641c84050889e3eafec5357a6a3"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/TokenCalculatorView.swift": {
+    "mtime": 1778242701.0456903,
+    "hash": "4c981618ab95361f17bfe8d1c8ab6322"
   },
   "/Users/daliys/Daliys/Swift/Soma/Soma/benchmark_ollama.py": {
     "mtime": 1777377192.5974853,
     "hash": "35da8caa0ff2670cd96eb5f7ef05169c"
   },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/cst_extract_core.py": {
+    "mtime": 1778276691.7539597,
+    "hash": "0ba9ad4bea7673081eb6addbeff7161d"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/soma_logger.py": {
+    "mtime": 1778276175.7136264,
+    "hash": "9317f7cb09160a9699028755b1700462"
+  },
   "/Users/daliys/Daliys/Swift/Soma/Soma/relay.py": {
     "mtime": 1777367678.0394194,
     "hash": "81b00b1802e4fa7ce157e904b35e3461"
   },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/SomaMCPCoordinator.swift": {
+    "mtime": 1778238219.0055315,
+    "hash": "0566d1611a4fd2e3099d6aa7217af706"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/soma_mcp_server.py": {
+    "mtime": 1778316624.374525,
+    "hash": "10ed9c477d6d1a62c91d88bc4590eb74"
+  },
   "/Users/daliys/Daliys/Swift/Soma/Soma/SomaApp.swift": {
-    "mtime": 1777043584.2370853,
-    "hash": "caa5f8ef73cf99ba0995cfd6fdb6f98b"
+    "mtime": 1778239326.9021125,
+    "hash": "fd356c7b2483b31a018e19d5203a6255"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/soma_analytics.py": {
+    "mtime": 1778276175.7135181,
+    "hash": "63b040a59136182c81fe2eef4031260a"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/clean_tool_imports.py": {
+    "mtime": 1778276745.0036883,
+    "hash": "5bba1d7a4c21b298c5d02783e003a649"
   },
   "/Users/daliys/Daliys/Swift/Soma/Soma/ContentView.swift": {
-    "mtime": 1777367290.2243643,
-    "hash": "1be932550f4a588d82227d4bb5570c64"
+    "mtime": 1778275188.9053435,
+    "hash": "93a4a63e25ce4f7c4e5b47a9f56a1a14"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/cst_split.py": {
+    "mtime": 1778276645.2576866,
+    "hash": "5cb8d266eda8cf6606a323becf439f70"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/ViewModels/SomaViewModel+Logs.swift": {
+    "mtime": 1778313603.469198,
+    "hash": "8e2c1a5133c499697f5624e6bcac0d16"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/ViewModels/SomaViewModel+MCP.swift": {
+    "mtime": 1778313603.4703937,
+    "hash": "845e42351a6e2d1f5db2a11796064acd"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/ViewModels/SomaViewModel.swift": {
+    "mtime": 1778316971.8138576,
+    "hash": "f9da2d7201fd427443d0ddc60c15820c"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/ViewModels/SomaViewModel+Status.swift": {
+    "mtime": 1778316958.600676,
+    "hash": "8f5bae4617e4ebef8b524a883bcf54c8"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/ViewModels/OllamaManager.swift": {
+    "mtime": 1778271382.6902933,
+    "hash": "0f7abc444334f0b2379d58194bc2cae9"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/ViewModels/SomaViewModel+Project.swift": {
+    "mtime": 1778313603.4684837,
+    "hash": "d0917b0b193472e5e67e7587d0f2a50a"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/ViewModels/SomaViewModel+Execution.swift": {
+    "mtime": 1778317245.856348,
+    "hash": "e5df23778f67de3b03232db0ef56d394"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/Models/SomaEnums.swift": {
+    "mtime": 1778275103.0184622,
+    "hash": "d4f588094b8d9ee8ad5de0b74bd67959"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/Models/SomaModels.swift": {
+    "mtime": 1778275127.0507088,
+    "hash": "6c63efa87b9451c07b7c94ba070e1697"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/go_scanner/scan.go": {
+    "mtime": 1778238103.2006338,
+    "hash": "24f7d12f1796b692154cd62325fdb716"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/go_scanner/text.go": {
+    "mtime": 1778238103.2007213,
+    "hash": "f80594906c14fe8f2522efc6284a9f2c"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/go_scanner/logs.go": {
+    "mtime": 1778238103.2003937,
+    "hash": "18d08d88b0e431ce621d3a89c19ce562"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/go_scanner/GitStatusFetcher.go": {
+    "mtime": 1778238103.2001467,
+    "hash": "e120f77d12740cdbdae4414b27053484"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/go_scanner/daemon.go": {
+    "mtime": 1778238103.2002282,
+    "hash": "226549a8e093db2c5f8385b3ec42fa17"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/go_scanner/main.go": {
+    "mtime": 1778238103.2004943,
+    "hash": "a27f1bd667d7765bd6bb9a677a74ade5"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/go_scanner/GitDiffParserAndRanker.go": {
+    "mtime": 1778238103.2000647,
+    "hash": "5621bc8b135677844b9b0f773cbae5c2"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/Views/LogsView.swift": {
+    "mtime": 1778275162.271084,
+    "hash": "d94be75c9ad70da6067b2f5bc74bd422"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/Views/GlobalSettingsBar.swift": {
+    "mtime": 1778275674.897274,
+    "hash": "fda0e73b201cf6bed44baf00b9a9566c"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/Views/SidebarView.swift": {
+    "mtime": 1778275178.2479255,
+    "hash": "cd694d4aaa8f398e7c8e1dfea14f20c2"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/Views/SystemStatusView.swift": {
+    "mtime": 1778317775.1427863,
+    "hash": "4228ec62462462ff6dcba17b5ef15b4f"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/rust_scanner/src/main.rs": {
+    "mtime": 1778238103.2010684,
+    "hash": "a1c35d02aeba965b8663befb15062e19"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/scout_pipeline_module/gather.py": {
+    "mtime": 1778276502.4148054,
+    "hash": "cd8a7954c662a5ee33460292d9082308"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/scout_pipeline_module/git.py": {
+    "mtime": 1778276502.4151738,
+    "hash": "8fb12483af98273701a0db6ef2abad81"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/scout_pipeline_module/classifier.py": {
+    "mtime": 1778276502.41543,
+    "hash": "9e0f40de409a4bdd1a612e3e36a8f332"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/scout_pipeline_module/config.py": {
+    "mtime": 1778276175.713837,
+    "hash": "a3e187df88e96e03418c00cdc8752243"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/scout_pipeline_module/discovery.py": {
+    "mtime": 1778276502.415704,
+    "hash": "ef07eecb127dbbf8bd0e7b78a85375d8"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/scout_pipeline_module/__init__.py": {
+    "mtime": 1778276502.416302,
+    "hash": "c8e86eb1af19efc981466060bf84f214"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/scout_pipeline_module/parser.py": {
+    "mtime": 1778276502.4165106,
+    "hash": "08b928a40949cdedf391f9be978fbafa"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/scout_pipeline_module/llama.py": {
+    "mtime": 1778276502.41667,
+    "hash": "106824939600482de88e173d36432aa9"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/scout_pipeline_module/symbols.py": {
+    "mtime": 1778276502.4167745,
+    "hash": "1d9e369c9ac7d2549629a46f24ea513a"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/scout_pipeline_module/utils.py": {
+    "mtime": 1778276502.4168706,
+    "hash": "5c9bb1afbcd27abaa82352d5935e8fde"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/scout_pipeline_module/pipeline.py": {
+    "mtime": 1778276502.417018,
+    "hash": "8c343f1bcdbf8390c054ea1547595e13"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/scout_pipeline_module/ranker.py": {
+    "mtime": 1778276502.4172614,
+    "hash": "7f5979415af83d8a3cc88db83410ea9e"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/scout_pipeline_module/packet.py": {
+    "mtime": 1778276502.4175572,
+    "hash": "9d7afdfb4feb25bacc2339f50c03a471"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/scout_pipeline_module/daemon.py": {
+    "mtime": 1778276502.4176767,
+    "hash": "2121aa4c8d1477d051e7950473908171"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/gateway/server.py": {
+    "mtime": 1778316602.9109106,
+    "hash": "616b04a5bfe7459c299dcd093f5e3e24"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/gateway/graphify_adapter.py": {
+    "mtime": 1778277099.4367096,
+    "hash": "0e06507e2506130c916d1a2afeb5553f"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/gateway/memory_store.py": {
+    "mtime": 1778277099.4367115,
+    "hash": "ca7e7ce1aac48d8f58a883b0f6ffd115"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/gateway/core.py": {
+    "mtime": 1778277131.7396202,
+    "hash": "64555619e93e329e276140136e579a6e"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/gateway/tools/query.py": {
+    "mtime": 1778277099.4366906,
+    "hash": "dc688eb7b3d5e762c6f86bb6cae1ef1d"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/gateway/tools/memory.py": {
+    "mtime": 1778277099.4365525,
+    "hash": "4fe8324dee8ce910045ef9101a2b2498"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/gateway/tools/context.py": {
+    "mtime": 1778277099.4368565,
+    "hash": "17227378da8b0e8b5ae754079ffc50e1"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/Soma/gateway/tools/nexus.py": {
+    "mtime": 1778277206.603902,
+    "hash": "4865a73f5e34f050feb2f4b52e30a762"
   },
   "/Users/daliys/Daliys/Swift/Soma/ollama_final.txt": {
     "mtime": 1777043584.2375615,
@@ -35,13 +263,21 @@
     "mtime": 1777045172.695021,
     "hash": "02652d7e9edd13bc267eb587f895f577"
   },
+  "/Users/daliys/Daliys/Swift/Soma/reportD.md": {
+    "mtime": 1777936171.3864884,
+    "hash": "2547ca28dd3da27cad9cbf54cba42fca"
+  },
   "/Users/daliys/Daliys/Swift/Soma/README.md": {
-    "mtime": 1777377176.9901183,
-    "hash": "bec95ff953480ec4a1b62b879af5dcdc"
+    "mtime": 1778276037.3738713,
+    "hash": "c26645e531ce7515de4a2824abb78eda"
   },
   "/Users/daliys/Daliys/Swift/Soma/GEMINI.md": {
-    "mtime": 1777927448.2138677,
-    "hash": "8ee39dcfe68a23b3797b02648930d699"
+    "mtime": 1778276018.9714777,
+    "hash": "90a349e98a8fa8474bb866dcf5792029"
+  },
+  "/Users/daliys/Daliys/Swift/Soma/implementation_plan.md": {
+    "mtime": 1778274828.4572437,
+    "hash": "1446da741864bc9a7ade07fd51536b15"
   },
   "/Users/daliys/Daliys/Swift/Soma/ollama_out.txt": {
     "mtime": 1777043584.2377772,

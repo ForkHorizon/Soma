@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-import sys, os
+import sys
+import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from scout_pipeline_module import *
 
 if __name__ == "__main__":
-    import argparse, asyncio, json
+    import argparse
+    import asyncio
+    import json
     parser = argparse.ArgumentParser()
     parser.add_argument("prompt")
     parser.add_argument("history", nargs="?", default="[]")
