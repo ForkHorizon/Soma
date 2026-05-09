@@ -9,19 +9,145 @@ import Combine
 
 extension SomaViewModel {
 
+func runScout(ollama: OllamaManager) {
+        let prompt = scoutPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else { return }
+
+        scoutLoading = true
+        scoutTranscript += "\n> \(prompt)\n\n"
+        scoutPrompt = ""
+        logActivity("Starting Scout: \(prompt)")
+        let startTime = Date()
+
+        Task {
+            do {
+                logActivity("Calling scout_pipeline.py...")
+                let stepStart = Date()
+                let result = try await runPythonChat(prompt: prompt, history: scoutHistory)
+                let stepDuration = Date().timeIntervalSince(stepStart)
+
+                await MainActor.run {
+                    logActivity("Received response from \(ollama.modelName)", duration: stepDuration)
+                    scoutTranscript += (result.response ?? "") + "\n"
+                    scoutHistory = result.history ?? []
+                    scoutLoading = false
+                    ollama.checkStatus()
+                    logActivity("Scout total time", duration: Date().timeIntervalSince(startTime))
+                }
+            } catch {
+                await MainActor.run {
+                    logActivity("Scout failed: \(error.localizedDescription)")
+                    scoutTranscript += "⚠️ Error: \(error.localizedDescription)\n"
+                    scoutLoading = false
+                }
+            }
+        }
+    }
+
+func runRelay(ollama: OllamaManager) {
+        let prompt = relayPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else { return }
+
+        relayPrompt = ""
+        gatherBundle = nil
+        relayResponse = nil
+        relayError = nil
+        showContextPanel = false
+        activityLogs = []
+        logActivity("Starting Relay: \(prompt)")
+        let startTime = Date()
+
+        Task {
+            do {
+                relayPhase = .gathering
+                let rootLabel = selectedProjectRoot.isEmpty ? "no selected root" : selectedProjectRoot
+                logActivity("Preparing packet via Python router (\(rootLabel))...")
+                let stepStart = Date()
+                let bundle = try await runGather(
+                    prompt: prompt,
+                    projectRoot: selectedProjectRoot,
+                    recentRoots: recentProjectRoots
+                )
+                let stepDuration = Date().timeIntervalSince(stepStart)
+
+                if let error = bundle.error {
+                    throw SomaError(error)
+                }
+                logActivity("Prepared \(bundle.packet_mode ?? "unknown") packet with \(bundle.evidence_items?.count ?? 0) items. Confidence: \(bundle.confidence ?? 0)", duration: stepDuration)
+
+                await MainActor.run {
+                    gatherBundle = bundle
+                    showContextPanel = true
+                    relayPhase = .done
+                    ollama.checkStatus()
+                    logActivity("Prepared Codex packet (~\(bundle.estimated_tokens ?? 0) tokens)")
+                    logActivity("Evidence compile total time", duration: Date().timeIntervalSince(startTime))
+                }
+            } catch {
+                await MainActor.run {
+                    logActivity("Relay failed: \(error.localizedDescription)")
+                    relayPhase = .failed(error.localizedDescription)
+                    relayError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+func runPythonChat(prompt: String, history: [[String: AnyCodable]]) async throws -> OllamaResponse {
+        let scriptPath = try scriptURL(named: "scout_pipeline").path
+        let pyPath = pythonPath()
+        let env = scriptEnvironment()
+
+        return try await Task.detached(priority: .userInitiated) {
+            let historyJSON = (try? String(data: JSONEncoder().encode(history), encoding: .utf8)) ?? "[]"
+            let output = try await Self.executeProcess(path: pyPath, args: [scriptPath, prompt, historyJSON], environment: env)
+            return try JSONDecoder().decode(OllamaResponse.self, from: output)
+        }.value
+    }
+
+func runGather(prompt: String, projectRoot: String, recentRoots: [String]) async throws -> GatherBundle {
+        let scriptPath = try scriptURL(named: "scout_pipeline").path
+        let pyPath = pythonPath()
+        let env = scriptEnvironment(projectRoot: projectRoot)
+        let depth = analysisDepth.rawValue
+
+        return try await Task.detached(priority: .userInitiated) {
+            let recentRootsJSON = (try? String(data: JSONEncoder().encode(recentRoots), encoding: .utf8)) ?? "[]"
+            let output = try await Self.executeProcess(
+                path: pyPath,
+                args: [
+                    scriptPath,
+                    prompt,
+                    "--mode", "gather",
+                    "--project-root", projectRoot,
+                    "--recent-roots-json", recentRootsJSON,
+                    "--token-budget", "balanced",
+                    "--analysis-depth", depth,
+                ],
+                environment: env
+            )
+            return try JSONDecoder().decode(GatherBundle.self, from: output)
+        }.value
+    }
+
 func runRelayScript(bundle: GatherBundle) async throws -> RelayResponse {
-        let script = try scriptURL(named: "relay")
-        let bundleJSON = (try? String(data: JSONEncoder().encode(bundle), encoding: .utf8)) ?? "{}"
-        let output = try await runScript(path: pythonPath(), args: [script.path, bundleJSON])
-        return try JSONDecoder().decode(RelayResponse.self, from: output)
+        let scriptPath = try scriptURL(named: "relay").path
+        let pyPath = pythonPath()
+        let env = scriptEnvironment()
+
+        return try await Task.detached(priority: .userInitiated) {
+            let bundleJSON = (try? String(data: JSONEncoder().encode(bundle), encoding: .utf8)) ?? "{}"
+            let output = try await Self.executeProcess(path: pyPath, args: [scriptPath, bundleJSON], environment: env)
+            return try JSONDecoder().decode(RelayResponse.self, from: output)
+        }.value
     }
 
 func runSomaHelper(args: [String]) async throws -> Data {
-        let script = try scriptURL(named: "soma_mcp_server")
-        return try await runScript(path: pythonPath(), args: [script.path] + args)
+        let scriptPath = try scriptURL(named: "soma_mcp_server").path
+        return try await runScript(path: pythonPath(), args: [scriptPath] + args)
     }
 
-func scriptURL(named name: String) throws -> URL {
+nonisolated func scriptURL(named name: String) throws -> URL {
         // Prefer source directory — gateway/ package must be co-located with soma_mcp_server.py.
         // #filePath resolves to: …/Soma/Soma/ViewModels/SomaViewModel+Execution.swift
         // Two .deletingLastPathComponent() calls reach: …/Soma/Soma/
@@ -39,7 +165,7 @@ func scriptURL(named name: String) throws -> URL {
         throw SomaError("\(name).py not found in source or bundle")
     }
 
-func pythonPath() -> String {
+nonisolated func pythonPath() -> String {
         if FileManager.default.fileExists(atPath: "/opt/homebrew/bin/python3") {
             return "/opt/homebrew/bin/python3"
         }
@@ -63,11 +189,16 @@ func scriptEnvironment(projectRoot: String? = nil) -> [String: String] {
     }
 
 func runScript(path: String, args: [String], workingDirectory: String? = nil) async throws -> Data {
+        let env = scriptEnvironment()
+        return try await Self.executeProcess(path: path, args: args, workingDirectory: workingDirectory, environment: env)
+    }
+
+private static func executeProcess(path: String, args: [String], workingDirectory: String? = nil, environment: [String: String]) async throws -> Data {
         try await withCheckedThrowingContinuation { continuation in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: path)
             process.arguments = args
-            process.environment = scriptEnvironment()
+            process.environment = environment
             if let wd = workingDirectory {
                 process.currentDirectoryURL = URL(fileURLWithPath: wd)
             }
