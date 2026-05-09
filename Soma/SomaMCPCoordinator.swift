@@ -154,7 +154,22 @@ class SomaMCPCoordinator {
              }
              return [:]
         } else {
-             let errorStr = String(data: errorData, encoding: .utf8) ?? "Unknown python error"
+             var errorStr = String(data: errorData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+             let outputStr = String(data: outputData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+             if errorStr.isEmpty {
+                 if outputStr.isEmpty {
+                     errorStr = "Python process failed silently with exit code \(process.terminationStatus)."
+                 } else {
+                     errorStr = "Python process failed with exit code \(process.terminationStatus). Output: \(outputStr)"
+                 }
+             } else {
+                 errorStr = "Python process failed with exit code \(process.terminationStatus). Error: \(errorStr)"
+                 if !outputStr.isEmpty {
+                     errorStr += "\nOutput: \(outputStr)"
+                 }
+             }
+
              throw MCPError.toolExecutionFailed(errorStr)
         }
     }
