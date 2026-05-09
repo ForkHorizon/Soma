@@ -2,6 +2,7 @@
 
 
 
+import sys
 import json
 
 import os
@@ -25,7 +26,8 @@ def extract_symbols(path, text=None):
         daemon = GoDaemon.get_instance()
         stdout = daemon.call('extract-symbols', path)
         return json.loads(stdout)
-    except Exception:
+    except Exception as exc:
+        print(f"extract_symbols failed: {exc}", file=sys.stderr)
         pass
     return []
 
@@ -39,7 +41,8 @@ def build_rust_scanner(rust_scanner_dir):
 
     try:
         subprocess.run(['cargo', 'build', '--release'], cwd=rust_scanner_dir, capture_output=True, timeout=120)
-    except Exception:
+    except Exception as exc:
+        print(f"build_rust_scanner failed: {exc}", file=sys.stderr)
         pass
     return rust_scanner_path
 
@@ -63,11 +66,13 @@ def extract_unity_refs(path, text=None):
                     res = subprocess.run([rust_scanner_path, 'extract-unity-refs', path], capture_output=True, text=True, timeout=10)
                     if (res.returncode == 0):
                         return json.loads(res.stdout)
-            except Exception:
+            except Exception as exc:
+                print(f"extract_unity_refs failed: {exc}", file=sys.stderr)
                 pass
         daemon = GoDaemon.get_instance()
         stdout = daemon.call('extract-unity-refs', path)
         return json.loads(stdout)
-    except Exception:
+    except Exception as exc:
+        print(f"extract_unity_refs failed: {exc}", file=sys.stderr)
         pass
     return []

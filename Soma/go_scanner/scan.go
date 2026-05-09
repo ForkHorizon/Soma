@@ -62,8 +62,6 @@ var (
 	}
 )
 
-const MaxDiscoveredFiles = 1500
-
 type FileItem struct {
 	Path     string  `json:"path"`
 	Name     string  `json:"name"`
@@ -128,7 +126,7 @@ func categorizePath(path, name string) string {
 	return ""
 }
 
-func scanFiles(root string) {
+func scanFiles(root string) (string, error) {
 	var discovered []FileItem
 
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
@@ -152,10 +150,6 @@ func scanFiles(root string) {
 			return nil
 		}
 
-		if len(discovered) >= MaxDiscoveredFiles {
-			return filepath.SkipAll
-		}
-
 		category := categorizePath(path, name)
 		if category != "" {
 			info, err := d.Info()
@@ -164,27 +158,23 @@ func scanFiles(root string) {
 				mtime = float64(info.ModTime().UnixNano()) / 1e9
 			}
 
-			if len(discovered) < MaxDiscoveredFiles {
-				discovered = append(discovered, FileItem{
-					Path:     path,
-					Name:     name,
-					Category: category,
-					Mtime:    mtime,
-				})
-			}
+			discovered = append(discovered, FileItem{
+				Path:     path,
+				Name:     name,
+				Category: category,
+				Mtime:    mtime,
+			})
 		}
 		return nil
 	})
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error walking directory: %v\n", err)
-		os.Exit(1)
+		return "", fmt.Errorf("error walking directory: %v", err)
 	}
 
 	out, err := json.Marshal(discovered)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error marshaling JSON: %v\n", err)
-		os.Exit(1)
+		return "", fmt.Errorf("error marshaling JSON: %v", err)
 	}
-	fmt.Println(string(out))
+	return string(out), nil
 }

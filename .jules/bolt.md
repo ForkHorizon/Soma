@@ -4,3 +4,6 @@
 ## 2025-05-09 - Stream Go logger JSON serialization to avoid memory spikes
 **Learning:** Reading massive log files into a string slice array and marshaling the entire slice as a single JSON blob results in huge memory spikes for large files.
 **Action:** Stream serialization to stdout by iterating the log lines and individually marshaling elements directly (`fmt.Print("[")`, `fmt.Print(string(marshaled_element))`, `fmt.Println("]")`), significantly reducing memory footprints.
+## 2024-05-24 - O(1) direct file checks for project detection
+**Learning:** Using `os.listdir()` to find file markers enumerates the entire directory into memory, burning CPU and memory if a root folder contains massive build outputs or poorly structured files.
+**Action:** Replaced `os.listdir()` with `os.path.exists()` for direct O(1) checks and used a short-circuiting `os.scandir()` for wildcard matches to maximize performance.
