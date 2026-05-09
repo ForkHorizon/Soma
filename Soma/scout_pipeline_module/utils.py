@@ -29,7 +29,8 @@ def fix_path(path, allowed_dirs):
 
 
 def normalize_path(path):
-    return str(Path(path).expanduser().resolve())
+    # Performance: avoid Path instantiation
+    return os.path.realpath(os.path.expanduser(path))
 
 
 def is_noise_path(path):
@@ -51,7 +52,12 @@ def is_noise_path(path):
 
 def rel_path(path, project_root):
     try:
-        return str(Path(path).resolve().relative_to(Path(project_root).resolve()))
+        # Performance: avoid Path instantiation in hot loops
+        real_path = os.path.realpath(path)
+        real_root = os.path.realpath(project_root)
+        if os.path.commonpath([real_path, real_root]) != real_root:
+            return str(path)
+        return os.path.relpath(real_path, real_root)
     except Exception:
         return str(path)
 
