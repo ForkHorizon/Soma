@@ -27,7 +27,9 @@ def extract_tool_calls(content):
         try:
             params = json.loads(match.group('params'))
             tool_calls.append({'id': 'call_fb', 'function': {'name': match.group('name'), 'arguments': params}})
-        except Exception:
+        except Exception as exc:
+            import sys
+            print(f"extract_tool_calls failed: {exc}", file=sys.stderr)
             pass
     if tool_calls:
         return tool_calls
@@ -39,7 +41,9 @@ def extract_tool_calls(content):
                 if (isinstance(item, dict) and ('name' in item)):
                     args = (item.get('arguments') or item.get('parameters') or {})
                     tool_calls.append({'id': 'call_fb', 'function': {'name': item['name'], 'arguments': args}})
-        except Exception:
+        except Exception as exc:
+            import sys
+            print(f"extract_tool_calls failed: {exc}", file=sys.stderr)
             pass
     if tool_calls:
         return tool_calls
@@ -53,7 +57,9 @@ def extract_tool_calls(content):
                 if ((not args) and ('path' in decoded)):
                     args = {'path': decoded['path']}
                 tool_calls.append({'id': 'call_fb', 'function': {'name': decoded['name'], 'arguments': args}})
-    except Exception:
+    except Exception as exc:
+        import sys
+        print(f"extract_tool_calls failed: {exc}", file=sys.stderr)
         pass
     return tool_calls
 
