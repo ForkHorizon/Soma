@@ -173,6 +173,43 @@ actor SomaMCPCoordinator {
         }
         requestStr += "\n"
 
+        try process.run()
+        process.waitUntilExit()
+
+        let outputData = stdout.fileHandleForReading.readDataToEndOfFile()
+        let errorData = stderr.fileHandleForReading.readDataToEndOfFile()
+
+        if process.terminationStatus == 0 {
+             if let json = try? JSONSerialization.jsonObject(with: outputData) as? [String: Any] {
+                  // convert Any to AnyCodable for the dictionary
+                  var resultDict: [String: AnyCodable] = [:]
+                  for (key, value) in json {
+                      resultDict[key] = AnyCodable(value)
+                  }
+                  return resultDict
+             } else if let outputStr = String(data: outputData, encoding: .utf8) {
+                  // If it's just a raw string result
+                  return ["result": AnyCodable(outputStr)]
+             }
+             return [:]
+        } else {
+             var errorStr = String(data: errorData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+             let outputStr = String(data: outputData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+             if errorStr.isEmpty {
+                 if outputStr.isEmpty {
+                     errorStr = "Python process failed silently with exit code \(process.terminationStatus)."
+                 } else {
+                     errorStr = "Python process failed with exit code \(process.terminationStatus). Output: \(outputStr)"
+                 }
+             } else {
+                 errorStr = "Python process failed with exit code \(process.terminationStatus). Error: \(errorStr)"
+                 if !outputStr.isEmpty {
+                     errorStr += "\nOutput: \(outputStr)"
+                 }
+             }
+
+             throw MCPError.toolExecutionFailed(errorStr)
         return try await withCheckedThrowingContinuation { continuation in
             pendingRequests[requestId] = continuation
             do {
