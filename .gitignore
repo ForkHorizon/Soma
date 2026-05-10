@@ -39,6 +39,7 @@ __pycache__/
 venv/
 ENV/
 env/
+.ruff_cache/
 
 # Go
 Soma/go_scanner/soma_scanner
@@ -46,3 +47,18 @@ Soma/go_scanner/soma_scanner
 Soma/go_scanner/soma_scanner
 Soma/rust_scanner/target/
 Soma/rust_scanner/Cargo.lock
+
+# macOS
+.DS_Store
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+
+# Project-specific transients
+graphify-out/cache/
+ollama_*.txt
+hater_critique_report.md
+Prompt.txt
+.soma/map.json
