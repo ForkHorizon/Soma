@@ -23,7 +23,10 @@ def find_errors(text):
     try:
         daemon = GoDaemon.get_instance()
         stdout = daemon.call('find-errors', text)
-        return json.loads(stdout)
+        res = json.loads(stdout)
+        if isinstance(res, str):
+            res = json.loads(res)
+        return res if isinstance(res, list) else []
     except Exception as exc:
         print(f"find_errors failed: {exc}", file=sys.stderr)
         return []
@@ -37,7 +40,10 @@ def group_compile_errors(errors):
     try:
         daemon = GoDaemon.get_instance()
         stdout = daemon.call('group-compile-errors', json.dumps(errors))
-        return json.loads(stdout)
+        res = json.loads(stdout)
+        if isinstance(res, str):
+            res = json.loads(res)
+        return res if isinstance(res, list) else []
     except Exception as exc:
         print(f"group_compile_errors failed: {exc}", file=sys.stderr)
         return []
@@ -48,7 +54,10 @@ def get_unity_logs(path):
     try:
         daemon = GoDaemon.get_instance()
         stdout = daemon.call('tail-logs', path)
-        return json.loads(stdout)
+        res = json.loads(stdout)
+        if isinstance(res, str):
+            res = json.loads(res)
+        return res if isinstance(res, list) else []
     except Exception as exc:
         print(f"get_unity_logs failed: {exc}", file=sys.stderr)
         pass
@@ -73,7 +82,11 @@ def excerpt_for_text(text, terms):
         daemon = GoDaemon.get_instance()
         stdout = daemon.call('excerpt-for-text', text, json.dumps(terms))
         res = json.loads(stdout)
-        return (res.get('text', ''), res.get('start_line'), res.get('end_line'))
+        if isinstance(res, str):
+            res = json.loads(res)
+        if isinstance(res, dict):
+            return (res.get('text', ''), res.get('start_line'), res.get('end_line'))
+        return ('', None, None)
     except Exception as exc:
         print(f"excerpt_for_text failed: {exc}", file=sys.stderr)
         # Fallback
@@ -89,7 +102,11 @@ def excerpt_for_log(text, terms):
         daemon = GoDaemon.get_instance()
         stdout = daemon.call('excerpt-for-log', text, json.dumps(terms))
         res = json.loads(stdout)
-        return (res.get('text', ''), res.get('start_line'), res.get('end_line'))
+        if isinstance(res, str):
+            res = json.loads(res)
+        if isinstance(res, dict):
+            return (res.get('text', ''), res.get('start_line'), res.get('end_line'))
+        return ('', None, None)
     except Exception as exc:
         print(f"excerpt_for_log failed: {exc}", file=sys.stderr)
         # Fallback

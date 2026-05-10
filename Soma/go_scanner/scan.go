@@ -127,9 +127,10 @@ func categorizePath(path, name string) string {
 	return ""
 }
 
-func scanFiles(root string) (<-chan FileItem, <-chan error) {
-	itemChan := make(chan FileItem, 100)
-	errChan := make(chan error, 1)
+var MaxDiscoveredFiles = 100000
+
+func scanFiles(root string) (string, error) {
+	var discovered []FileItem
 
 	go func() {
 		defer close(itemChan)

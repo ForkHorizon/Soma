@@ -70,5 +70,18 @@ class GoDaemon():
 
 def stop_daemon():
     if GoDaemon._instance:
-        GoDaemon._instance.process.terminate()
+        process = GoDaemon._instance.process
+
+        if process.stdin:
+            process.stdin.close()
+        if process.stdout:
+            process.stdout.close()
+
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+
         GoDaemon._instance = None

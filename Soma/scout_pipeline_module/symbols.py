@@ -25,7 +25,10 @@ def extract_symbols(path, text=None):
     try:
         daemon = GoDaemon.get_instance()
         stdout = daemon.call('extract-symbols', path)
-        return json.loads(stdout)
+        res = json.loads(stdout)
+        if isinstance(res, str):
+            res = json.loads(res)
+        return res if isinstance(res, list) else []
     except Exception as exc:
         print(f"extract_symbols failed: {exc}", file=sys.stderr)
         pass
@@ -71,7 +74,10 @@ def extract_unity_refs(path, text=None):
                 pass
         daemon = GoDaemon.get_instance()
         stdout = daemon.call('extract-unity-refs', path)
-        return json.loads(stdout)
+        res = json.loads(stdout)
+        if isinstance(res, str):
+            res = json.loads(res)
+        return res if isinstance(res, list) else []
     except Exception as exc:
         print(f"extract_unity_refs failed: {exc}", file=sys.stderr)
         pass
