@@ -63,7 +63,12 @@ def iter_project_files(project_root):
     try:
         daemon = GoDaemon.get_instance()
         stdout = daemon.call('scan-files', project_root)
-        return json.loads(stdout)
+        res = json.loads(stdout)
+        if isinstance(res, str):
+            res = json.loads(res)
+        if not isinstance(res, list):
+            return []
+        return res
     except Exception as exc:
         print(f"iter_project_files failed: {exc}", file=sys.stderr)
         pass

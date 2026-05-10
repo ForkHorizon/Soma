@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 )
@@ -57,14 +58,14 @@ func tailLogs(path string) []string {
 	file, err := os.Open(path)
 	if err != nil {
 		fmt.Println("[]")
-		return
+		return nil
 	}
 	defer file.Close()
 
 	var errors []string
 
 	fmt.Print("[")
-	first := true
+	_ = true
 	count := 0
 
 	scanner := bufio.NewScanner(file)

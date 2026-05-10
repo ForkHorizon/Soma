@@ -128,6 +128,8 @@ func categorizePath(path, name string) string {
 	return ""
 }
 
+var MaxDiscoveredFiles = 100000
+
 func scanFiles(root string) (string, error) {
 	var discovered []FileItem
 

@@ -36,7 +36,10 @@ def get_git_diff_summary(project_root, terms=None):
         daemon = GoDaemon.get_instance()
         args = ([project_root] + (terms or []))
         stdout = daemon.call('git-diff', *args)
-        return json.loads(stdout)
+        res = json.loads(stdout)
+        if isinstance(res, str):
+            res = json.loads(res)
+        return res
     except Exception as exc:
         print(f"get_git_diff_summary failed: {exc}", file=sys.stderr)
         pass
