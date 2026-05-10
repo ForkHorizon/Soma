@@ -17,6 +17,7 @@ type DaemonResponse struct {
 	ID    string `json:"id"`
 	Error string `json:"error,omitempty"`
 	Data  string `json:"data,omitempty"`
+	Done  bool   `json:"done,omitempty"`
 }
 
 func sendResponse(resp DaemonResponse) {
@@ -44,10 +45,20 @@ func runDaemon() {
 		switch req.Method {
 		case "scan-files":
 			if len(req.Args) < 1 {
-				err = fmt.Errorf("missing argument")
+				sendResponse(DaemonResponse{ID: req.ID, Error: "missing argument"})
 			} else {
-				result, err = scanFiles(req.Args[0])
+				itemChan, errChan := scanFiles(req.Args[0])
+				for item := range itemChan {
+					out, _ := json.Marshal(item)
+					sendResponse(DaemonResponse{ID: req.ID, Data: string(out)})
+				}
+				if e := <-errChan; e != nil {
+					sendResponse(DaemonResponse{ID: req.ID, Done: true, Error: e.Error()})
+				} else {
+					sendResponse(DaemonResponse{ID: req.ID, Done: true})
+				}
 			}
+			continue
 		case "git-status":
 			if len(req.Args) < 1 {
 				err = fmt.Errorf("missing argument")

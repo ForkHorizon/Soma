@@ -56,15 +56,11 @@ func containsToken(b []byte) bool {
 func tailLogs(path string) []string {
 	file, err := os.Open(path)
 	if err != nil {
-		fmt.Println("[]")
-		return
+		return []string{}
 	}
 	defer file.Close()
 
 	var errors []string
-
-	fmt.Print("[")
-	first := true
 	count := 0
 
 	scanner := bufio.NewScanner(file)
@@ -93,7 +89,6 @@ func tailLogs(path string) []string {
 		// Log parsing error
 	}
 
-	fmt.Println("]")
 	return errors
 }
 

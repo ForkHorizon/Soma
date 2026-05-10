@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -128,63 +127,63 @@ func categorizePath(path, name string) string {
 	return ""
 }
 
-func scanFiles(root string) (string, error) {
-	var discovered []FileItem
+func scanFiles(root string) (<-chan FileItem, <-chan error) {
+	itemChan := make(chan FileItem, 100)
+	errChan := make(chan error, 1)
 
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil // Skip on error
-		}
+	go func() {
+		defer close(itemChan)
+		defer close(errChan)
 
-		name := d.Name()
-		if d.IsDir() {
-			if path != root && shouldSkipDir(name) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		if d.Type()&os.ModeSymlink != 0 {
-			return nil // Skip symlinks
-		}
-
-		if isNoisePath(path, name) {
-			return nil
-		}
-
-		category := categorizePath(path, name)
-		if category != "" {
-			info, err := d.Info()
-			var mtime float64 = 0
-			var size int64 = 0
-			var mtimeNs int64 = 0
-			if err == nil {
-				mtime = float64(info.ModTime().UnixNano()) / 1e9
-				size = info.Size()
-				mtimeNs = info.ModTime().UnixNano()
+		err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil // Skip on error
 			}
 
-			if len(discovered) < MaxDiscoveredFiles {
-				discovered = append(discovered, FileItem{
+			name := d.Name()
+			if d.IsDir() {
+				if path != root && shouldSkipDir(name) {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+
+			if d.Type()&os.ModeSymlink != 0 {
+				return nil // Skip symlinks
+			}
+
+			if isNoisePath(path, name) {
+				return nil
+			}
+
+			category := categorizePath(path, name)
+			if category != "" {
+				info, err := d.Info()
+				var mtime float64 = 0
+				var size int64 = 0
+				var mtimeNs int64 = 0
+				if err == nil {
+					mtime = float64(info.ModTime().UnixNano()) / 1e9
+					size = info.Size()
+					mtimeNs = info.ModTime().UnixNano()
+				}
+
+				itemChan <- FileItem{
 					Path:     path,
 					Name:     name,
 					Category: category,
 					Mtime:    mtime,
 					Size:     size,
 					MtimeNs:  mtimeNs,
-				})
+				}
 			}
+			return nil
+		})
+
+		if err != nil {
+			errChan <- fmt.Errorf("error walking directory: %v", err)
 		}
-		return nil
-	})
+	}()
 
-	if err != nil {
-		return "", fmt.Errorf("error walking directory: %v", err)
-	}
-
-	out, err := json.Marshal(discovered)
-	if err != nil {
-		return "", fmt.Errorf("error marshaling JSON: %v", err)
-	}
-	return string(out), nil
+	return itemChan, errChan
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 )
@@ -18,7 +19,21 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Usage: %s scan-files <project_root>\n", os.Args[0])
 			os.Exit(1)
 		}
-		scanFiles(os.Args[2])
+		itemChan, errChan := scanFiles(os.Args[2])
+		fmt.Print("[")
+		first := true
+		for item := range itemChan {
+			if !first {
+				fmt.Print(",")
+			}
+			out, _ := json.Marshal(item)
+			fmt.Print(string(out))
+			first = false
+		}
+		fmt.Println("]")
+		if e := <-errChan; e != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", e)
+		}
 	case "git-status":
 		if len(os.Args) < 3 {
 			fmt.Fprintf(os.Stderr, "Usage: %s git-status <project_root>\n", os.Args[0])
