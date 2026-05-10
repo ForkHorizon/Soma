@@ -94,7 +94,6 @@ func tailLogs(path string) []string {
 		// Log parsing error
 	}
 
-	fmt.Println("]")
 	return errors
 }
 
