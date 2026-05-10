@@ -40,7 +40,7 @@ func fetchSystemVersions() {
         Task {
             // Graphify
             do {
-                let uvPath = "/Users/daliys/.local/bin/uv"
+                let uvPath = FileManager.default.homeDirectoryForCurrentUser.path + "/.local/bin/uv"
                 let data = try await runScript(path: uvPath, args: ["tool", "list"])
                 if let output = String(data: data, encoding: .utf8) {
                     let pattern = "graphifyy v([0-9.]+)"
@@ -67,7 +67,7 @@ func upgradeGraphify() {
         logActivity("Upgrading Graphify...")
         Task {
             do {
-                let uvPath = "/Users/daliys/.local/bin/uv"
+                let uvPath = FileManager.default.homeDirectoryForCurrentUser.path + "/.local/bin/uv"
                 _ = try await runScript(path: uvPath, args: ["tool", "upgrade", "graphifyy"])
                 await MainActor.run {
                     self.systemBusy = false
@@ -90,7 +90,7 @@ func upgradeGraphify() {
         Task {
             do {
                 // Look for graphify binary via uv tool or direct path
-                let graphifyBin = "/Users/daliys/.local/bin/graphify"
+                let graphifyBin = FileManager.default.homeDirectoryForCurrentUser.path + "/.local/bin/graphify"
                 let args = ["update", "."]
                 _ = try await runScript(path: graphifyBin, args: args, workingDirectory: selectedProjectRoot)
                 await MainActor.run {
