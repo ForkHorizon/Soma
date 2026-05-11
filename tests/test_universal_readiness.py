@@ -14,6 +14,8 @@ from scout_pipeline import TOKEN_BUDGETS
 from scout_pipeline_module.discovery import build_repo_index, detect_project_type, iter_project_files
 from scout_pipeline_module.gather import build_preflight, select_evidence
 from scout_pipeline_module.git import get_git_diff_summary, get_git_status
+import token_calculator
+from soma_token_savings import build_token_savings
 from token_calculator import estimate_payload, estimate_tokens, profile_for
 from universal_fixtures import fixture_templates, prepare_fixture_repo
 
@@ -84,6 +86,8 @@ class UniversalReadinessTests(unittest.TestCase):
                 self.assertEqual(payload["status"], "ok")
                 self.assertTrue(payload["packet"])
                 self.assertLessEqual(payload["estimated_tokens"], TOKEN_BUDGETS["fast"])
+                self.assertEqual(payload["token_savings"]["status"], "ok")
+                self.assertGreater(payload["token_savings"]["saved_tokens"], 0)
                 self.assertTrue(payload["evidence"])
                 self.assertNotIn("diff --git", payload["packet"])
                 self.assertNotIn(".DS_Store", payload["packet"])
@@ -113,6 +117,24 @@ class TokenAndUniversalCLITests(unittest.TestCase):
         self.assertGreater(estimate_tokens("abcd" * 100, "gpt-5.5"), 1)
         payload = estimate_payload("abcd" * 10, "claude")
         self.assertEqual(payload["model_profile"], "claude")
+        self.assertIn(payload["estimator"], {"tiktoken", "chars_per_token"})
+
+    def test_token_calculator_falls_back_when_exact_encoder_unavailable(self):
+        with patch.object(token_calculator, "_encoding_for", return_value=None):
+            payload = estimate_payload("abcd" * 100, "gpt-5.5")
+        self.assertEqual(payload["estimator"], "chars_per_token")
+        self.assertGreater(payload["estimated_tokens"], 0)
+
+    def test_token_savings_unavailable_for_failed_packet(self):
+        savings = build_token_savings(
+            packet="",
+            budget="fast",
+            budget_tokens=TOKEN_BUDGETS["fast"],
+            model_profile="gpt-5.5",
+            status="error",
+        )
+        self.assertEqual(savings["status"], "unavailable")
+        self.assertIsNone(savings["savings_pct"])
 
     def test_universal_report_saves_core_fields_with_mocked_fixture_result(self):
         fake = {
@@ -160,6 +182,18 @@ class TokenAndUniversalCLITests(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(stats["summary"]["avg_savings_pct"], 80.0)
         self.assertEqual(stats["summary"]["total_saved_tokens"], 800)
+
+    def test_token_benchmark_summary_excludes_failed_results(self):
+        summary = soma_token_benchmark._build_summary(
+            [
+                {"fixture": "ok", "status": "ok", "baseline_tokens": 1000, "soma_packet_tokens": 200, "saved_tokens": 800, "savings_pct": 80.0},
+                {"fixture": "bad", "status": "error", "baseline_tokens": None, "soma_packet_tokens": None, "saved_tokens": None, "savings_pct": None},
+            ],
+            "fixtures",
+        )
+        self.assertEqual(summary["avg_savings_pct"], 80.0)
+        self.assertEqual(summary["failed_fixture_count"], 1)
+        self.assertEqual(summary["valid_result_count"], 1)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,46 @@
+{
+  "profiles": [
+    {
+      "key": "gpt-5.5",
+      "label": "GPT-5.5",
+      "chars_per_token": 3.2,
+      "aliases": ["gpt-5.5"],
+      "exact_encoding": "cl100k_base"
+    },
+    {
+      "key": "openai",
+      "label": "OpenAI generic",
+      "chars_per_token": 3.4,
+      "aliases": ["gpt", "openai", "o3", "o4"],
+      "exact_encoding": "cl100k_base"
+    },
+    {
+      "key": "gemini",
+      "label": "Gemini generic",
+      "chars_per_token": 3.5,
+      "aliases": ["gemini", "gemma"],
+      "exact_encoding": null
+    },
+    {
+      "key": "claude",
+      "label": "Claude generic",
+      "chars_per_token": 3.3,
+      "aliases": ["claude", "anthropic"],
+      "exact_encoding": null
+    },
+    {
+      "key": "local",
+      "label": "Local model generic",
+      "chars_per_token": 3.8,
+      "aliases": ["local", "ollama"],
+      "exact_encoding": null
+    },
+    {
+      "key": "fallback",
+      "label": "Fallback",
+      "chars_per_token": 4.0,
+      "aliases": [],
+      "exact_encoding": null
+    }
+  ]
+}

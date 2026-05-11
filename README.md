@@ -107,7 +107,18 @@ TMPDIR=/tmp \
 /opt/homebrew/bin/python3 Soma/soma_token_benchmark.py \
   --fixtures tests/fixtures/projects \
   --model-profile gpt-5.5 \
-  --budget fast
+  --budget fast \
+  --baseline both
+```
+
+Opt-in benchmark for the selected real project:
+
+```bash
+/opt/homebrew/bin/python3 Soma/soma_token_benchmark.py \
+  --project-root /path/to/project \
+  --model-profile gpt-5.5 \
+  --budget fast \
+  --baseline both
 ```
 
 Swift build:
@@ -127,6 +138,7 @@ Soma writes runtime reports and logs under the user home directory:
 ~/.soma/logs/session_stats.json
 ~/.soma/acceptance/universal/latest.json
 ~/.soma/token_stats.json
+~/.soma/token_stats/token_stats_YYYYMMDD-HHMMSS.json
 ```
 
 ## Documentation

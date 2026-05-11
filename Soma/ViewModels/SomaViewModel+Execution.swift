@@ -77,6 +77,7 @@ func runRelay(ollama: OllamaManager) {
 
                 await MainActor.run {
                     gatherBundle = bundle
+                    latestTokenSavings = bundle.token_savings
                     showContextPanel = true
                     relayPhase = .done
                     ollama.checkStatus()
@@ -140,6 +141,63 @@ func runRelay(ollama: OllamaManager) {
             let output = try await SomaViewModel.executeProcess(path: pyPath, args: [scriptPath, bundleJSON], environment: env)
             return try JSONDecoder().decode(RelayResponse.self, from: output)
         }.value
+    }
+
+func loadTokenBenchmarkReport() {
+        Task {
+            let file = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".soma/token_stats.json")
+            guard FileManager.default.fileExists(atPath: file.path) else { return }
+            do {
+                let data = try Data(contentsOf: file)
+                let report = try JSONDecoder().decode(TokenBenchmarkReport.self, from: data)
+                await MainActor.run {
+                    self.tokenBenchmarkReport = report
+                    self.tokenBenchmarkError = nil
+                }
+            } catch {
+                await MainActor.run {
+                    self.tokenBenchmarkError = "Token benchmark report unreadable: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+func runTokenBenchmark() {
+        guard !selectedProjectRoot.isEmpty else {
+            tokenBenchmarkError = "Select a project root before measuring token savings."
+            return
+        }
+        tokenBenchmarkBusy = true
+        tokenBenchmarkError = nil
+        logActivity("Measuring token savings for \((selectedProjectRoot as NSString).lastPathComponent)...")
+        Task {
+            do {
+                let script = try scriptURL(named: "soma_token_benchmark")
+                let data = try await runScript(
+                    path: pythonPath(),
+                    args: [
+                        script.path,
+                        "--project-root", selectedProjectRoot,
+                        "--baseline", "both",
+                        "--budget", "fast",
+                    ]
+                )
+                let report = try JSONDecoder().decode(TokenBenchmarkReport.self, from: data)
+                await MainActor.run {
+                    self.tokenBenchmarkReport = report
+                    self.tokenBenchmarkBusy = false
+                    self.tokenBenchmarkError = nil
+                    self.logActivity("Token benchmark \(report.status ?? "unknown"): saved \(report.summary?.total_saved_tokens ?? 0) estimated tokens")
+                }
+            } catch {
+                await MainActor.run {
+                    self.tokenBenchmarkBusy = false
+                    self.tokenBenchmarkError = error.localizedDescription
+                    self.logActivity("Token benchmark failed: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 
 func runSomaHelper(args: [String]) async throws -> Data {

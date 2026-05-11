@@ -49,6 +49,10 @@ final class SomaViewModel: ObservableObject {
     @Published var logEntries: [SomaLogEntry] = []
     @Published var toolStats: [SomaToolStat] = []
     @Published var logsLoading = false
+    @Published var latestTokenSavings: TokenSavings?
+    @Published var tokenBenchmarkReport: TokenBenchmarkReport?
+    @Published var tokenBenchmarkBusy = false
+    @Published var tokenBenchmarkError: String?
 
     init() {}
 

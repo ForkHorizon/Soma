@@ -18,6 +18,7 @@ import os
 
 
 from .config import *
+from soma_token_savings import build_task_candidate_baseline, build_token_savings
 
 
 async def run_gather(user_prompt, project_root, recent_roots_json, token_budget=DEFAULT_TOKEN_BUDGET, use_local_summary=False, analysis_depth='deterministic'):
@@ -35,7 +36,15 @@ async def run_gather(user_prompt, project_root, recent_roots_json, token_budget=
     recent_roots = parse_recent_roots(recent_roots_json)
     if (not intent['needs_gather']):
         preflight = {'intent': intent, 'packet_mode': 'direct', 'confidence': intent['confidence'], 'terms': prompt_terms(user_prompt), 'explicit_paths': [], 'changed_files': [], 'changed_paths': [], 'log_candidates': [], 'error_paths': [], 'candidate_paths': []}
-        print(json.dumps(bundle_for_direct_pass(user_prompt, intent['reason'], project_root, token_budget, analysis_depth, preflight)))
+        direct_bundle = bundle_for_direct_pass(user_prompt, intent['reason'], project_root, token_budget, analysis_depth, preflight)
+        direct_bundle['token_savings'] = build_token_savings(
+            packet=direct_bundle.get('codex_packet') or '',
+            budget=token_budget,
+            budget_tokens=TOKEN_BUDGETS[token_budget],
+            model_profile=os.environ.get('SOMA_TOKEN_MODEL_PROFILE', 'gpt-5.5'),
+            warnings=['Direct prompt did not need local evidence, so no raw-context baseline was available.'],
+        )
+        print(json.dumps(direct_bundle))
         return
     if (not project_root):
         print(json.dumps({'error': 'This prompt needs project context. Select a project root before relaying it.'}))
@@ -92,5 +101,22 @@ async def run_gather(user_prompt, project_root, recent_roots_json, token_budget=
     bundle = {'mode': 'gather', 'original_prompt': user_prompt, 'project_root': project_root, 'project_type': project_type, 'routing_decision': 'gathered_and_relayed', 'packet_mode': preflight['packet_mode'], 'analysis_depth': analysis_depth, 'analysis_stages': analysis_stages, 'preflight': {key: value for (key, value) in preflight.items() if (key not in {'changed_paths', 'error_paths', 'candidate_paths'})}, 'model_analysis': model_analysis, 'gather_reason': intent['reason'], 'confidence': summary.get('confidence', 0.55), 'git_status': git_status, 'git_diff': None, 'git_diff_summary': git_diff_summary, 'repo_index': {'cache_path': repo_index.get('cache_path'), 'indexed_file_count': repo_index.get('indexed_file_count'), 'changed_index_entries': repo_index.get('changed_index_entries')}, 'token_budget': token_budget, 'gathered_files': {item['path']: {'tool': item['kind'], 'preview': item['preview'][:300]} for item in evidence_items}, 'evidence_items': evidence_items, 'error_lines': error_lines, 'context_summary': (summary.get('summary') or ''), 'open_questions': dedupe_strings((summary.get('open_questions') or []))[:3], 'assumptions': dedupe_strings((summary.get('assumptions') or []))[:4], 'omitted_context': {'discovered_files': len(discovered), 'selected_evidence_items': len(evidence_items), 'local_summary_model_used': bool(use_local_summary), 'analysis_depth': analysis_depth}}
     bundle['codex_packet'] = build_codex_packet(user_prompt, bundle, token_budget)
     bundle['estimated_tokens'] = estimate_tokens(bundle['codex_packet'])
+    task_baseline = build_task_candidate_baseline(
+        project_root=project_root,
+        discovered=discovered,
+        preflight=preflight,
+        evidence_items=evidence_items,
+        git_status=git_status,
+        git_diff_summary=git_diff_summary,
+        model_profile=os.environ.get('SOMA_TOKEN_MODEL_PROFILE', 'gpt-5.5'),
+        packet_tokens=bundle['estimated_tokens'],
+    )
+    bundle['token_savings'] = build_token_savings(
+        packet=bundle['codex_packet'],
+        budget=token_budget,
+        budget_tokens=TOKEN_BUDGETS[token_budget],
+        model_profile=os.environ.get('SOMA_TOKEN_MODEL_PROFILE', 'gpt-5.5'),
+        task_candidate_baseline=task_baseline,
+    )
     bundle['enriched_prompt'] = bundle['codex_packet']
     print(json.dumps(bundle))

@@ -57,6 +57,15 @@ Analytics reads those JSONL logs through `Soma/soma_analytics.py`.
 
 ## Token Measurement
 
+`Soma/token_profiles.json` is the shared profile table for Python and Swift. `Soma/token_calculator.py` loads it, uses optional `tiktoken` when available, and falls back to chars-per-token estimates.
+
+`Soma/soma_token_savings.py` computes the runtime `token_savings` object for `soma_prepare_context`:
+
+- packet tokens and budget usage
+- task-candidate baseline from scanner/git metadata
+- saved tokens and savings percentage
+- estimator metadata
+
 `Soma/token_calculator.py` provides shared token estimates for:
 
 - `soma_prepare_context`
@@ -64,7 +73,7 @@ Analytics reads those JSONL logs through `Soma/soma_analytics.py`.
 - benchmark scenarios
 - Swift Token Calculator profile alignment
 
-`Soma/soma_token_benchmark.py` compares raw repository plus git/log baseline against Soma packets and writes `~/.soma/token_stats.json`.
+`Soma/soma_token_benchmark.py` compares task-candidate and opt-in raw repository plus git/log baselines against Soma packets. It writes `~/.soma/token_stats.json` and timestamped history under `~/.soma/token_stats/`.
 
 ## Optional Unity/Nexus Plugin
 

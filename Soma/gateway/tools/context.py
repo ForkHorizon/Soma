@@ -29,6 +29,7 @@ from scout_pipeline import (
     rank_evidence_with_model,
     select_evidence,
 )
+from soma_token_savings import build_task_candidate_baseline, build_token_savings, unavailable_token_savings
 
 from gateway.core import (
     _analysis_depth,
@@ -49,15 +50,22 @@ from gateway.core import (
 
 async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str = "deterministic") -> str:
     """Compile a bounded evidence packet for implementation, debug, or review work."""
+    budget = _packet_budget(budget)
+    depth = _analysis_depth(depth)
+    token_model_profile = os.environ.get("SOMA_TOKEN_MODEL_PROFILE", "gpt-5.5")
     project_root = get_active_project_root()
     if not project_root or not os.path.isdir(project_root):
         return _error_response(
             "No project root configured.",
+            budget=budget,
+            token_savings=unavailable_token_savings(
+                reason="No project root configured.",
+                budget=budget,
+                budget_tokens=TOKEN_BUDGETS[budget],
+                model_profile=token_model_profile,
+            ),
             next_calls=["Set SOMA_PROJECT_ROOT or start Nexus Unity so Soma can discover projectPath."],
         )
-
-    budget = _packet_budget(budget)
-    depth = _analysis_depth(depth)
 
     try:
         project_root = normalize_path(project_root)
@@ -66,12 +74,20 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
         if not intent["needs_gather"]:
             bundle = bundle_for_direct_pass(goal, intent["reason"], project_root, budget, depth)
             packet = bundle["codex_packet"]
+            token_savings = build_token_savings(
+                packet=packet,
+                budget=budget,
+                budget_tokens=TOKEN_BUDGETS[budget],
+                model_profile=token_model_profile,
+                warnings=["Direct prompt did not need local evidence, so no raw-context baseline was available."],
+            )
             return _ok_response(
                 "Direct prompt does not need local evidence.",
                 packet=packet,
                 mode="direct",
                 budget=budget,
                 estimated_tokens=estimate_tokens(packet),
+                token_savings=token_savings,
                 omitted={"reason": intent["reason"]},
                 next_calls=["Call soma_prepare_context again with a concrete code/debug/review goal if evidence is needed."],
             )
@@ -155,6 +171,23 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
         packet = _append_graph_context(build_codex_packet(goal, bundle, budget), graph_context, budget)
         packet = _enforce_packet_budget(goal, bundle, packet, budget)
         estimated = estimate_tokens(packet)
+        task_baseline = build_task_candidate_baseline(
+            project_root=project_root,
+            discovered=discovered,
+            preflight=preflight,
+            evidence_items=evidence_items,
+            git_status=git_status,
+            git_diff_summary=git_diff_summary,
+            model_profile=token_model_profile,
+            packet_tokens=estimated,
+        )
+        token_savings = build_token_savings(
+            packet=packet,
+            budget=budget,
+            budget_tokens=TOKEN_BUDGETS[budget],
+            model_profile=token_model_profile,
+            task_candidate_baseline=task_baseline,
+        )
         omitted = {
             **bundle["omitted_context"],
             "budget_tokens": TOKEN_BUDGETS[budget],
@@ -173,13 +206,23 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
             depth=depth,
             confidence=summary.get("confidence", 0.55),
             estimated_tokens=estimated,
+            token_savings=token_savings,
             evidence=_evidence_summary(evidence_items),
             omitted=omitted,
             analysis_stages=stages,
             next_calls=["Use packet first.", "Call soma_code_context for 1 focused missing area.", "Call soma_inspect for 1 Unity object/component."],
         )
     except Exception as exc:
-        return _error_response(f"soma_prepare_context failed: {exc}")
+        return _error_response(
+            f"soma_prepare_context failed: {exc}",
+            budget=budget,
+            token_savings=unavailable_token_savings(
+                reason=str(exc),
+                budget=budget,
+                budget_tokens=TOKEN_BUDGETS[budget],
+                model_profile=token_model_profile,
+            ),
+        )
 
 
 async def soma_get_map() -> str:

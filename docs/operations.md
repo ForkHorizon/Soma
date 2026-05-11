@@ -58,9 +58,12 @@ Runtime files live outside the repo:
 ~/.soma/logs/session_stats.json
 ~/.soma/acceptance/universal/latest.json
 ~/.soma/token_stats.json
+~/.soma/token_stats/token_stats_YYYYMMDD-HHMMSS.json
 ```
 
-Use logs to inspect tool calls, errors, latency, token estimates, project type, selected project, evidence counts, and local model stage status.
+Use logs to inspect tool calls, errors, latency, token estimates, token savings, budget usage, project type, selected project, evidence counts, and local model stage status.
+
+`System Status` shows the latest packet savings and an opt-in `Measure Selected Project` action. The action runs the project benchmark only on demand.
 
 ## Graphify
 

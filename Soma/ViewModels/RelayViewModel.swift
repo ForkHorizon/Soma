@@ -56,6 +56,7 @@ final class RelayViewModel: ObservableObject {
 
                 await MainActor.run {
                     gatherBundle = bundle
+                    somaViewModel.latestTokenSavings = bundle.token_savings
                     showContextPanel = true
                     relayPhase = .done
                     ollama.checkStatus()

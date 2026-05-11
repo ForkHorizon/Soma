@@ -79,11 +79,15 @@ struct LogsView: View {
             // Summary row
             let totalCalls = viewModel.toolStats.reduce(0) { $0 + $1.calls }
             let totalTok = viewModel.toolStats.reduce(0) { $0 + $1.totalTokens }
+            let totalSaved = viewModel.toolStats.reduce(0) { $0 + $1.totalSavedTokens }
             let totalErr = viewModel.toolStats.reduce(0) { $0 + $1.errors }
 
             HStack(spacing: 12) {
                 statBadge(value: "\(totalCalls)", label: "Calls", color: .blue)
                 statBadge(value: "\(totalTok)", label: "Tokens", color: .purple)
+                if totalSaved > 0 {
+                    statBadge(value: "\(totalSaved)", label: "Saved", color: .green)
+                }
                 if totalErr > 0 {
                     statBadge(value: "\(totalErr)", label: "Errors", color: .red)
                 }
@@ -131,6 +135,11 @@ struct LogsView: View {
                         Text("\(Int(stat.avgDuration))ms avg")
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundColor(.secondary)
+                    }
+                    if let savings = stat.avgSavingsPct {
+                        Text(String(format: "%.1f%% saved", savings))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.green)
                     }
                 }
             }
@@ -192,6 +201,26 @@ struct LogsView: View {
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundColor(.purple.opacity(0.8))
                     }
+                    if let budgetUsed = entry.budget_used_pct {
+                        Text(String(format: "%.1f%% budget", budgetUsed))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.blue.opacity(0.8))
+                    }
+                    if let savings = entry.savings_pct {
+                        Text(String(format: "%.1f%% saved", savings))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.green.opacity(0.9))
+                    }
+                    if let saved = entry.saved_tokens, saved > 0 {
+                        Text("\(saved) saved")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.green.opacity(0.9))
+                    }
+                }
+                if entry.baseline_type != nil || entry.token_estimator != nil {
+                    Text([entry.baseline_type, entry.token_estimator].compactMap { $0 }.joined(separator: " · "))
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
                 }
                 if let err = entry.error {
                     Text(err)

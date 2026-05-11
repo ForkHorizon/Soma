@@ -206,6 +206,9 @@ def log_tool_call(func: Callable) -> Callable:
             omitted = parsed_result.get("omitted") if isinstance(parsed_result, dict) else {}
             evidence = parsed_result.get("evidence") if isinstance(parsed_result, dict) else []
             analysis_stages = parsed_result.get("analysis_stages") if isinstance(parsed_result, dict) else []
+            token_savings = parsed_result.get("token_savings") if isinstance(parsed_result, dict) else {}
+            if not isinstance(token_savings, dict):
+                token_savings = {}
             extra = {
                 "project_type": parsed_result.get("project_type"),
                 "packet_mode": parsed_result.get("packet_mode") or parsed_result.get("mode"),
@@ -219,6 +222,12 @@ def log_tool_call(func: Callable) -> Callable:
                     for stage in analysis_stages
                     if isinstance(stage, dict) and stage.get("stage")
                 } if isinstance(analysis_stages, list) else None,
+                "packet_tokens": token_savings.get("packet_tokens"),
+                "budget_used_pct": token_savings.get("budget_used_pct"),
+                "saved_tokens": token_savings.get("saved_tokens"),
+                "savings_pct": token_savings.get("savings_pct"),
+                "baseline_type": token_savings.get("baseline_type"),
+                "token_estimator": token_savings.get("estimator"),
             }
             log_mcp_event(
                 event="tool_call",

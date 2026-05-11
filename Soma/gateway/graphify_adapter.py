@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import time
+import os
 from pathlib import Path
 from typing import Any
 
@@ -28,13 +29,14 @@ class GraphifyAdapter:
             if candidate.exists() and candidate not in graphs:
                 graphs.append(candidate)
 
-        cross_project = [
-            Path("/Users/daliys/Daliys/Swift/Soma/graphify-out/graph.json"),
-            Path("/Users/daliys/Daliys/UnityProjects/UnityTestForNexus/graphify-out/graph.json"),
-        ]
-        for candidate in cross_project:
-            if candidate.exists() and candidate not in graphs:
-                graphs.append(candidate)
+        if os.environ.get("SOMA_GRAPHIFY_PROJECT_ONLY") != "1":
+            cross_project = [
+                Path("/Users/daliys/Daliys/Swift/Soma/graphify-out/graph.json"),
+                Path("/Users/daliys/Daliys/UnityProjects/UnityTestForNexus/graphify-out/graph.json"),
+            ]
+            for candidate in cross_project:
+                if candidate.exists() and candidate not in graphs:
+                    graphs.append(candidate)
         return graphs
 
     def status(self, project_root: str | None) -> dict[str, Any]:

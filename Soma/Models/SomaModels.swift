@@ -47,10 +47,28 @@ struct GatherBundle: Codable, Sendable {
     let assumptions: [String]?
     let token_budget: String?
     let estimated_tokens: Int?
+    let token_savings: TokenSavings?
     let omitted_context: [String: AnyCodable]?
     let codex_packet: String?
     let enriched_prompt: String?
     let error: String?
+}
+
+struct TokenSavings: Codable, Sendable, Hashable {
+    let status: String?
+    let model_profile: String?
+    let label: String?
+    let estimator: String?
+    let chars_per_token: Double?
+    let exact_encoding: String?
+    let packet_tokens: Int?
+    let budget: String?
+    let budget_tokens: Int?
+    let budget_used_pct: Double?
+    let baseline_type: String?
+    let saved_tokens: Int?
+    let savings_pct: Double?
+    let warnings: [String]?
 }
 
 struct AnalysisStage: Codable, Sendable, Hashable {
@@ -254,6 +272,12 @@ struct SomaLogEntry: Identifiable, Sendable {
     let duration_ms: Double?
     let input_tokens: Int?
     let output_tokens: Int?
+    let packet_tokens: Int?
+    let budget_used_pct: Double?
+    let saved_tokens: Int?
+    let savings_pct: Double?
+    let baseline_type: String?
+    let token_estimator: String?
     let error: String?
 
     var displayName: String { tool ?? method ?? event }
@@ -273,7 +297,25 @@ struct SomaLogEntry: Identifiable, Sendable {
         self.duration_ms = dict["duration_ms"] as? Double
         self.input_tokens = dict["input_tokens"] as? Int
         self.output_tokens = dict["output_tokens"] as? Int
+        self.packet_tokens = SomaLogEntry.intValue(dict["packet_tokens"])
+        self.budget_used_pct = SomaLogEntry.doubleValue(dict["budget_used_pct"])
+        self.saved_tokens = SomaLogEntry.intValue(dict["saved_tokens"])
+        self.savings_pct = SomaLogEntry.doubleValue(dict["savings_pct"])
+        self.baseline_type = dict["baseline_type"] as? String
+        self.token_estimator = dict["token_estimator"] as? String
         self.error = dict["error"] as? String
+    }
+
+    private static func intValue(_ value: Any?) -> Int? {
+        if let value = value as? Int { return value }
+        if let value = value as? Double { return Int(value) }
+        return nil
+    }
+
+    private static func doubleValue(_ value: Any?) -> Double? {
+        if let value = value as? Double { return value }
+        if let value = value as? Int { return Double(value) }
+        return nil
     }
 }
 
@@ -283,6 +325,41 @@ struct SomaToolStat: Identifiable, Sendable {
     let errors: Int
     let avgDuration: Double
     let totalTokens: Int
+    let totalSavedTokens: Int
+    let avgSavingsPct: Double?
 
     var errorRate: Double { calls > 0 ? Double(errors) / Double(calls) : 0 }
+}
+
+struct TokenBenchmarkReport: Codable, Sendable {
+    let status: String?
+    let generated_at: String?
+    let model_profile: String?
+    let budget: String?
+    let baseline: String?
+    let summary: TokenBenchmarkSummary?
+    let results: [TokenBenchmarkResult]?
+}
+
+struct TokenBenchmarkSummary: Codable, Sendable {
+    let mode: String?
+    let result_count: Int?
+    let valid_result_count: Int?
+    let failed_result_count: Int?
+    let failed_fixture_count: Int?
+    let avg_savings_pct: Double?
+    let total_baseline_tokens: Int?
+    let total_soma_packet_tokens: Int?
+    let total_saved_tokens: Int?
+}
+
+struct TokenBenchmarkResult: Codable, Sendable {
+    let project: String?
+    let project_root: String?
+    let project_type: String?
+    let status: String?
+    let baseline_tokens: Int?
+    let soma_packet_tokens: Int?
+    let saved_tokens: Int?
+    let savings_pct: Double?
 }

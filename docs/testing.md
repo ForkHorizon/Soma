@@ -55,13 +55,25 @@ TMPDIR=/tmp \
 /opt/homebrew/bin/python3 Soma/soma_token_benchmark.py \
   --fixtures tests/fixtures/projects \
   --model-profile gpt-5.5 \
-  --budget fast
+  --budget fast \
+  --baseline both
 ```
 
 Output is written to:
 
 ```text
 ~/.soma/token_stats.json
+~/.soma/token_stats/token_stats_YYYYMMDD-HHMMSS.json
+```
+
+For a real project, run the opt-in form only when the selected project should be scanned:
+
+```bash
+/opt/homebrew/bin/python3 Soma/soma_token_benchmark.py \
+  --project-root /path/to/project \
+  --model-profile gpt-5.5 \
+  --budget fast \
+  --baseline both
 ```
 
 ## MCP Status Smoke

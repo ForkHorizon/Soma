@@ -10,6 +10,7 @@ struct SystemStatusView: View {
             VStack(alignment: .leading, spacing: 20) {
                 dashboardHeader
                 projectHealthCard
+                tokenSavingsCard
                 gatewayGrid
                 componentSection
                 Spacer(minLength: 40)
@@ -122,6 +123,104 @@ struct SystemStatusView: View {
         .padding(.vertical, 6)
         .background(color.opacity(0.08))
         .cornerRadius(8)
+    }
+
+    // MARK: - Token Savings
+
+    private var tokenSavingsCard: some View {
+        let savings = viewModel.latestTokenSavings
+        let benchmark = viewModel.tokenBenchmarkReport
+        let benchmarkSummary = benchmark?.summary
+        let benchmarkRoot = benchmark?.results?.first?.project_root
+        let benchmarkStale = benchmarkRoot != nil && !viewModel.projectPathsMatch(viewModel.selectedProjectRoot, benchmarkRoot)
+
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label("Token Savings", systemImage: "chart.line.downtrend.xyaxis")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    viewModel.runTokenBenchmark()
+                } label: {
+                    if viewModel.tokenBenchmarkBusy {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.small)
+                            Text("Measuring…")
+                        }
+                    } else {
+                        Label("Measure Selected Project", systemImage: "speedometer")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(viewModel.selectedProjectRoot.isEmpty || viewModel.tokenBenchmarkBusy)
+            }
+
+            HStack(spacing: 18) {
+                savingsMetric(
+                    title: "Current Packet",
+                    value: (savings?.packet_tokens).map { "\($0)" } ?? "No data",
+                    detail: (savings?.budget_used_pct).map { String(format: "%.1f%% of budget", $0) } ?? "run soma_prepare_context",
+                    color: .purple
+                )
+                savingsMetric(
+                    title: "Saved",
+                    value: (savings?.saved_tokens).map { "\($0)" } ?? "—",
+                    detail: (savings?.savings_pct).map { String(format: "%.1f%%", $0) } ?? savings?.status ?? "not measured",
+                    color: .green
+                )
+                savingsMetric(
+                    title: "Benchmark",
+                    value: (benchmarkSummary?.total_saved_tokens).map { "\($0)" } ?? "—",
+                    detail: (benchmarkSummary?.avg_savings_pct).map { String(format: "%.1f%% avg", $0) } ?? "opt-in only",
+                    color: benchmarkStale ? .orange : .blue
+                )
+            }
+
+            HStack(spacing: 8) {
+                Text("Estimator: \(savings?.estimator ?? benchmark?.model_profile ?? "estimated")")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                if let baseline = savings?.baseline_type {
+                    Text("Baseline: \(baseline.replacingOccurrences(of: "_", with: " "))")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                if benchmarkStale {
+                    Label("Benchmark is for another project", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
+            }
+
+            if let error = viewModel.tokenBenchmarkError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .lineLimit(2)
+            }
+        }
+        .padding(18)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(14)
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.secondary.opacity(0.1)))
+    }
+
+    private func savingsMetric(title: String, value: String, detail: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.bold())
+                .foregroundColor(.secondary)
+            Text(value)
+                .font(.system(.title3, design: .monospaced).bold())
+                .foregroundColor(color)
+                .lineLimit(1)
+            Text(detail)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Gateway Control Grid
