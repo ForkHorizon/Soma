@@ -85,6 +85,8 @@ def categorize_path(path):
         return 'unity'
     if ((suffix in LOG_EXTENSIONS) or ('log' in name.lower()) or name.lower().startswith(('ollama_', 'stderr', 'stdout'))):
         return 'log'
+    if ((suffix in SOURCE_EXTENSIONS) and (suffix not in {'.bat', '.command', '.ps1', '.sh', '.zsh'})):
+        return 'source'
     if ((suffix in SCRIPT_EXTENSIONS) or ((not suffix) and os.access(path, os.X_OK))):
         return 'script'
     if (suffix in SOURCE_EXTENSIONS):

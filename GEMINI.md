@@ -1,137 +1,65 @@
-# GEMINI Context: Soma / NexusSoma
+# AI Development Guide: Soma
 
-## Project Role
+Soma is a universal local-first evidence compiler and MCP gateway. Treat Unity/Nexus as an optional plugin path, not as a core dependency.
 
-Soma is the local-first evidence compiler and MCP gateway for NexusSoma.
+## Source Of Truth
 
-**Note on Nexus Integration:**
-Nexus is a separate repository providing an MCP server for the Unity Editor. Soma functions independently as a codebase analyzer (using Graphify, AST scanners, and git), but is also designed to integrate seamlessly with Nexus. When used together, Soma acts as a unified gateway, hiding the raw, verbose Nexus tools from Big AI and wrapping them in compact, efficient workflows.
+Read these first:
 
-Primary rule:
+- `README.md` for operator quickstart.
+- `docs/architecture.md` for system design.
+- `docs/operations.md` for runtime workflow.
+- `docs/testing.md` for canonical verification.
+- `docs/ai-development-guide.md` before changing code.
 
-```text
-Big AI clients should connect to Soma only.
-Do not connect Big AI directly to raw Nexus Unity for the Soma workflow.
-```
+## Architecture Map
 
-Soma exposes a small, stable MCP tool catalog and hides raw Nexus Unity tools behind compact Soma tools. This reduces tool-definition bloat, exploratory calls, full scene/component dumps, raw diff/log spam, and cold-start rediscovery.
+- Stable entrypoint: `Soma/soma_mcp_server.py`
+- Gateway orchestration: `Soma/gateway/server.py`
+- Tool registry: `Soma/gateway/tool_registry.py`
+- Config mutation: `Soma/gateway/client_config.py`
+- Status payloads: `Soma/gateway/status.py`
+- Core evidence pipeline: `Soma/scout_pipeline_module/`
+- Structured logging: `Soma/soma_logger.py`
+- Analytics: `Soma/soma_analytics.py`
+- Universal verifier: `Soma/verify_soma_universal_workflow.py`
+- Token benchmark: `Soma/soma_token_benchmark.py`
 
-## Current Architecture
+## Hard Rules
 
-- Swift app: `/Users/daliys/Daliys/Swift/Soma/Soma/ContentView.swift`
-- Soma MCP gateway: `/Users/daliys/Daliys/Swift/Soma/Soma/soma_mcp_server.py`
-- Scout Pipeline: `/Users/daliys/Daliys/Swift/Soma/Soma/scout_pipeline.py`
-- Live verifier: `/Users/daliys/Daliys/Swift/Soma/Soma/verify_soma_live_workflow.py`
-- Logging & Analytics: `/Users/daliys/Daliys/Swift/Soma/Soma/soma_logger.py` & `soma_analytics.py`
-- Acceptance Suite: `/Users/daliys/Daliys/Swift/Soma/Soma/soma_acceptance.py`
-- Detailed report: `/Users/daliys/Daliys/Swift/Soma/reportD.md`
+- Big AI clients connect to Soma only.
+- Do not expose raw `unity_*` or direct Nexus tools in Soma docs/config examples.
+- Deterministic `soma_prepare_context` must work without Ollama, Unity, or Nexus.
+- Local ranker/analyst failures must degrade, not block deterministic packets.
+- `tools/list` stays stable for v1.
+- Keep logs metadata-oriented by default; do not log full request/response bodies.
+- `graphify-out/` is generated and ignored by git.
 
-The app controls:
-
-- Soma MCP server start/stop
-- selected project root
-- Nexus connection status
-- Graphify graph status
-- Codex config verify/install/rollback
-- live Soma/Nexus verifier
-
-## MCP Tool Policy
-
-Big AI should see exactly these Soma tools:
-
-- `soma_prepare_context`
-- `soma_get_map`
-- `soma_ask`
-- `soma_code_context`
-- `soma_scene`
-- `soma_inspect`
-- `soma_debug`
-- `soma_review`
-- `soma_delta`
-- `soma_apply`
-- `soma_execute`
-- `soma_remember`
-
-Raw `unity_*` tools should not be visible to Big AI when using the Soma workflow.
-
-## Current Workflow
-
-1. Select a project root in Soma.
-2. Start Soma MCP from the Swift app.
-3. Install or copy Codex/Gemini/Claude config that points to Soma.
-4. Big AI calls `soma_get_map` or `soma_prepare_context`.
-5. Soma gathers deterministic evidence, Graphify context, memory, and Nexus state if online.
-6. Big AI uses the compact packet first.
-7. Unity edits go through `soma_apply`, not raw Nexus tools.
-
-## Codex Config State
-
-Codex is the only client with mutation support:
-
-- `Install Codex` backs up `~/.codex/config.toml`, writes `[mcp_servers.soma]`, and removes direct `[mcp_servers.nexus-unity]`.
-- `Verify Client` checks whether direct Nexus exposure remains.
-- `Rollback Codex` restores the newest Soma backup.
-
-Gemini and Claude remain copy-only until Codex is fully proven.
-
-## Nexus Unity State
-
-Nexus Unity remains the powerful hidden Unity control layer.
-
-Live Unity operations require:
-
-1. Open UnityTestForNexus.
-2. Open `Window > Nexus Unity`.
-3. Click `START SERVER`.
-4. Refresh Soma status.
-5. Run live verification.
-
-If Nexus is offline, Soma should return compact degraded/error JSON. Offline Nexus is not a reason to fail deterministic packet generation.
-
-## Graphify
-
-This project has a Graphify knowledge graph at `graphify-out/`.
-
-Rules:
-
-- Before architecture/codebase answers, read `graphify-out/GRAPH_REPORT.md` when useful.
-- For cross-module questions, prefer `graphify query`, `graphify path`, or `graphify explain` over broad raw grep.
-- After code changes, run `graphify update .` when graph freshness matters.
-- Do not dump huge graph output into chat or documentation.
-
-Known graph paths:
-
-- Soma: `/Users/daliys/Daliys/Swift/Soma/graphify-out/graph.json`
-- UnityTestForNexus: `/Users/daliys/Daliys/UnityProjects/UnityTestForNexus/graphify-out/graph.json`
-
-## Testing
-
-Run Python tests:
+## Canonical Commands
 
 ```bash
-cd /Users/daliys/Daliys/Swift/Soma
-PYTHONDONTWRITEBYTECODE=1 /opt/homebrew/bin/python3 -m unittest discover -s tests -p 'test_*.py'
+PYTHONPATH=/Users/daliys/Daliys/Swift/Soma/Soma \
+PYTHONDONTWRITEBYTECODE=1 \
+TMPDIR=/tmp \
+/opt/homebrew/bin/python3 -m unittest discover -s tests -p 'test_*.py'
 ```
-
-Expected current result:
-
-```text
-Ran 31 tests
-OK
-```
-
-Run Swift build:
 
 ```bash
-cd /Users/daliys/Daliys/Swift/Soma
+PYTHONPATH=/Users/daliys/Daliys/Swift/Soma/Soma \
+PYTHONDONTWRITEBYTECODE=1 \
+TMPDIR=/tmp \
+/opt/homebrew/bin/python3 Soma/verify_soma_universal_workflow.py \
+  --fixtures tests/fixtures/projects \
+  --budget fast
+```
+
+```bash
 xcodebuild -project Soma.xcodeproj -scheme Soma -configuration Debug -destination 'platform=macOS' build
 ```
 
-## Development Rules
+## Change Guidance
 
-- Keep deterministic mode as the default path.
-- Local ranker/analyst failures must not block deterministic packets.
-- Do not store raw conversations in project memory.
-- Do not expose direct Nexus tools to Big AI in Soma docs/config examples.
-- Keep `tools/list` stable for v1.
-- Update `reportD.md` or README when changing the architecture or workflow.
+- Prefer behavior-preserving refactors in small slices.
+- Add or update tests for public MCP response shape, logs, budgets, or project detection changes.
+- Keep fixture coverage universal and non-Unity by default.
+- Run `git diff --check` before handing work back.

@@ -11,18 +11,103 @@ extension SomaViewModel {
 
 func startSomaServer() {
         guard !selectedProjectRoot.isEmpty else { return }
-        somaServerRunning = true
-        somaServerBusy = false
-        mcpInstallStatus = "Soma Swift MCP stdio server ready for \(selectedProjectRoot)."
-        logActivity("Soma MCP Gateway marked as ready")
-        refreshSomaStatus()
-        startLogRefreshTimer()
+        if let process = somaServerProcess, process.isRunning {
+            somaServerRunning = true
+            somaServerPID = process.processIdentifier
+            mcpInstallStatus = "Soma MCP server already running with PID \(process.processIdentifier)."
+            return
+        }
+
+        somaServerBusy = true
+        do {
+            let script = try scriptURL(named: "soma_mcp_server")
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: pythonPath())
+            process.arguments = [script.path, "--project-root", selectedProjectRoot]
+            process.environment = scriptEnvironment(projectRoot: selectedProjectRoot)
+
+            let stdin = Pipe()
+            let stdout = Pipe()
+            let stderr = Pipe()
+            process.standardInput = stdin
+            process.standardOutput = stdout
+            process.standardError = stderr
+
+            process.terminationHandler = { [weak self] proc in
+                let pid = proc.processIdentifier
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    if self.somaServerPID == pid {
+                        self.somaServerRunning = false
+                        self.somaServerBusy = false
+                        self.somaServerPID = nil
+                        self.somaServerProcess = nil
+                        self.somaServerInput = nil
+                        self.mcpInstallStatus = "Soma MCP server exited with status \(proc.terminationStatus)."
+                        self.stopLogRefreshTimer()
+                        self.loadStructuredLogs()
+                    }
+                }
+            }
+
+            try process.run()
+            somaServerProcess = process
+            somaServerInput = stdin
+            somaServerPID = process.processIdentifier
+            somaServerRunning = true
+            somaServerBusy = false
+            mcpInstallStatus = "Soma MCP server running with PID \(process.processIdentifier) for \(selectedProjectRoot)."
+            logActivity("Started Soma MCP Gateway PID \(process.processIdentifier)")
+            drainProcessPipe(stdout)
+            drainProcessPipe(stderr)
+            refreshSomaStatus()
+            startLogRefreshTimer()
+        } catch {
+            somaServerRunning = false
+            somaServerPID = nil
+            somaServerProcess = nil
+            somaServerInput = nil
+            somaServerBusy = false
+            mcpInstallStatus = "Soma MCP start failed: \(error.localizedDescription)"
+            logActivity("Soma MCP start failed: \(error.localizedDescription)")
+        }
     }
 
 func stopSomaServer() {
+        let pid = somaServerPID
+        somaServerInput?.fileHandleForWriting.closeFile()
+        if let process = somaServerProcess, process.isRunning {
+            process.terminate()
+        }
         somaServerRunning = false
+        somaServerPID = nil
+        somaServerProcess = nil
+        somaServerInput = nil
         mcpInstallStatus = "Soma MCP Gateway disabled."
+        if let pid {
+            logServerStop(pid: pid)
+        }
         stopLogRefreshTimer()
+        loadStructuredLogs()
+    }
+
+func drainProcessPipe(_ pipe: Pipe) {
+        DispatchQueue.global(qos: .utility).async {
+            _ = pipe.fileHandleForReading.readDataToEndOfFile()
+        }
+    }
+
+func logServerStop(pid: Int32) {
+        Task {
+            do {
+                let logger = try scriptURL(named: "soma_logger")
+                _ = try await runScript(path: pythonPath(), args: [logger.path, "--server-stop-pid", "\(pid)", "--reason", "swift_stop"])
+            } catch {
+                await MainActor.run {
+                    self.logActivity("Failed to write server_stop log: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 
 func copyMCPConfig(client: String) {

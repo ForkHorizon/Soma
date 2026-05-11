@@ -1,0 +1,1 @@
+{"name":"node-ts-fixture","version":"0.1.0","scripts":{"test":"ts-node src/index.ts"}}

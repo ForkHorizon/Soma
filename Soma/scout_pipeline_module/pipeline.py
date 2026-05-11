@@ -1,7 +1,10 @@
 
 
+"""Scout pipeline orchestration.
 
-
+The pipeline runs prompt classification, project discovery, git summaries,
+evidence selection, optional local model stages, and final packet construction.
+"""
 import json
 
 import os

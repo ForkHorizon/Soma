@@ -1,311 +1,105 @@
 #!/usr/bin/env python3
-"""
-Soma MCP Server - single gateway for Big AI.
+"""Soma MCP server CLI and stdio entrypoint.
 
-Big AI connects only to Soma. Soma composes Scout Pipeline, Nexus Unity,
-Graphify, project memory, and optional local model stages into bounded packets.
+This file is intentionally thin. Tool definitions, config mutation, status
+payloads, and JSON-RPC daemon behavior live in focused gateway modules so the
+next maintainer can reason about each responsibility separately.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
-import re
 import sys
-import time
-from pathlib import Path
 from typing import Any
 
-from gateway.core import get_active_project_root, graphify, memory_store, nexus
-from gateway.tools.context import soma_code_context, soma_get_map, soma_prepare_context
-from gateway.tools.memory import soma_remember
-from gateway.tools.nexus import (
-    soma_apply,
-    soma_delta,
-    soma_execute,
-    soma_inspect,
-    soma_scene,
+from gateway.client_config import (
+    build_client_config,
+    codex_config_default_path,
+    install_codex_config,
+    rollback_codex_config,
+    server_script_path,
+    verify_codex_config,
 )
-from gateway.tools.query import soma_ask, soma_debug, soma_review
-
-# Swift acts as the primary MCP server now.
-# This script acts as a CLI runner for the heavy Python tools.
-
-SOMA_DIR = Path(__file__).parent
-sys.path.insert(0, str(SOMA_DIR))
-from scout_pipeline import (  # noqa: E402
-    normalize_path,
+from gateway.jsonrpc import run_daemon
+from gateway.status import (
+    build_status_payload,
+    discover_nexus,
+    find_graph_json,
+    get_memory_dir,
+    load_memory,
+    query_graph_simple,
+    save_memory,
 )
-
-GRAPHIFY_GRAPH_DIR = Path.home() / ".soma" / "graphs"
-SOMA_MEMORY_DIR = Path.home() / ".soma"
-MAX_TEXT_FIELD_CHARS = 8_000
-GRAPH_STALE_SECONDS = 24 * 60 * 60
+from gateway.tool_registry import TOOL_CATALOG
+from soma_logger import log_mcp_request, log_mcp_response, log_server_start, log_server_stop
+from scout_pipeline import normalize_path
 
 _project_root: str | None = os.environ.get("SOMA_PROJECT_ROOT")
-_last_scene_generation: int | None = None
 
-
-def discover_nexus(force: bool = False) -> dict[str, Any] | None:
-    state = nexus.discover(force=force)
-    return state.as_dict() if state.connected else None
-
-
-
-
-
-def find_graph_json(project_root: str | None) -> Path | None:
-    graphs = graphify.find_graphs(project_root)
-    return graphs[0] if graphs else None
-
-
-def query_graph_simple(graph_path: Path, question: str) -> str:
-    result = graphify.query(question, str(graph_path.parent.parent), budget=1500)
-    if result["answers"]:
-        return result["answers"][0]["answer"]
-    return ""
-
-
-def get_memory_dir(project_root: str | None) -> Path:
-    return memory_store.project_dir(project_root)
-
-
-def load_memory(project_root: str | None) -> dict[str, Any]:
-    return memory_store.load(project_root)
-
-
-def save_memory(project_root: str | None, memory: dict[str, Any]):
-    memory_store.save(project_root, memory)
-
-
+# Backwards-compatible name used by older tests/docs.
 def _server_script_path() -> str:
-    return normalize_path(Path(__file__).parent.parent / 'soma_mcp_server.py')
+    return server_script_path()
 
 
-def build_client_config(client: str, project_root: str | None = None, python_executable: str | None = None) -> str:
-    root = normalize_path(project_root) if project_root else ""
-    python = python_executable or sys.executable or "/opt/homebrew/bin/python3"
-    script = _server_script_path()
-
-    if client == "codex":
-        args = f'["{script}", "--project-root", "{root}"]' if root else f'["{script}"]'
-        env_line = f'env = {{ SOMA_PROJECT_ROOT = "{root}" }}' if root else "# env = { SOMA_PROJECT_ROOT = \"/absolute/project/root\" }"
-        return "\n".join(
-            [
-                "[mcp_servers.soma]",
-                f'command = "{python}"',
-                f"args = {args}",
-                env_line,
-                "# Keep Big AI connected to Soma only; remove direct Unity MCP entries for this workflow.",
-            ]
-        )
-
-    if client not in {"gemini", "claude"}:
-        raise ValueError(f"unknown client: {client}")
-
-    payload = {
-        "mcpServers": {
-            "soma": {
-                "command": python,
-                "args": [script] + (["--project-root", root] if root else []),
-                "env": {"SOMA_PROJECT_ROOT": root} if root else {},
-            }
-        },
-        "_note": f"Merge this into {client} MCP settings. Keep Big AI connected only to Soma.",
-    }
-    return json.dumps(payload, indent=2, sort_keys=True)
+async def _run_requested_tool(tool_name: str, tool_params: dict[str, Any]) -> None:
+    try:
+        if tool_name in TOOL_CATALOG:
+            result = await TOOL_CATALOG[tool_name](**tool_params)
+        else:
+            result = json.dumps({"error": f"Unknown tool {tool_name}"})
+        print(result)
+    except Exception as exc:
+        print(json.dumps({"error": str(exc)}))
+        sys.exit(1)
 
 
-def codex_config_default_path() -> Path:
-    return Path.home() / ".codex" / "config.toml"
+async def _run_mcp_package_server(transport: str) -> None:
+    from mcp.server import Server
+    from mcp.server.stdio import stdio_server
+    from mcp.types import TextContent, Tool
+
+    if transport == "sse":
+        print(json.dumps({"error": "SSE not currently supported in lightweight python gateway"}))
+        sys.exit(1)
+
+    server = Server("soma-gateway")
+
+    @server.list_tools()
+    async def handle_list_tools() -> list[Tool]:
+        start = log_mcp_request("tools/list", None, 0)
+        tools = [
+            Tool(name=name, description=func.__doc__ or "Soma tool", inputSchema={"type": "object", "properties": {}})
+            for name, func in TOOL_CATALOG.items()
+        ]
+        log_mcp_response("tools/list", None, start, "ok", len(str(tools)))
+        return tools
+
+    @server.call_tool()
+    async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
+        start = log_mcp_request(f"tools/call:{name}", None, len(json.dumps(arguments or {}, default=str)))
+        if name not in TOOL_CATALOG:
+            log_mcp_response(f"tools/call:{name}", None, start, "error", 0)
+            raise ValueError(f"Unknown tool: {name}")
+        try:
+            result = await TOOL_CATALOG[name](**arguments)
+            log_mcp_response(f"tools/call:{name}", None, start, "ok", len(str(result)))
+            return [TextContent(type="text", text=str(result))]
+        except Exception as exc:
+            text = json.dumps({"status": "failed", "error": str(exc)})
+            log_mcp_response(f"tools/call:{name}", None, start, "error", len(text))
+            return [TextContent(type="text", text=text)]
+
+    async with stdio_server() as (read, write):
+        log_server_start(_project_root, os.getpid())
+        try:
+            await server.run(read, write, server.create_initialization_options())
+        finally:
+            log_server_stop(os.getpid())
 
 
-def _timestamp() -> str:
-    return time.strftime("%Y%m%d-%H%M%S")
-
-
-def _backup_path(config_path: Path) -> Path:
-    base = config_path.with_name(f"{config_path.name}.soma-backup-{_timestamp()}")
-    if not base.exists():
-        return base
-    index = 1
-    while True:
-        candidate = config_path.with_name(f"{config_path.name}.soma-backup-{_timestamp()}-{index}")
-        if not candidate.exists():
-            return candidate
-        index += 1
-
-
-def _codex_backup_candidates(config_path: Path) -> list[Path]:
-    return sorted(
-        config_path.parent.glob(f"{config_path.name}.soma-backup-*"),
-        key=lambda path: (path.stat().st_mtime, path.name),
-        reverse=True,
-    )
-
-
-def _remove_toml_table_block(text: str, table_name: str) -> tuple[str, int]:
-    header_pattern = re.compile(rf"^\s*\[{re.escape(table_name)}\]\s*(?:#.*)?$")
-    any_header_pattern = re.compile(r"^\s*\[")
-    lines = text.splitlines()
-    kept: list[str] = []
-    removed = 0
-    skipping = False
-
-    for line in lines:
-        if header_pattern.match(line):
-            skipping = True
-            removed += 1
-            continue
-        if skipping and any_header_pattern.match(line):
-            skipping = False
-        if skipping:
-            continue
-        kept.append(line)
-
-    return "\n".join(kept).strip(), removed
-
-
-def _count_toml_table(text: str, table_name: str) -> int:
-    pattern = re.compile(rf"^\s*\[{re.escape(table_name)}\]\s*(?:#.*)?$", re.MULTILINE)
-    return len(pattern.findall(text))
-
-
-def install_codex_config(
-    config_path: str | Path | None = None,
-    project_root: str | None = None,
-    python_executable: str | None = None,
-) -> dict[str, Any]:
-    path = Path(config_path).expanduser() if config_path else codex_config_default_path()
-    existing = path.read_text(errors="replace") if path.exists() else ""
-    backup: Path | None = None
-    if path.exists():
-        backup = _backup_path(path)
-        backup.write_text(existing)
-
-    cleaned, old_soma_blocks = _remove_toml_table_block(existing, "mcp_servers.soma")
-    cleaned, direct_nexus_blocks = _remove_toml_table_block(cleaned, "mcp_servers.nexus-unity")
-    cleaned = cleaned.strip()
-    soma_config = build_client_config("codex", project_root, python_executable).strip()
-    updated = f"{cleaned}\n\n{soma_config}\n" if cleaned else f"{soma_config}\n"
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(updated)
-
-    verification = verify_codex_config(path)
-    return {
-        "status": verification["status"],
-        "summary": "Installed Codex MCP config for Soma.",
-        "config_path": str(path),
-        "backup_path": str(backup) if backup else None,
-        "soma_installed": verification["soma_installed"],
-        "direct_nexus_removed": direct_nexus_blocks > 0,
-        "old_soma_blocks_replaced": old_soma_blocks,
-        "issues": verification["issues"],
-    }
-
-
-def rollback_codex_config(
-    config_path: str | Path | None = None,
-    backup_path: str | Path | None = None,
-) -> dict[str, Any]:
-    path = Path(config_path).expanduser() if config_path else codex_config_default_path()
-    selected_backup: Path | None
-    if backup_path:
-        selected_backup = Path(backup_path).expanduser()
-    else:
-        candidates = _codex_backup_candidates(path)
-        selected_backup = candidates[0] if candidates else None
-
-    if not selected_backup or not selected_backup.exists():
-        return {
-            "status": "degraded",
-            "summary": "No Codex Soma backup found to restore.",
-            "config_path": str(path),
-            "backup_path": str(selected_backup) if selected_backup else None,
-            "restored": False,
-            "issues": ["missing_backup"],
-        }
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(selected_backup.read_text(errors="replace"))
-    verification = verify_codex_config(path)
-    return {
-        "status": "ok",
-        "summary": "Restored Codex config from Soma backup.",
-        "config_path": str(path),
-        "backup_path": str(selected_backup),
-        "restored": True,
-        "post_restore_status": verification["status"],
-        "post_restore_issues": verification["issues"],
-    }
-
-
-def verify_codex_config(config_path: str | Path | None = None) -> dict[str, Any]:
-    path = Path(config_path).expanduser() if config_path else codex_config_default_path()
-    issues: list[str] = []
-    if not path.exists():
-        return {
-            "status": "degraded",
-            "summary": "Codex config file not found.",
-            "config_path": str(path),
-            "soma_installed": False,
-            "direct_nexus_exposed": False,
-            "tool_exposure_clean": False,
-            "issues": ["missing_config"],
-        }
-
-    text = path.read_text(errors="replace")
-    soma_blocks = _count_toml_table(text, "mcp_servers.soma")
-    has_soma_script = "soma_mcp_server.py" in text
-    direct_nexus_exposed = any(marker in text for marker in ("[mcp_servers.nexus-unity]", "nexus_unity_bridge", "nexus-unity"))
-    unity_tool_exposed = "unity_" in text
-
-    if soma_blocks != 1:
-        issues.append(f"soma_table_count={soma_blocks}")
-    if not has_soma_script:
-        issues.append("soma_script_missing")
-    if direct_nexus_exposed:
-        issues.append("direct_nexus_exposed")
-    if unity_tool_exposed:
-        issues.append("unity_tool_marker_found")
-
-    clean = not direct_nexus_exposed and not unity_tool_exposed
-    return {
-        "status": "ok" if soma_blocks == 1 and has_soma_script and clean else "degraded",
-        "summary": "Codex config points to Soma only." if soma_blocks == 1 and has_soma_script and clean else "Codex config needs Soma-only cleanup.",
-        "config_path": str(path),
-        "soma_installed": soma_blocks == 1 and has_soma_script,
-        "direct_nexus_exposed": direct_nexus_exposed,
-        "tool_exposure_clean": clean,
-        "issues": issues,
-    }
-
-
-def build_status_payload(project_root: str | None = None) -> dict[str, Any]:
-    root = normalize_path(project_root) if project_root else get_active_project_root()
-    state = nexus.discover(force=True)
-    # In migration phase, hardcode the known tools since FastMCP is removed
-    tools = [
-        "soma_prepare_context", "soma_get_map", "soma_ask", "soma_inspect",
-        "soma_scene", "soma_execute", "soma_debug", "soma_delta",
-        "soma_apply", "soma_remember", "soma_review", "soma_code_context"
-    ]
-    return {
-        "status": "ok",
-        "server": {
-            "transport": "stdio",
-            "script": _server_script_path(),
-            "tool_count": len(tools),
-            "tool_names": tools,
-        },
-        "project_root": root,
-        "nexus": state.as_dict(),
-        "graph": graphify.status(root),
-        "python": sys.executable,
-    }
-
-
-def main():
+def main() -> None:
+    global _project_root
     import argparse
 
     parser = argparse.ArgumentParser(description="Soma MCP Server")
@@ -326,206 +120,38 @@ def main():
 
     if args.project_root:
         _project_root = normalize_path(args.project_root)
+        os.environ["SOMA_PROJECT_ROOT"] = _project_root
 
     if args.print_client_config:
         print(build_client_config(args.print_client_config, _project_root, sys.executable))
         raise SystemExit(0)
-
     if args.status_json:
         print(json.dumps(build_status_payload(_project_root), indent=2, sort_keys=True))
         raise SystemExit(0)
-
     if args.verify_client_config == "codex":
         print(json.dumps(verify_codex_config(args.config_path), indent=2, sort_keys=True))
         raise SystemExit(0)
-
     if args.install_codex_config:
         print(json.dumps(install_codex_config(args.config_path, _project_root, sys.executable), indent=2, sort_keys=True))
         raise SystemExit(0)
-
     if args.rollback_codex_config:
         print(json.dumps(rollback_codex_config(args.config_path, args.backup_path), indent=2, sort_keys=True))
         raise SystemExit(0)
-
-    import asyncio
-
-
     if args.daemon:
-        async def run_daemon():
-            import sys
-            import json
-            loop = asyncio.get_running_loop()
-            while True:
-                line = await loop.run_in_executor(None, sys.stdin.readline)
-                if not line:
-                    break
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    req = json.loads(line)
-                    req_id = req.get("id")
-                    method = req.get("method")
-                    params = req.get("params", {})
-
-                    if method == "soma_prepare_context":
-                        res = await soma_prepare_context(**params)
-                    elif method == "soma_get_map":
-                        res = await soma_get_map(**params)
-                    elif method == "soma_ask":
-                        res = await soma_ask(**params)
-                    elif method == "soma_inspect":
-                        res = await soma_inspect(**params)
-                    elif method == "soma_scene":
-                        res = await soma_scene(**params)
-                    elif method == "soma_execute":
-                        res = await soma_execute(**params)
-                    elif method == "soma_debug":
-                        res = await soma_debug(**params)
-                    elif method == "soma_delta":
-                        res = await soma_delta(**params)
-                    elif method == "soma_apply":
-                        res = await soma_apply(**params)
-                    elif method == "soma_remember":
-                        res = await soma_remember(**params)
-                    elif method == "soma_review":
-                        res = await soma_review(**params)
-                    elif method == "soma_code_context":
-                        res = await soma_code_context(**params)
-                    else:
-                        res = json.dumps({"error": f"Unknown tool {method}"})
-
-                    # Convert string results to proper JSON dicts if they are json strings
-                    try:
-                        res_dict = json.loads(res)
-                        if isinstance(res_dict, dict):
-                            # The swift side expects result to be a dictionary, not a nested string.
-                            # But wait, looking at executePythonTool:
-                            # if let json = try? JSONSerialization.jsonObject(with: outputData) as? [String: Any]
-                            # it returns the dict.
-                            res_obj = res_dict
-                        else:
-                            res_obj = {"result": res}
-                    except:
-                        res_obj = {"result": res}
-
-                    response = {
-                        "jsonrpc": "2.0",
-                        "id": req_id,
-                        "result": res_obj
-                    }
-                    print(json.dumps(response), flush=True)
-                except Exception as e:
-                    try:
-                        req_id = json.loads(line).get("id")
-                    except:
-                        req_id = None
-                    response = {
-                        "jsonrpc": "2.0",
-                        "id": req_id,
-                        "error": {
-                            "code": -32000,
-                            "message": str(e)
-                        }
-                    }
-                    print(json.dumps(response), flush=True)
-
-        asyncio.run(run_daemon())
+        asyncio.run(run_daemon(_project_root))
         raise SystemExit(0)
-
     if args.run_tool:
-        tool_name = args.run_tool
-        tool_params = {}
+        tool_params: dict[str, Any] = {}
         if args.tool_args:
             try:
                 tool_params = json.loads(args.tool_args[0])
             except Exception:
                 pass
-
-        async def run_requested_tool():
-            try:
-                if tool_name == "soma_prepare_context":
-                    res = await soma_prepare_context(**tool_params)
-                elif tool_name == "soma_get_map":
-                    res = await soma_get_map(**tool_params)
-                elif tool_name == "soma_ask":
-                    res = await soma_ask(**tool_params)
-                elif tool_name == "soma_inspect":
-                    res = await soma_inspect(**tool_params)
-                elif tool_name == "soma_scene":
-                    res = await soma_scene(**tool_params)
-                elif tool_name == "soma_execute":
-                    res = await soma_execute(**tool_params)
-                elif tool_name == "soma_debug":
-                    res = await soma_debug(**tool_params)
-                elif tool_name == "soma_delta":
-                    res = await soma_delta(**tool_params)
-                elif tool_name == "soma_apply":
-                    res = await soma_apply(**tool_params)
-                elif tool_name == "soma_remember":
-                    res = await soma_remember(**tool_params)
-                elif tool_name == "soma_review":
-                    res = await soma_review(**tool_params)
-                elif tool_name == "soma_code_context":
-                    res = await soma_code_context(**tool_params)
-                else:
-                    res = json.dumps({"error": f"Unknown tool {tool_name}"})
-                print(res)
-            except Exception as e:
-                print(json.dumps({"error": str(e)}))
-                sys.exit(1)
-
-        asyncio.run(run_requested_tool())
+        asyncio.run(_run_requested_tool(args.run_tool, tool_params))
         raise SystemExit(0)
 
-    # If no specific tool is requested, run as a standard MCP server using Anthropic's mcp pip package
-    from mcp.server import Server
-    from mcp.server.stdio import stdio_server
-    from mcp.types import Tool, TextContent
+    asyncio.run(_run_mcp_package_server(args.transport))
 
-    server = Server("soma-gateway")
-    
-    TOOL_CATALOG = {
-        "soma_prepare_context": soma_prepare_context,
-        "soma_get_map": soma_get_map,
-        "soma_ask": soma_ask,
-        "soma_inspect": soma_inspect,
-        "soma_scene": soma_scene,
-        "soma_execute": soma_execute,
-        "soma_debug": soma_debug,
-        "soma_delta": soma_delta,
-        "soma_apply": soma_apply,
-        "soma_remember": soma_remember,
-        "soma_review": soma_review,
-        "soma_code_context": soma_code_context,
-    }
-
-    @server.list_tools()
-    async def handle_list_tools() -> list[Tool]:
-        return [
-            Tool(name=name, description=func.__doc__ or "Soma tool", inputSchema={"type": "object", "properties": {}})
-            for name, func in TOOL_CATALOG.items()
-        ]
-
-    @server.call_tool()
-    async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
-        if name not in TOOL_CATALOG:
-            raise ValueError(f"Unknown tool: {name}")
-        try:
-            # Most of the tools return a string representation of a JSON packet
-            res = await TOOL_CATALOG[name](**arguments)
-            return [TextContent(type="text", text=str(res))]
-        except Exception as e:
-            return [TextContent(type="text", text=json.dumps({"status": "failed", "error": str(e)}))]
-
-    async def run_server():
-        if args.transport == "sse":
-            print(json.dumps({"error": "SSE not currently supported in lightweight python gateway"}))
-            sys.exit(1)
-        async with stdio_server() as (read, write):
-            await server.run(read, write, server.create_initialization_options())
-
-    asyncio.run(run_server())
 
 if __name__ == "__main__":
     main()

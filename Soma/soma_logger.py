@@ -16,6 +16,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+try:
+    from token_calculator import estimate_tokens as _shared_estimate_tokens
+except Exception:
+    _shared_estimate_tokens = None
+
 SOMA_LOG_DIR = Path.home() / ".soma" / "logs"
 SOMA_LOG_RETENTION_DAYS = 14
 SOMA_SESSION_STATS_FILE = SOMA_LOG_DIR / "session_stats.json"
@@ -25,6 +30,11 @@ SOMA_SESSION_STATS_FILE = SOMA_LOG_DIR / "session_stats.json"
 
 def _estimate_tokens(text: str) -> int:
     """Rough 4-chars-per-token estimate."""
+    if _shared_estimate_tokens is not None:
+        try:
+            return _shared_estimate_tokens(text, os.environ.get("SOMA_TOKEN_MODEL_PROFILE", "fallback"))
+        except Exception:
+            pass
     return max(0, len(text) // 4)
 
 
@@ -173,13 +183,16 @@ def log_tool_call(func: Callable) -> Callable:
         status = "ok"
         error_msg: str | None = None
         result_text = ""
+        parsed_result: dict[str, Any] = {}
 
         try:
             result_text = await func(*args, **kwargs)
             # Parse status from result if it's our compact JSON format
             try:
                 parsed = json.loads(result_text)
-                status = parsed.get("status", "ok")
+                if isinstance(parsed, dict):
+                    parsed_result = parsed
+                    status = parsed.get("status", "ok")
             except Exception:
                 pass
         except Exception as exc:
@@ -190,6 +203,23 @@ def log_tool_call(func: Callable) -> Callable:
         finally:
             duration_ms = (time.monotonic() - start) * 1000
             output_tokens = _estimate_tokens(result_text)
+            omitted = parsed_result.get("omitted") if isinstance(parsed_result, dict) else {}
+            evidence = parsed_result.get("evidence") if isinstance(parsed_result, dict) else []
+            analysis_stages = parsed_result.get("analysis_stages") if isinstance(parsed_result, dict) else []
+            extra = {
+                "project_type": parsed_result.get("project_type"),
+                "packet_mode": parsed_result.get("packet_mode") or parsed_result.get("mode"),
+                "estimated_tokens": parsed_result.get("estimated_tokens"),
+                "evidence_count": len(evidence) if isinstance(evidence, list) else None,
+                "discovered_files": omitted.get("discovered_files") if isinstance(omitted, dict) else None,
+                "git_changed_file_count": omitted.get("git_changed_file_count") if isinstance(omitted, dict) else None,
+                "analysis_depth": parsed_result.get("depth") or parsed_result.get("analysis_depth"),
+                "analysis_stage_statuses": {
+                    str(stage.get("stage")): stage.get("status")
+                    for stage in analysis_stages
+                    if isinstance(stage, dict) and stage.get("stage")
+                } if isinstance(analysis_stages, list) else None,
+            }
             log_mcp_event(
                 event="tool_call",
                 tool=tool_name,
@@ -201,6 +231,7 @@ def log_tool_call(func: Callable) -> Callable:
                 project_root=project_root,
                 budget=budget,
                 depth=depth,
+                extra={key: value for key, value in extra.items() if value is not None},
             )
 
         return result_text
@@ -264,9 +295,14 @@ if __name__ == "__main__":
     parser.add_argument("--tail", type=int, default=20, help="Tail N log entries from today")
     parser.add_argument("--stats", action="store_true", help="Show session stats")
     parser.add_argument("--date", default=None, help="Date to read (YYYYMMDD), default today")
+    parser.add_argument("--server-stop-pid", type=int, default=None, help="Write a server_stop event for PID")
+    parser.add_argument("--reason", default="swift_stop", help="Reason for --server-stop-pid")
     args = parser.parse_args()
 
-    if args.stats:
+    if args.server_stop_pid is not None:
+        log_server_stop(args.server_stop_pid, args.reason)
+        print(json.dumps({"status": "ok", "event": "server_stop", "pid": args.server_stop_pid}))
+    elif args.stats:
         stats_file = SOMA_SESSION_STATS_FILE
         if stats_file.exists():
             print(stats_file.read_text())

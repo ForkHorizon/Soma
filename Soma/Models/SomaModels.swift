@@ -120,9 +120,9 @@ struct RelayResponse: Codable, Sendable {
 }
 
 struct AnyCodable: Codable, Sendable {
-    let value: Any
+    let value: Sendable
 
-    init(_ value: Any) { self.value = value }
+    init(_ value: Sendable) { self.value = value }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()

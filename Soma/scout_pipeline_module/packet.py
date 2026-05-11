@@ -10,15 +10,22 @@
 
 
 
+"""Packet construction and token budget enforcement.
 
-
+This stage converts selected evidence into the compact prompt packet sent to
+Big AI, tracks omitted context, and falls back to approximate token estimates.
+"""
 from .config import *
+try:
+    from token_calculator import estimate_tokens as _profile_estimate_tokens
+except Exception:
+    _profile_estimate_tokens = None
 
 
 try:
     import tiktoken
     _enc = tiktoken.get_encoding("cl100k_base")
-except ImportError:
+except Exception:
     _enc = None
 
 
@@ -26,6 +33,11 @@ def estimate_tokens(text):
     if _enc is not None:
         try:
             return max(1, len(_enc.encode(text, allowed_special="all")))
+        except Exception:
+            pass
+    if _profile_estimate_tokens is not None:
+        try:
+            return _profile_estimate_tokens(text, 'fallback')
         except Exception:
             pass
     return max(1, int((len(text) / 4)))

@@ -34,6 +34,18 @@ final class SomaViewModel: ObservableObject {
     @Published var systemBusy = false
     @Published var graphifyBusy = false
 
+    @Published var scoutPrompt = ""
+    @Published var scoutTranscript = ""
+    @Published var scoutHistory: [[String: AnyCodable]] = []
+    @Published var scoutLoading = false
+
+    @Published var relayPrompt = ""
+    @Published var relayPhase: RelayPhase = .idle
+    @Published var gatherBundle: GatherBundle?
+    @Published var relayResponse: RelayResponse?
+    @Published var showContextPanel = false
+    @Published var relayError: String?
+
     @Published var logEntries: [SomaLogEntry] = []
     @Published var toolStats: [SomaToolStat] = []
     @Published var logsLoading = false

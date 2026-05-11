@@ -13,6 +13,11 @@ struct TokenCalculatorView: View {
         let models: [String]
     }
 
+    struct ModelProfile {
+        let key: String
+        let charsPerToken: Double
+    }
+
     let categories = [
         ModelCategory(name: "OpenAI", models: [
             "GPT-5.5", "GPT-5.4 Pro", "o3-pro", "o3", "GPT-5 Turbo", "GPT-5 Mini", "GPT-4.5", "GPT-4o", "GPT-4.1", "o4-mini"
@@ -125,21 +130,24 @@ struct TokenCalculatorView: View {
     }
 
     private func updateTokens() {
-        let ratio: Double
-        
-        // Advanced 2026 tokenization ratios
-        if selectedModel.contains("GPT-5") || selectedModel.contains("o3") || selectedModel.contains("o4") {
-            ratio = 3.2 // Next-gen OpenAI ultra-dense encoding
-        } else if selectedModel.contains("Gemini 3") || selectedModel.contains("Gemma 4") {
-            ratio = 3.5 // Next-gen Google context compression
-        } else if selectedModel.contains("Claude") && (selectedModel.contains("4") || selectedModel.contains("3.7")) {
-            ratio = 3.3 // Anthropic optimized byte-pair encoding
-        } else if selectedModel.contains("mini") || selectedModel.contains("Lite") || selectedModel.contains("Haiku") {
-            ratio = 3.8 // Efficiency models typically use slightly less dense encoding
-        } else {
-            ratio = 3.6 // Generic 2026 baseline
+        let profile = profileForSelectedModel()
+        estimatedTokens = max(1, Int(ceil(Double(inputText.count) / profile.charsPerToken)))
+    }
+
+    private func profileForSelectedModel() -> ModelProfile {
+        let lower = selectedModel.lowercased()
+        if lower.contains("gpt-5.5") {
+            return ModelProfile(key: "gpt-5.5", charsPerToken: 3.2)
         }
-        
-        estimatedTokens = max(1, Int(Double(inputText.count) / ratio))
+        if lower.contains("gpt") || lower.contains("o3") || lower.contains("o4") {
+            return ModelProfile(key: "openai", charsPerToken: 3.4)
+        }
+        if lower.contains("gemini") || lower.contains("gemma") {
+            return ModelProfile(key: "gemini", charsPerToken: 3.5)
+        }
+        if lower.contains("claude") {
+            return ModelProfile(key: "claude", charsPerToken: 3.3)
+        }
+        return ModelProfile(key: "fallback", charsPerToken: 4.0)
     }
 }

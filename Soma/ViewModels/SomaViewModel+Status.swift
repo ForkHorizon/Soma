@@ -21,10 +21,13 @@ func refreshSomaStatus() {
                     graphStale = status.graph?.stale ?? false
                     nexusVersion = status.nexus?.unity_version ?? "Offline"
                     
-                    let nexusText = nexusConnected ? "Nexus connected (\(nexusVersion))" : "Nexus offline"
+                    let nexusText = nexusConnected ? "Unity plugin connected (\(nexusVersion))" : "Unity plugin skipped/offline"
                     let graphText = graphAvailable ? (graphStale ? "graph stale" : "graph ready") : "graph missing"
                     let toolCount = status.server?.tool_count ?? 0
-                    mcpInstallStatus = "\(nexusText). \(graphText). Soma exposes \(toolCount) tools."
+                    let nexusProject = status.nexus?.project_path
+                    let mismatch = nexusConnected && !projectPathsMatch(selectedProjectRoot, nexusProject)
+                    let projectWarning = mismatch ? " Warning: Nexus project differs from selected root (\(nexusProject ?? "unknown"))." : ""
+                    mcpInstallStatus = "\(nexusText). \(graphText). Soma exposes \(toolCount) tools.\(projectWarning)"
                 }
             } catch {
                 await MainActor.run {
@@ -107,6 +110,13 @@ func upgradeGraphify() {
                 }
             }
         }
+    }
+
+func projectPathsMatch(_ lhs: String, _ rhs: String?) -> Bool {
+        guard let rhs, !lhs.isEmpty, !rhs.isEmpty else { return true }
+        let left = URL(fileURLWithPath: lhs).standardizedFileURL.path
+        let right = URL(fileURLWithPath: rhs).standardizedFileURL.path
+        return left == right
     }
 
 }

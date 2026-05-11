@@ -181,11 +181,11 @@ struct GlobalSettingsBar: View {
             Image(systemName: "circle.grid.3x3.fill")
                 .font(.system(size: 11))
                 .foregroundColor(viewModel.nexusConnected ? .blue : .secondary)
-            Text("Nexus")
+            Text("Unity Plugin")
                 .font(.caption2)
                 .foregroundColor(viewModel.nexusConnected ? .primary : .secondary)
         }
-        .help(viewModel.nexusConnected ? "Nexus Unity connected" : "Nexus Unity offline")
+        .help(viewModel.nexusConnected ? "Unity plugin connected" : "Unity plugin skipped/offline")
     }
 
     // MARK: - Activity Feed (last tool call)

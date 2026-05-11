@@ -30,6 +30,10 @@ var (
 		"setup.py": true, "setup.cfg": true, "Package.swift": true,
 		"Podfile": true, "Cartfile": true, "Gemfile": true,
 		"Makefile": true, "Dockerfile": true, ".env": true,
+		"go.mod": true, "go.sum": true, "Cargo.toml": true, "Cargo.lock": true,
+		"pom.xml": true, "build.gradle": true, "build.gradle.kts": true,
+		"settings.gradle": true, "settings.gradle.kts": true, "composer.json": true,
+		"composer.lock": true, "Rakefile": true, "CMakeLists.txt": true,
 	}
 
 	ConfigExtensions = map[string]bool{
@@ -129,8 +133,9 @@ func categorizePath(path, name string) string {
 
 var MaxDiscoveredFiles = 100000
 
-func scanFiles(root string) (string, error) {
-	var discovered []FileItem
+func scanFiles(root string) (chan FileItem, chan error) {
+	itemChan := make(chan FileItem, 100)
+	errChan := make(chan error, 1)
 
 	go func() {
 		defer close(itemChan)

@@ -1,8 +1,11 @@
 
 
 
+"""Evidence selection and preflight scoring.
 
-
+This stage ranks discovered files for a user goal, prioritizing changed files,
+logs, manifests, configs, and source excerpts according to packet mode.
+"""
 import os
 
 import re
@@ -79,6 +82,36 @@ def file_rank(item, terms, intent, project_type, packet_mode='debug', changed_pa
         if (lowered_name in {'package.json', 'pnpm-lock.yaml', 'yarn.lock'}):
             score += 25
         if item['path'].endswith(('.js', '.jsx', '.ts', '.tsx')):
+            score += 18
+    elif (project_type == 'go'):
+        if lowered_name in {'go.mod', 'go.sum'}:
+            score += 25
+        if item['path'].endswith('.go'):
+            score += 18
+    elif (project_type == 'rust'):
+        if lowered_name in {'cargo.toml', 'cargo.lock'}:
+            score += 25
+        if item['path'].endswith('.rs'):
+            score += 18
+    elif (project_type == 'cpp'):
+        if lowered_name in {'cmakelists.txt', 'makefile'}:
+            score += 25
+        if item['path'].endswith(('.c', '.cc', '.cpp', '.h', '.hpp')):
+            score += 18
+    elif (project_type == 'java_kotlin'):
+        if lowered_name in {'pom.xml', 'build.gradle', 'build.gradle.kts'}:
+            score += 25
+        if item['path'].endswith(('.java', '.kt')):
+            score += 18
+    elif (project_type == 'php'):
+        if lowered_name in {'composer.json', 'composer.lock'}:
+            score += 25
+        if item['path'].endswith('.php'):
+            score += 18
+    elif (project_type == 'ruby'):
+        if lowered_name in {'gemfile', 'rakefile'}:
+            score += 25
+        if item['path'].endswith('.rb'):
             score += 18
     for term in terms:
         if (term in lowered_name):

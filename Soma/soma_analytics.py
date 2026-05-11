@@ -56,7 +56,9 @@ def compute_report(date_str: str) -> dict[str, Any]:
         "calls": 0, "ok": 0, "error": 0, "degraded": 0,
         "total_duration_ms": 0.0, "avg_duration_ms": 0.0,
         "total_input_tokens": 0, "total_output_tokens": 0,
-        "errors": [],
+        "errors": [], "project_types": defaultdict(int),
+        "packet_modes": defaultdict(int), "evidence_count": 0,
+        "discovered_files": 0,
     })
 
     slowest: list[dict[str, Any]] = []
@@ -70,6 +72,8 @@ def compute_report(date_str: str) -> dict[str, Any]:
         in_tok = e.get("input_tokens", 0) or 0
         out_tok = e.get("output_tokens", 0) or 0
         budget = e.get("budget")
+        project_type = e.get("project_type")
+        packet_mode = e.get("packet_mode")
 
         s = per_tool[tool]
         s["calls"] += 1
@@ -79,6 +83,12 @@ def compute_report(date_str: str) -> dict[str, Any]:
         s["total_output_tokens"] += out_tok
         if e.get("error"):
             s["errors"] = (s["errors"] + [e["error"][:120]])[-5:]
+        if project_type:
+            s["project_types"][project_type] += 1
+        if packet_mode:
+            s["packet_modes"][packet_mode] += 1
+        s["evidence_count"] += e.get("evidence_count", 0) or 0
+        s["discovered_files"] += e.get("discovered_files", 0) or 0
 
         slowest.append({"tool": tool, "duration_ms": dur, "status": status, "ts": e.get("ts", "")})
 
@@ -93,6 +103,8 @@ def compute_report(date_str: str) -> dict[str, Any]:
         calls = s["calls"] or 1
         s["avg_duration_ms"] = round(s["total_duration_ms"] / calls, 1)
         s["error_rate"] = round((s["error"] + s["degraded"]) / calls, 3)
+        s["project_types"] = dict(s["project_types"])
+        s["packet_modes"] = dict(s["packet_modes"])
 
     # Top slowest calls
     slowest_top = sorted(slowest, key=lambda x: x["duration_ms"], reverse=True)[:10]

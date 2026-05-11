@@ -7,6 +7,8 @@ import asyncio
 import json
 import os
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +44,34 @@ DEFAULT_APPLY_CONTENT = (
 
 def _server_script() -> str:
     return str(Path(__file__).with_name("soma_mcp_server.py"))
+
+
+def _log_file_path() -> str:
+    date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+    return str(Path.home() / ".soma" / "logs" / f"soma_{date_str}.jsonl")
+
+
+def _paths_match(left: str | None, right: str | None) -> bool:
+    if not left or not right:
+        return True
+    try:
+        return Path(left).expanduser().resolve() == Path(right).expanduser().resolve()
+    except Exception:
+        return os.path.abspath(left) == os.path.abspath(right)
+
+
+def _save_acceptance_report(report: dict[str, Any]) -> dict[str, str]:
+    out_dir = Path.home() / ".soma" / "acceptance"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    report_path = out_dir / f"e2e_{stamp}.json"
+    latest_path = out_dir / "latest.json"
+    report["acceptance_report"] = str(report_path)
+    report["latest_report"] = str(latest_path)
+    text = json.dumps(report, indent=2, sort_keys=True)
+    report_path.write_text(text)
+    latest_path.write_text(text)
+    return {"report_path": str(report_path), "latest_path": str(latest_path)}
 
 
 def _content_text(result: Any) -> str:
@@ -97,7 +127,10 @@ def _find_instance_id(value: Any) -> int | None:
 
 
 async def _call_compact(session: Any, name: str, params: dict[str, Any]) -> tuple[dict[str, Any] | None, dict[str, Any]]:
-    return _json_payload(await session.call_tool(name, params))
+    start = time.monotonic()
+    payload, compact = _json_payload(await session.call_tool(name, params))
+    compact["duration_ms"] = round((time.monotonic() - start) * 1000, 1)
+    return payload, compact
 
 
 async def verify_session(session: Any, args: argparse.Namespace) -> dict[str, Any]:
@@ -107,6 +140,9 @@ async def verify_session(session: Any, args: argparse.Namespace) -> dict[str, An
         "tools": {},
         "calls": {},
         "issues": [],
+        "log_file": _log_file_path(),
+        "core_status": "ok",
+        "plugin_status": {"unity_nexus": "pending" if args.live_unity else "skipped"},
     }
 
     tools_result = await session.list_tools()
@@ -140,10 +176,15 @@ async def verify_session(session: Any, args: argparse.Namespace) -> dict[str, An
         report["nexus"] = {
             "connected": nexus.get("connected"),
             "port": nexus.get("port"),
+            "project_path": nexus.get("project_path") or nexus.get("projectPath"),
             "session_id": nexus.get("session_id"),
         }
         if args.live_unity and not nexus.get("connected"):
             report["issues"].append("nexus_offline")
+        nexus_project = report["nexus"].get("project_path")
+        if args.live_unity and nexus.get("connected") and not _paths_match(args.project_root, nexus_project):
+            report["issues"].append("wrong_project")
+            report["wrong_project"] = {"expected": args.project_root, "actual": nexus_project}
     if compact["status"] == "invalid_json":
         report["issues"].append("soma_get_map_invalid_json")
 
@@ -156,17 +197,17 @@ async def verify_session(session: Any, args: argparse.Namespace) -> dict[str, An
     if compact["status"] == "invalid_json":
         report["issues"].append("soma_prepare_context_invalid_json")
 
-    scene_payload, compact = await _call_compact(session, "soma_scene", {})
-    report["calls"]["soma_scene"] = compact
-    if compact["status"] == "invalid_json":
-        report["issues"].append("soma_scene_invalid_json")
-    if args.live_unity and compact["status"] != "ok":
-        report["issues"].append("live_scene_failed")
-
-    inspect_id = args.inspect_id
-    if inspect_id is None and scene_payload:
-        inspect_id = _find_instance_id(scene_payload.get("scene", scene_payload))
     if args.live_unity:
+        scene_payload, compact = await _call_compact(session, "soma_scene", {})
+        report["calls"]["soma_scene"] = compact
+        if compact["status"] == "invalid_json":
+            report["issues"].append("soma_scene_invalid_json")
+        if compact["status"] != "ok":
+            report["issues"].append("live_scene_failed")
+
+        inspect_id = args.inspect_id
+        if inspect_id is None and scene_payload:
+            inspect_id = _find_instance_id(scene_payload.get("scene", scene_payload))
         if inspect_id is None:
             report["calls"]["soma_inspect"] = {"status": "skipped", "summary": "No inspectable instance id found in scene."}
             report["issues"].append("inspect_id_not_found")
@@ -176,6 +217,7 @@ async def verify_session(session: Any, args: argparse.Namespace) -> dict[str, An
             if compact["status"] != "ok":
                 report["issues"].append("live_inspect_failed")
     else:
+        report["calls"]["soma_scene"] = {"status": "skipped", "summary": "Pass --live-unity when Unity plugin should be verified."}
         report["calls"]["soma_inspect"] = {"status": "skipped", "summary": "Pass --live-unity when Nexus is online."}
 
     _, compact = await _call_compact(session, "soma_delta", {})
@@ -183,7 +225,20 @@ async def verify_session(session: Any, args: argparse.Namespace) -> dict[str, An
     if compact["status"] == "invalid_json":
         report["issues"].append("soma_delta_invalid_json")
 
-    if args.run_apply:
+    wrong_project = "wrong_project" in report["issues"]
+    if args.run_apply and wrong_project:
+        report["calls"]["soma_apply"] = {
+            "status": "skipped",
+            "summary": "Skipped live apply because Nexus is connected to a different project.",
+            "path": args.apply_path,
+        }
+        if args.cleanup_apply:
+            report["calls"]["cleanup_apply"] = {
+                "status": "skipped",
+                "summary": "Skipped cleanup because apply was not run.",
+                "path": args.apply_path,
+            }
+    elif args.run_apply:
         _, compact = await _call_compact(
             session,
             "soma_apply",
@@ -209,6 +264,10 @@ async def verify_session(session: Any, args: argparse.Namespace) -> dict[str, An
 
     if report["issues"]:
         report["status"] = "degraded"
+    report["core_status"] = "ok" if not any(issue.endswith("invalid_json") or issue.startswith("tool_") for issue in report["issues"]) else "degraded"
+    if args.live_unity:
+        plugin_issues = {"nexus_offline", "live_scene_failed", "inspect_id_not_found", "live_inspect_failed", "wrong_project", "live_apply_failed", "cleanup_apply_failed"}
+        report["plugin_status"]["unity_nexus"] = "degraded" if any(issue in plugin_issues for issue in report["issues"]) else "ok"
     return report
 
 
@@ -246,6 +305,7 @@ def main() -> int:
     args = parser.parse_args()
 
     report = asyncio.run(run(args))
+    _save_acceptance_report(report)
     print(json.dumps(report, indent=2, sort_keys=True))
     return 1 if args.strict_exit and report["status"] != "ok" else 0
 

@@ -1,7 +1,10 @@
 
 
+"""Optional local model ranking and analysis.
 
-
+Ranker and analyst stages may improve packet ordering or add hypotheses, but
+their failures must never block deterministic evidence packets.
+"""
 import json
 
 
@@ -15,6 +18,16 @@ from pathlib import Path
 
 
 from .config import *
+
+
+def _ollama_model_query_func():
+    import sys
+    public_module = sys.modules.get('scout_pipeline')
+    public_func = getattr(public_module, 'query_ollama_model', None) if public_module else None
+    if public_func:
+        return public_func
+    from .llama import query_ollama_model
+    return query_ollama_model
 
 
 def fallback_summary(prompt, project_root, project_type, evidence_items, error_lines, packet_mode='debug'):
@@ -67,8 +80,8 @@ def ranker_payload(prompt, preflight, evidence_items):
 
 
 async def rank_evidence_with_model(prompt, preflight, evidence_items):
-    from .llama import query_ollama_model
     from .parser import extract_json_object
+    query_ollama_model = _ollama_model_query_func()
     if (not evidence_items):
         return (evidence_items, {'stage': 'ranker', 'model': RANKER_MODEL, 'status': 'skipped'})
     decoded = None
@@ -97,8 +110,8 @@ async def rank_evidence_with_model(prompt, preflight, evidence_items):
 
 
 async def analyze_packet_with_model(prompt, preflight, evidence_items, error_lines):
-    from .llama import query_ollama_model
     from .parser import extract_json_object
+    query_ollama_model = _ollama_model_query_func()
     payload = {'prompt': prompt, 'packet_mode': preflight.get('packet_mode'), 'evidence': [{'path': item.get('path'), 'kind': item.get('kind'), 'reason': item.get('reason'), 'preview': (item.get('preview') or '')[:500]} for item in evidence_items], 'error_lines': error_lines[:MAX_ERROR_LINES]}
     decoded = None
     last_error = 'invalid analyst JSON'

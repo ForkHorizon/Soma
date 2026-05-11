@@ -160,11 +160,14 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
             "budget_tokens": TOKEN_BUDGETS[budget],
             "estimated_tokens": estimated,
             "raw_git_diff_chars": (git_diff_summary or {}).get("raw_diff_chars_omitted", 0),
+            "git_changed_file_count": (git_diff_summary or {}).get("changed_file_count", 0),
             "graphs_consulted": graph_result["graphs"][:3],
         }
         return _ok_response(
             f"Prepared {preflight['packet_mode']} packet within {budget} budget.",
             packet=packet,
+            project_type=project_type,
+            packet_mode=preflight["packet_mode"],
             mode=preflight["packet_mode"],
             budget=budget,
             depth=depth,

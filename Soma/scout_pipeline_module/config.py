@@ -51,7 +51,7 @@ NOISE_SUFFIXES = {'.pyc', '.pyo'}
 
 SKIP_DIRS = {'.git', '.build', '.idea', '.venv', 'Assets.xcassets', 'DerivedData', 'Pods', 'build', 'dist', 'node_modules', 'venv', 'xcuserdata', '__pycache__'}
 
-MANIFEST_NAMES = {'package.json', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'requirements.txt', 'requirements-dev.txt', 'pyproject.toml', 'Pipfile', 'Pipfile.lock', 'setup.py', 'setup.cfg', 'Package.swift', 'Podfile', 'Cartfile', 'Gemfile', 'Makefile', 'Dockerfile', '.env'}
+MANIFEST_NAMES = {'package.json', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'requirements.txt', 'requirements-dev.txt', 'pyproject.toml', 'Pipfile', 'Pipfile.lock', 'setup.py', 'setup.cfg', 'Package.swift', 'Podfile', 'Cartfile', 'Gemfile', 'Makefile', 'Dockerfile', '.env', 'go.mod', 'go.sum', 'Cargo.toml', 'Cargo.lock', 'pom.xml', 'build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts', 'composer.json', 'composer.lock', 'Rakefile', 'CMakeLists.txt'}
 
 CONFIG_EXTENSIONS = {'.cfg', '.conf', '.ini', '.json', '.plist', '.toml', '.xml', '.yaml', '.yml'}
 

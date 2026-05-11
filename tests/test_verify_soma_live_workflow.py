@@ -140,6 +140,33 @@ class VerifySomaLiveWorkflowTests(unittest.TestCase):
         self.assertIn("unity_tools_exposed", report["issues"])
         self.assertEqual(report["tools"]["unity_exposed"], ["unity_get_editor_state"])
 
+    def test_live_apply_is_skipped_for_wrong_nexus_project(self):
+        session = FakeSession(
+            {
+                "soma_get_map": {
+                    "status": "ok",
+                    "summary": "map",
+                    "map": {
+                        "graph": {"available": True, "project_graph_available": True, "stale": False},
+                        "nexus": {"connected": True, "project_path": "/tmp/other-project"},
+                    },
+                    "omitted": {},
+                },
+                "soma_prepare_context": {"status": "ok", "summary": "packet", "omitted": {}},
+                "soma_scene": {"status": "ok", "summary": "scene", "scene": {"roots": [{"instance_id": 321}]}, "omitted": {}},
+                "soma_inspect": {"status": "ok", "summary": "inspect", "omitted": {}},
+                "soma_delta": {"status": "ok", "summary": "delta", "omitted": {}},
+            }
+        )
+
+        report = asyncio.run(verifier.verify_session(session, args(project_root="/tmp/project")))
+
+        self.assertEqual(report["status"], "degraded")
+        self.assertIn("wrong_project", report["issues"])
+        self.assertEqual(report["calls"]["soma_apply"]["status"], "skipped")
+        self.assertEqual(report["calls"]["cleanup_apply"]["status"], "skipped")
+        self.assertFalse(any(call[0] == "soma_apply" for call in session.calls))
+
 
 if __name__ == "__main__":
     unittest.main()
