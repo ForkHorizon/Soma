@@ -37,6 +37,7 @@ func refreshSomaStatus() {
             // Refresh activity feed alongside status
             loadStructuredLogs()
             loadTokenBenchmarkReport()
+            loadAgentBenchmarkReport()
         }
     }
 

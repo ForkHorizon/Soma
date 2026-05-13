@@ -14,7 +14,7 @@ Soma works without Unity. Unity/Nexus is an optional plugin path used only when 
 | Deterministic path | Works without Ollama, Unity, or Nexus |
 | Local AI | Optional ranked/analyst stages via Ollama |
 | Unity/Nexus | Optional plugin, skipped by default universal workflow |
-| Tests | Python suite expected: 70 tests, 1 skipped |
+| Tests | Python suite expected: 81 tests |
 | Swift app | macOS build expected to succeed |
 
 ## What Soma Does
@@ -25,7 +25,7 @@ Soma builds bounded packets for real coding work:
 - Scans files, manifests, configs, logs, git status, and git diff summaries.
 - Selects relevant evidence for implementation, debug, review, and changes prompts.
 - Enforces token budgets and reports omitted raw context.
-- Logs tool calls, latency, token estimates, selected project, packet size, evidence counts, and analysis stages.
+- Logs tool calls, latency, token estimates, selected project, packet size, evidence counts, analysis stages, operation savings, and estimated context reduction.
 - Optionally uses local Ollama models after deterministic evidence selection.
 - Optionally calls Nexus Unity through compact Soma tools when Unity/Nexus is online.
 
@@ -76,6 +76,16 @@ PYTHONDONTWRITEBYTECODE=1 \
   '{"goal":"Debug recent changes and prepare compact evidence","budget":"fast","depth":"deterministic"}'
 ```
 
+## Soma Packet Mode V1
+
+The first supported AI workflow is packet prompt mode:
+
+1. Run `soma_prepare_context` for the selected project and task.
+2. Pass the returned packet to Codex, Gemini, Claude, or another model as compact context.
+3. Compare against a direct-agent baseline with `soma_agent_ab_benchmark.py`.
+
+Live MCP tool use from Codex/Gemini is still experimental because local CLIs differ in approval and tool-call behavior. Packet mode is the default path for real token-savings validation.
+
 ## Canonical Verification
 
 Python tests:
@@ -98,7 +108,7 @@ TMPDIR=/tmp \
   --budget fast
 ```
 
-Token savings benchmark:
+Estimated context reduction benchmark:
 
 ```bash
 PYTHONPATH=/Users/daliys/Daliys/Swift/Soma/Soma \
@@ -121,6 +131,27 @@ Opt-in benchmark for the selected real project:
   --baseline both
 ```
 
+Observed agent A/B benchmark:
+
+```bash
+/opt/homebrew/bin/python3 Soma/soma_agent_ab_benchmark.py \
+  --scenario /path/to/scenario.json \
+  --agents codex,gemini
+```
+
+The A/B benchmark compares direct agent runs against packet-prompt runs with Soma context. It uses real CLI usage fields when available and transcript estimates otherwise.
+
+Scenario tasks can include quality checks:
+
+```json
+{
+  "expected_files": ["CooldownPolicy.swift", "NudgeScheduler.swift"],
+  "must_mention": ["midnight"],
+  "must_not_claim": ["delete settings"],
+  "manual_acceptance_notes": "Answer should explain whether the quiet-hours interval crosses midnight correctly."
+}
+```
+
 Swift build:
 
 ```bash
@@ -139,6 +170,8 @@ Soma writes runtime reports and logs under the user home directory:
 ~/.soma/acceptance/universal/latest.json
 ~/.soma/token_stats.json
 ~/.soma/token_stats/token_stats_YYYYMMDD-HHMMSS.json
+~/.soma/agent_benchmarks/latest.json
+~/.soma/agent_benchmarks/agent_benchmark_YYYYMMDD-HHMMSS.json
 ```
 
 ## Documentation

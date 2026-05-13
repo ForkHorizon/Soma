@@ -107,8 +107,10 @@ class TestGraphifyAdapterAndMemoryStore(unittest.TestCase):
         with patch.object(Path, 'exists', autospec=True, side_effect=fake_exists):
             adapter = GraphifyAdapter()
             graphs = adapter.find_graphs("/my/project")
-            self.assertEqual(len(graphs), 1)
-            self.assertTrue("UnityTestForNexus" in str(graphs[0]))
+            self.assertEqual(graphs, [])
+            cross_project = adapter.find_graphs("/my/project", project_only=False)
+            self.assertEqual(len(cross_project), 1)
+            self.assertTrue("UnityTestForNexus" in str(cross_project[0]))
 
     def test_memory_store_project_dir_default(self):
         with tempfile.TemporaryDirectory() as tmp:

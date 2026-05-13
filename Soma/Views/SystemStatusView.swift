@@ -37,8 +37,8 @@ struct SystemStatusView: View {
     }
 
     private var overallStatusBadge: some View {
-        let allOk = viewModel.somaServerRunning && viewModel.graphAvailable && !viewModel.graphStale
-        let label = allOk ? "All Systems Ready" : viewModel.somaServerRunning ? "Partial" : "Offline"
+        let allOk = viewModel.somaServerRunning && !viewModel.selectedProjectRoot.isEmpty
+        let label = allOk ? "Ready" : viewModel.somaServerRunning ? "Select Project" : "Offline"
         let color: Color = allOk ? .green : viewModel.somaServerRunning ? .orange : .red
 
         return HStack(spacing: 6) {
@@ -71,11 +71,11 @@ struct SystemStatusView: View {
                 healthPill(
                     icon: viewModel.graphAvailable
                         ? (viewModel.graphStale ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                        : "xmark.circle.fill",
+                        : "circle.dashed",
                     label: viewModel.graphAvailable
                         ? (viewModel.graphStale ? "Graph Stale" : "Graph Fresh")
-                        : "No Graph",
-                    color: viewModel.graphAvailable ? (viewModel.graphStale ? .orange : .green) : .red
+                        : "Graph Optional",
+                    color: viewModel.graphAvailable ? (viewModel.graphStale ? .orange : .green) : .secondary
                 )
                 healthPill(
                     icon: viewModel.nexusConnected ? "circle.grid.3x3.fill" : "circle.grid.3x3",
@@ -125,18 +125,26 @@ struct SystemStatusView: View {
         .cornerRadius(8)
     }
 
-    // MARK: - Token Savings
+    // MARK: - Token Measurement
 
     private var tokenSavingsCard: some View {
         let savings = viewModel.latestTokenSavings
+        let operation = savings?.operation_savings
+        let estimated = savings?.estimated_context_reduction
         let benchmark = viewModel.tokenBenchmarkReport
         let benchmarkSummary = benchmark?.summary
         let benchmarkRoot = benchmark?.results?.first?.project_root
         let benchmarkStale = benchmarkRoot != nil && !viewModel.projectPathsMatch(viewModel.selectedProjectRoot, benchmarkRoot)
+        let agentBenchmark = viewModel.agentBenchmarkReport
+        let agentSummary = agentBenchmark?.summary
+        let agentBenchmarkStale = agentBenchmark?.project_root != nil && !viewModel.projectPathsMatch(viewModel.selectedProjectRoot, agentBenchmark?.project_root)
+        let operationSaved = operation?.saved_tokens ?? savings?.saved_tokens
+        let operationPct = operation?.savings_pct ?? savings?.savings_pct
+        let responseTokens = operation?.soma_response_tokens ?? operation?.packet_tokens ?? savings?.packet_tokens
 
         return VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Label("Token Savings", systemImage: "chart.line.downtrend.xyaxis")
+                Label("Real Token Measurement", systemImage: "chart.line.downtrend.xyaxis")
                     .font(.headline)
                 Spacer()
                 Button {
@@ -148,7 +156,7 @@ struct SystemStatusView: View {
                             Text("Measuring…")
                         }
                     } else {
-                        Label("Measure Selected Project", systemImage: "speedometer")
+                        Label("Measure Context", systemImage: "speedometer")
                     }
                 }
                 .buttonStyle(.bordered)
@@ -158,42 +166,66 @@ struct SystemStatusView: View {
 
             HStack(spacing: 18) {
                 savingsMetric(
-                    title: "Current Packet",
-                    value: (savings?.packet_tokens).map { "\($0)" } ?? "No data",
-                    detail: (savings?.budget_used_pct).map { String(format: "%.1f%% of budget", $0) } ?? "run soma_prepare_context",
-                    color: .purple
-                )
-                savingsMetric(
-                    title: "Saved",
-                    value: (savings?.saved_tokens).map { "\($0)" } ?? "—",
-                    detail: (savings?.savings_pct).map { String(format: "%.1f%%", $0) } ?? savings?.status ?? "not measured",
+                    title: "Operation",
+                    value: operationSaved.map { "\($0)" } ?? "No data",
+                    detail: operationPct.map { String(format: "%.1f%% vs ops", $0) } ?? savings?.status ?? "run soma_prepare_context",
                     color: .green
                 )
                 savingsMetric(
-                    title: "Benchmark",
-                    value: (benchmarkSummary?.total_saved_tokens).map { "\($0)" } ?? "—",
-                    detail: (benchmarkSummary?.avg_savings_pct).map { String(format: "%.1f%% avg", $0) } ?? "opt-in only",
-                    color: benchmarkStale ? .orange : .blue
+                    title: "Estimated",
+                    value: (estimated?.saved_tokens).map { "\($0)" } ?? "—",
+                    detail: (estimated?.savings_pct).map { String(format: "%.1f%% context", $0) } ?? "secondary",
+                    color: .purple
+                )
+                savingsMetric(
+                    title: "Observed A/B",
+                    value: (agentSummary?.total_saved_tokens).map { "\($0)" } ?? "—",
+                    detail: (agentSummary?.avg_savings_pct).map { String(format: "%.1f%% agent", $0) } ?? "scenario only",
+                    color: agentBenchmarkStale ? .orange : .blue
                 )
             }
 
             HStack(spacing: 8) {
-                Text("Estimator: \(savings?.estimator ?? benchmark?.model_profile ?? "estimated")")
+                Text("Response: \(responseTokens.map { "\($0)" } ?? "—") tokens")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                if let baseline = savings?.baseline_type {
+                if let budgetUsed = operation?.budget_used_pct ?? savings?.budget_used_pct {
+                    Text(String(format: "%.1f%% budget", budgetUsed))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Text("Estimator: \(operation?.estimator ?? savings?.estimator ?? benchmark?.model_profile ?? "estimated")")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                if let baseline = operation?.baseline_type ?? savings?.baseline_type {
                     Text("Baseline: \(baseline.replacingOccurrences(of: "_", with: " "))")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
                 if benchmarkStale {
-                    Label("Benchmark is for another project", systemImage: "exclamationmark.triangle.fill")
+                    Label("Context benchmark is for another project", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
+                if agentBenchmarkStale {
+                    Label("A/B benchmark is for another project", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
                         .foregroundColor(.orange)
                 }
             }
 
+            if let contextSaved = benchmarkSummary?.total_saved_tokens {
+                Text("Latest opt-in context benchmark: \(contextSaved) estimated tokens reduced, \(String(format: "%.1f", benchmarkSummary?.avg_savings_pct ?? 0))% average.")
+                    .font(.caption)
+                    .foregroundColor(benchmarkStale ? .orange : .secondary)
+            }
             if let error = viewModel.tokenBenchmarkError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .lineLimit(2)
+            }
+            if let error = viewModel.agentBenchmarkError {
                 Text(error)
                     .font(.caption)
                     .foregroundColor(.red)

@@ -22,17 +22,6 @@ from .config import *
 
 
 def extract_symbols(path, text=None):
-    from .daemon import GoDaemon
-    try:
-        daemon = GoDaemon.get_instance()
-        stdout = daemon.call('extract-symbols', path)
-        res = json.loads(stdout)
-        if isinstance(res, str):
-            res = json.loads(res)
-        return res if isinstance(res, list) else []
-    except Exception as exc:
-        print(f"extract_symbols failed: {exc}", file=sys.stderr)
-        pass
     if text is None:
         try:
             text = Path(path).read_text(errors='replace')[:MAX_FILE_BYTES]
@@ -52,6 +41,29 @@ def extract_symbols(path, text=None):
         patterns = [r'\b(?:class|interface|trait|function)\s+([A-Za-z_][A-Za-z0-9_]*)']
     elif ext == '.rb':
         patterns = [r'(?m)^\s*(?:class|module|def)\s+([A-Za-z_][A-Za-z0-9_!?=]*)']
+    elif ext == '.swift':
+        patterns = [
+            r'\b(?:class|struct|enum|protocol|actor|extension)\s+([A-Za-z_][A-Za-z0-9_]*)',
+            r'\bfunc\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(',
+            r'\b(?:let|var)\s+([A-Za-z_][A-Za-z0-9_]*)\s*[:=]',
+        ]
+    elif ext in {'.js', '.jsx', '.ts', '.tsx'}:
+        patterns = [
+            r'\b(?:class|interface|type|function)\s+([A-Za-z_][A-Za-z0-9_]*)',
+            r'\b(?:const|let|var)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=',
+        ]
+    if os.environ.get('SOMA_USE_GO_SYMBOLS') == '1':
+        from .daemon import GoDaemon
+        try:
+            daemon = GoDaemon.get_instance()
+            stdout = daemon.call('extract-symbols', path)
+            res = json.loads(stdout)
+            if isinstance(res, str):
+                res = json.loads(res)
+            if isinstance(res, list) and res:
+                return res
+        except Exception as exc:
+            print(f"extract_symbols failed: {exc}", file=sys.stderr)
     symbols = []
     seen = set()
     for pattern in patterns:

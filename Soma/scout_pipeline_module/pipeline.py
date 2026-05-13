@@ -18,11 +18,17 @@ import os
 
 
 from .config import *
-from soma_token_savings import build_task_candidate_baseline, build_token_savings
+from soma_token_savings import (
+    build_estimated_context_reduction,
+    build_operation_savings,
+    build_task_candidate_baseline,
+    build_token_savings,
+    finalize_operation_savings_response_tokens,
+)
 
 
 async def run_gather(user_prompt, project_root, recent_roots_json, token_budget=DEFAULT_TOKEN_BUDGET, use_local_summary=False, analysis_depth='deterministic'):
-    from .gather import select_evidence, gather_external_evidence, build_preflight
+    from .gather import select_evidence, gather_external_evidence, build_preflight, assess_evidence_quality
     from .parser import find_errors
     from .packet import bundle_for_direct_pass, estimate_tokens, build_codex_packet
     from .classifier import classify_prompt_intent, prompt_terms
@@ -44,6 +50,8 @@ async def run_gather(user_prompt, project_root, recent_roots_json, token_budget=
             model_profile=os.environ.get('SOMA_TOKEN_MODEL_PROFILE', 'gpt-5.5'),
             warnings=['Direct prompt did not need local evidence, so no raw-context baseline was available.'],
         )
+        direct_bundle['estimated_context_reduction'] = direct_bundle['token_savings'].get('estimated_context_reduction')
+        direct_bundle['operation_savings'] = direct_bundle['token_savings'].get('operation_savings')
         print(json.dumps(direct_bundle))
         return
     if (not project_root):
@@ -64,7 +72,7 @@ async def run_gather(user_prompt, project_root, recent_roots_json, token_budget=
     discovered = iter_project_files(project_root)
     repo_index = build_repo_index(project_root, discovered)
     preflight = build_preflight(user_prompt, project_root, project_type, discovered, repo_index, git_status, git_diff_summary)
-    explicit_items = gather_external_evidence(user_prompt, project_root, terms)
+    explicit_items = gather_external_evidence(user_prompt, project_root, terms, discovered, repo_index)
     evidence_items = (explicit_items + select_evidence(project_root, user_prompt, project_type, repo_index, preflight))
     deduped_evidence = []
     seen = set()
@@ -98,7 +106,8 @@ async def run_gather(user_prompt, project_root, recent_roots_json, token_budget=
         summary['assumptions'] = ([type_reason] + list((summary.get('assumptions') or [])))
     if (recent_roots and (project_root not in recent_roots)):
         summary['assumptions'].append('Selected project root was used as the authoritative scope for gathering.')
-    bundle = {'mode': 'gather', 'original_prompt': user_prompt, 'project_root': project_root, 'project_type': project_type, 'routing_decision': 'gathered_and_relayed', 'packet_mode': preflight['packet_mode'], 'analysis_depth': analysis_depth, 'analysis_stages': analysis_stages, 'preflight': {key: value for (key, value) in preflight.items() if (key not in {'changed_paths', 'error_paths', 'candidate_paths'})}, 'model_analysis': model_analysis, 'gather_reason': intent['reason'], 'confidence': summary.get('confidence', 0.55), 'git_status': git_status, 'git_diff': None, 'git_diff_summary': git_diff_summary, 'repo_index': {'cache_path': repo_index.get('cache_path'), 'indexed_file_count': repo_index.get('indexed_file_count'), 'changed_index_entries': repo_index.get('changed_index_entries')}, 'token_budget': token_budget, 'gathered_files': {item['path']: {'tool': item['kind'], 'preview': item['preview'][:300]} for item in evidence_items}, 'evidence_items': evidence_items, 'error_lines': error_lines, 'context_summary': (summary.get('summary') or ''), 'open_questions': dedupe_strings((summary.get('open_questions') or []))[:3], 'assumptions': dedupe_strings((summary.get('assumptions') or []))[:4], 'omitted_context': {'discovered_files': len(discovered), 'selected_evidence_items': len(evidence_items), 'local_summary_model_used': bool(use_local_summary), 'analysis_depth': analysis_depth}}
+    evidence_quality = assess_evidence_quality(user_prompt, evidence_items, preflight)
+    bundle = {'mode': 'gather', 'status': evidence_quality['status'], 'original_prompt': user_prompt, 'project_root': project_root, 'project_type': project_type, 'routing_decision': 'gathered_and_relayed', 'packet_mode': preflight['packet_mode'], 'analysis_depth': analysis_depth, 'analysis_stages': analysis_stages, 'preflight': {key: value for (key, value) in preflight.items() if (key not in {'changed_paths', 'error_paths', 'candidate_paths'})}, 'model_analysis': model_analysis, 'gather_reason': intent['reason'], 'confidence': summary.get('confidence', 0.55), 'git_status': git_status, 'git_diff': None, 'git_diff_summary': git_diff_summary, 'repo_index': {'cache_path': repo_index.get('cache_path'), 'indexed_file_count': repo_index.get('indexed_file_count'), 'changed_index_entries': repo_index.get('changed_index_entries')}, 'token_budget': token_budget, 'gathered_files': {item['path']: {'tool': item['kind'], 'preview': item['preview'][:300]} for item in evidence_items}, 'evidence_items': evidence_items, 'evidence_quality': evidence_quality, 'error_lines': error_lines, 'context_summary': (summary.get('summary') or ''), 'open_questions': dedupe_strings((summary.get('open_questions') or []))[:3], 'assumptions': dedupe_strings((summary.get('assumptions') or []))[:4], 'omitted_context': {'discovered_files': len(discovered), 'selected_evidence_items': len(evidence_items), 'local_summary_model_used': bool(use_local_summary), 'analysis_depth': analysis_depth, 'evidence_quality': evidence_quality}}
     bundle['codex_packet'] = build_codex_packet(user_prompt, bundle, token_budget)
     bundle['estimated_tokens'] = estimate_tokens(bundle['codex_packet'])
     task_baseline = build_task_candidate_baseline(
@@ -111,12 +120,41 @@ async def run_gather(user_prompt, project_root, recent_roots_json, token_budget=
         model_profile=os.environ.get('SOMA_TOKEN_MODEL_PROFILE', 'gpt-5.5'),
         packet_tokens=bundle['estimated_tokens'],
     )
-    bundle['token_savings'] = build_token_savings(
+    estimated_context_reduction = build_estimated_context_reduction(
         packet=bundle['codex_packet'],
         budget=token_budget,
         budget_tokens=TOKEN_BUDGETS[token_budget],
         model_profile=os.environ.get('SOMA_TOKEN_MODEL_PROFILE', 'gpt-5.5'),
         task_candidate_baseline=task_baseline,
     )
+    operation_savings = build_operation_savings(
+        packet=bundle['codex_packet'],
+        project_root=project_root,
+        git_status=git_status,
+        evidence_items=evidence_items,
+        budget=token_budget,
+        budget_tokens=TOKEN_BUDGETS[token_budget],
+        model_profile=os.environ.get('SOMA_TOKEN_MODEL_PROFILE', 'gpt-5.5'),
+    )
+    bundle['token_savings'] = build_token_savings(
+        packet=bundle['codex_packet'],
+        budget=token_budget,
+        budget_tokens=TOKEN_BUDGETS[token_budget],
+        model_profile=os.environ.get('SOMA_TOKEN_MODEL_PROFILE', 'gpt-5.5'),
+        estimated_context_reduction=estimated_context_reduction,
+        operation_savings=operation_savings,
+    )
+    bundle['estimated_context_reduction'] = estimated_context_reduction
+    bundle['operation_savings'] = operation_savings
     bundle['enriched_prompt'] = bundle['codex_packet']
+    operation_savings = finalize_operation_savings_response_tokens(operation_savings, estimate_tokens(json.dumps(bundle)))
+    bundle['operation_savings'] = operation_savings
+    bundle['token_savings'] = build_token_savings(
+        packet=bundle['codex_packet'],
+        budget=token_budget,
+        budget_tokens=TOKEN_BUDGETS[token_budget],
+        model_profile=os.environ.get('SOMA_TOKEN_MODEL_PROFILE', 'gpt-5.5'),
+        estimated_context_reduction=estimated_context_reduction,
+        operation_savings=operation_savings,
+    )
     print(json.dumps(bundle))

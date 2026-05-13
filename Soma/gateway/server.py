@@ -31,7 +31,7 @@ from gateway.status import (
     query_graph_simple,
     save_memory,
 )
-from gateway.tool_registry import TOOL_CATALOG
+from gateway.tool_registry import TOOL_CATALOG, call_tool, tool_schema
 from soma_logger import log_mcp_request, log_mcp_response, log_server_start, log_server_stop
 from scout_pipeline import normalize_path
 
@@ -44,10 +44,7 @@ def _server_script_path() -> str:
 
 async def _run_requested_tool(tool_name: str, tool_params: dict[str, Any]) -> None:
     try:
-        if tool_name in TOOL_CATALOG:
-            result = await TOOL_CATALOG[tool_name](**tool_params)
-        else:
-            result = json.dumps({"error": f"Unknown tool {tool_name}"})
+        result = await call_tool(tool_name, tool_params)
         print(result)
     except Exception as exc:
         print(json.dumps({"error": str(exc)}))
@@ -69,7 +66,7 @@ async def _run_mcp_package_server(transport: str) -> None:
     async def handle_list_tools() -> list[Tool]:
         start = log_mcp_request("tools/list", None, 0)
         tools = [
-            Tool(name=name, description=func.__doc__ or "Soma tool", inputSchema={"type": "object", "properties": {}})
+            Tool(name=name, description=func.__doc__ or "Soma tool", inputSchema=tool_schema(name))
             for name, func in TOOL_CATALOG.items()
         ]
         log_mcp_response("tools/list", None, start, "ok", len(str(tools)))
@@ -82,7 +79,7 @@ async def _run_mcp_package_server(transport: str) -> None:
             log_mcp_response(f"tools/call:{name}", None, start, "error", 0)
             raise ValueError(f"Unknown tool: {name}")
         try:
-            result = await TOOL_CATALOG[name](**arguments)
+            result = await call_tool(name, arguments)
             log_mcp_response(f"tools/call:{name}", None, start, "ok", len(str(result)))
             return [TextContent(type="text", text=str(result))]
         except Exception as exc:

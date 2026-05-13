@@ -157,7 +157,27 @@ func loadTokenBenchmarkReport() {
                 }
             } catch {
                 await MainActor.run {
-                    self.tokenBenchmarkError = "Token benchmark report unreadable: \(error.localizedDescription)"
+                    self.tokenBenchmarkError = "Context benchmark report unreadable: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+func loadAgentBenchmarkReport() {
+        Task {
+            let file = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".soma/agent_benchmarks/latest.json")
+            guard FileManager.default.fileExists(atPath: file.path) else { return }
+            do {
+                let data = try Data(contentsOf: file)
+                let report = try JSONDecoder().decode(AgentBenchmarkReport.self, from: data)
+                await MainActor.run {
+                    self.agentBenchmarkReport = report
+                    self.agentBenchmarkError = nil
+                }
+            } catch {
+                await MainActor.run {
+                    self.agentBenchmarkError = "A/B benchmark report unreadable: \(error.localizedDescription)"
                 }
             }
         }
@@ -165,12 +185,12 @@ func loadTokenBenchmarkReport() {
 
 func runTokenBenchmark() {
         guard !selectedProjectRoot.isEmpty else {
-            tokenBenchmarkError = "Select a project root before measuring token savings."
+            tokenBenchmarkError = "Select a project root before measuring context reduction."
             return
         }
         tokenBenchmarkBusy = true
         tokenBenchmarkError = nil
-        logActivity("Measuring token savings for \((selectedProjectRoot as NSString).lastPathComponent)...")
+        logActivity("Measuring estimated context reduction for \((selectedProjectRoot as NSString).lastPathComponent)...")
         Task {
             do {
                 let script = try scriptURL(named: "soma_token_benchmark")
@@ -188,13 +208,13 @@ func runTokenBenchmark() {
                     self.tokenBenchmarkReport = report
                     self.tokenBenchmarkBusy = false
                     self.tokenBenchmarkError = nil
-                    self.logActivity("Token benchmark \(report.status ?? "unknown"): saved \(report.summary?.total_saved_tokens ?? 0) estimated tokens")
+                    self.logActivity("Context benchmark \(report.status ?? "unknown"): reduced \(report.summary?.total_saved_tokens ?? 0) estimated tokens")
                 }
             } catch {
                 await MainActor.run {
                     self.tokenBenchmarkBusy = false
                     self.tokenBenchmarkError = error.localizedDescription
-                    self.logActivity("Token benchmark failed: \(error.localizedDescription)")
+                    self.logActivity("Context benchmark failed: \(error.localizedDescription)")
                 }
             }
         }

@@ -10,6 +10,7 @@ from scout_pipeline import (
     MAX_EVIDENCE_ITEMS,
     TOKEN_BUDGETS,
     analyze_packet_with_model,
+    assess_evidence_quality,
     build_codex_packet,
     build_preflight,
     build_repo_index,
@@ -29,11 +30,19 @@ from scout_pipeline import (
     rank_evidence_with_model,
     select_evidence,
 )
-from soma_token_savings import build_task_candidate_baseline, build_token_savings, unavailable_token_savings
+from soma_token_savings import (
+    build_estimated_context_reduction,
+    build_operation_savings,
+    build_task_candidate_baseline,
+    build_token_savings,
+    finalize_operation_savings_response_tokens,
+    unavailable_token_savings,
+)
 
 from gateway.core import (
     _analysis_depth,
     _append_graph_context,
+    _compact_result,
     _enforce_packet_budget,
     _error_response,
     _evidence_summary,
@@ -55,15 +64,18 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
     token_model_profile = os.environ.get("SOMA_TOKEN_MODEL_PROFILE", "gpt-5.5")
     project_root = get_active_project_root()
     if not project_root or not os.path.isdir(project_root):
+        token_savings = unavailable_token_savings(
+            reason="No project root configured.",
+            budget=budget,
+            budget_tokens=TOKEN_BUDGETS[budget],
+            model_profile=token_model_profile,
+        )
         return _error_response(
             "No project root configured.",
             budget=budget,
-            token_savings=unavailable_token_savings(
-                reason="No project root configured.",
-                budget=budget,
-                budget_tokens=TOKEN_BUDGETS[budget],
-                model_profile=token_model_profile,
-            ),
+            token_savings=token_savings,
+            estimated_context_reduction=token_savings.get("estimated_context_reduction"),
+            operation_savings=token_savings.get("operation_savings"),
             next_calls=["Set SOMA_PROJECT_ROOT or start Nexus Unity so Soma can discover projectPath."],
         )
 
@@ -81,6 +93,8 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
                 model_profile=token_model_profile,
                 warnings=["Direct prompt did not need local evidence, so no raw-context baseline was available."],
             )
+            estimated_context_reduction = token_savings.get("estimated_context_reduction")
+            operation_savings = token_savings.get("operation_savings")
             return _ok_response(
                 "Direct prompt does not need local evidence.",
                 packet=packet,
@@ -88,6 +102,8 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
                 budget=budget,
                 estimated_tokens=estimate_tokens(packet),
                 token_savings=token_savings,
+                estimated_context_reduction=estimated_context_reduction,
+                operation_savings=operation_savings,
                 omitted={"reason": intent["reason"]},
                 next_calls=["Call soma_prepare_context again with a concrete code/debug/review goal if evidence is needed."],
             )
@@ -100,7 +116,7 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
         repo_index = build_repo_index(project_root, discovered)
         preflight = build_preflight(goal, project_root, project_type, discovered, repo_index, git_status, git_diff_summary)
 
-        explicit_items = gather_external_evidence(goal, project_root, terms)
+        explicit_items = gather_external_evidence(goal, project_root, terms, discovered, repo_index)
         evidence_items = explicit_items + select_evidence(project_root, goal, project_type, repo_index, preflight)
         seen: set[str] = set()
         deduped: list[dict[str, Any]] = []
@@ -132,12 +148,14 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
             model_analysis, analyst_stage = await analyze_packet_with_model(goal, preflight, evidence_items, error_lines)
             stages.append(analyst_stage)
 
-        graph_result = graphify.query(goal, project_root, budget=1200)
+        graph_result = graphify.query(goal, project_root, budget=1200, project_only=True)
         graph_context = "\n\n".join(answer["answer"] for answer in graph_result["answers"])
         summary = fallback_summary(goal, project_root, project_type, evidence_items, error_lines, preflight["packet_mode"])
+        evidence_quality = assess_evidence_quality(goal, evidence_items, preflight)
 
         bundle = {
             "mode": "gather",
+            "status": evidence_quality["status"],
             "original_prompt": goal,
             "project_root": project_root,
             "project_type": project_type,
@@ -155,6 +173,7 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
             "repo_index": {"indexed_file_count": repo_index.get("indexed_file_count")},
             "token_budget": budget,
             "evidence_items": evidence_items,
+            "evidence_quality": evidence_quality,
             "error_lines": error_lines,
             "context_summary": summary.get("summary", ""),
             "open_questions": dedupe_strings(summary.get("open_questions", []))[:3],
@@ -165,6 +184,8 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
                 "analysis_depth": depth,
                 "graph_answers": len(graph_result["answers"]),
                 "graph_warnings": graph_result["warnings"][:2],
+                "graphify": "project_only" if graph_result.get("graphs") else "skipped",
+                "evidence_quality": evidence_quality,
             },
         }
 
@@ -181,12 +202,29 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
             model_profile=token_model_profile,
             packet_tokens=estimated,
         )
-        token_savings = build_token_savings(
+        estimated_context_reduction = build_estimated_context_reduction(
             packet=packet,
             budget=budget,
             budget_tokens=TOKEN_BUDGETS[budget],
             model_profile=token_model_profile,
             task_candidate_baseline=task_baseline,
+        )
+        operation_savings = build_operation_savings(
+            packet=packet,
+            project_root=project_root,
+            git_status=git_status,
+            evidence_items=evidence_items,
+            budget=budget,
+            budget_tokens=TOKEN_BUDGETS[budget],
+            model_profile=token_model_profile,
+        )
+        token_savings = build_token_savings(
+            packet=packet,
+            budget=budget,
+            budget_tokens=TOKEN_BUDGETS[budget],
+            model_profile=token_model_profile,
+            estimated_context_reduction=estimated_context_reduction,
+            operation_savings=operation_savings,
         )
         omitted = {
             **bundle["omitted_context"],
@@ -195,33 +233,58 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
             "raw_git_diff_chars": (git_diff_summary or {}).get("raw_diff_chars_omitted", 0),
             "git_changed_file_count": (git_diff_summary or {}).get("changed_file_count", 0),
             "graphs_consulted": graph_result["graphs"][:3],
+            "graphify": "project_only" if graph_result.get("graphs") else "skipped",
         }
-        return _ok_response(
-            f"Prepared {preflight['packet_mode']} packet within {budget} budget.",
+        summary_text = f"Prepared {preflight['packet_mode']} packet within {budget} budget."
+        response_kwargs = {
+            "packet": packet,
+            "project_type": project_type,
+            "packet_mode": preflight["packet_mode"],
+            "mode": preflight["packet_mode"],
+            "budget": budget,
+            "depth": depth,
+            "confidence": summary.get("confidence", 0.55),
+            "estimated_tokens": estimated,
+            "token_savings": token_savings,
+            "estimated_context_reduction": estimated_context_reduction,
+            "operation_savings": operation_savings,
+            "evidence": _evidence_summary(evidence_items),
+            "omitted": omitted,
+            "evidence_quality": evidence_quality,
+            "analysis_stages": stages,
+            "next_calls": ["Use packet first.", "Call soma_code_context for 1 focused missing area.", "Call soma_inspect for 1 Unity object/component."],
+        }
+        if evidence_quality["status"] == "ok":
+            first_render = _ok_response(summary_text, **response_kwargs)
+        else:
+            first_render = _compact_result("degraded", summary_text, **response_kwargs)
+        operation_savings = finalize_operation_savings_response_tokens(operation_savings, estimate_tokens(first_render))
+        token_savings = build_token_savings(
             packet=packet,
-            project_type=project_type,
-            packet_mode=preflight["packet_mode"],
-            mode=preflight["packet_mode"],
             budget=budget,
-            depth=depth,
-            confidence=summary.get("confidence", 0.55),
-            estimated_tokens=estimated,
-            token_savings=token_savings,
-            evidence=_evidence_summary(evidence_items),
-            omitted=omitted,
-            analysis_stages=stages,
-            next_calls=["Use packet first.", "Call soma_code_context for 1 focused missing area.", "Call soma_inspect for 1 Unity object/component."],
+            budget_tokens=TOKEN_BUDGETS[budget],
+            model_profile=token_model_profile,
+            estimated_context_reduction=estimated_context_reduction,
+            operation_savings=operation_savings,
         )
+        response_kwargs["operation_savings"] = operation_savings
+        response_kwargs["token_savings"] = token_savings
+        if evidence_quality["status"] == "ok":
+            return _ok_response(summary_text, **response_kwargs)
+        return _compact_result("degraded", summary_text, **response_kwargs)
     except Exception as exc:
+        token_savings = unavailable_token_savings(
+            reason=str(exc),
+            budget=budget,
+            budget_tokens=TOKEN_BUDGETS[budget],
+            model_profile=token_model_profile,
+        )
         return _error_response(
             f"soma_prepare_context failed: {exc}",
             budget=budget,
-            token_savings=unavailable_token_savings(
-                reason=str(exc),
-                budget=budget,
-                budget_tokens=TOKEN_BUDGETS[budget],
-                model_profile=token_model_profile,
-            ),
+            token_savings=token_savings,
+            estimated_context_reduction=token_savings.get("estimated_context_reduction"),
+            operation_savings=token_savings.get("operation_savings"),
         )
 
 
@@ -307,7 +370,7 @@ async def soma_code_context(query: str) -> str:
     git_status = get_git_status(project_root)
     preflight = build_preflight(query, project_root, project_type, discovered, repo_index, git_status, git_diff_summary)
     evidence = select_evidence(project_root, query, project_type, repo_index, preflight)[:5]
-    graph_result = graphify.query(query, project_root, budget=1200)
+    graph_result = graphify.query(query, project_root, budget=1200, project_only=True)
 
     snippets = []
     for item in evidence:

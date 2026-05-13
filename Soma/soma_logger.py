@@ -209,6 +209,12 @@ def log_tool_call(func: Callable) -> Callable:
             token_savings = parsed_result.get("token_savings") if isinstance(parsed_result, dict) else {}
             if not isinstance(token_savings, dict):
                 token_savings = {}
+            operation_savings = parsed_result.get("operation_savings") or token_savings.get("operation_savings")
+            estimated_context = parsed_result.get("estimated_context_reduction") or token_savings.get("estimated_context_reduction")
+            if not isinstance(operation_savings, dict):
+                operation_savings = {}
+            if not isinstance(estimated_context, dict):
+                estimated_context = {}
             extra = {
                 "project_type": parsed_result.get("project_type"),
                 "packet_mode": parsed_result.get("packet_mode") or parsed_result.get("mode"),
@@ -227,7 +233,15 @@ def log_tool_call(func: Callable) -> Callable:
                 "saved_tokens": token_savings.get("saved_tokens"),
                 "savings_pct": token_savings.get("savings_pct"),
                 "baseline_type": token_savings.get("baseline_type"),
+                "primary_metric": token_savings.get("primary_metric"),
                 "token_estimator": token_savings.get("estimator"),
+                "operation_saved_tokens": operation_savings.get("saved_tokens"),
+                "operation_savings_pct": operation_savings.get("savings_pct"),
+                "operation_baseline_tokens": operation_savings.get("operation_baseline_tokens") or operation_savings.get("baseline_tokens"),
+                "soma_response_tokens": operation_savings.get("soma_response_tokens"),
+                "estimated_context_saved_tokens": estimated_context.get("saved_tokens"),
+                "estimated_context_reduction_pct": estimated_context.get("savings_pct"),
+                "estimated_context_baseline_tokens": estimated_context.get("baseline_tokens"),
             }
             log_mcp_event(
                 event="tool_call",

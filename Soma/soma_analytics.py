@@ -21,6 +21,7 @@ from typing import Any
 SOMA_LOG_DIR = Path.home() / ".soma" / "logs"
 SOMA_ANALYTICS_DIR = Path.home() / ".soma" / "analytics"
 SOMA_TOKEN_STATS_FILE = Path.home() / ".soma" / "token_stats.json"
+SOMA_AGENT_BENCHMARK_FILE = Path.home() / ".soma" / "agent_benchmarks" / "latest.json"
 TOKEN_BUDGETS = {"micro": 1000, "fast": 2500, "balanced": 6000, "deep": 15000, "full": 30000}
 
 
@@ -61,6 +62,8 @@ def compute_report(date_str: str) -> dict[str, Any]:
         "packet_modes": defaultdict(int), "evidence_count": 0,
         "discovered_files": 0, "total_saved_tokens": 0,
         "savings_samples": [], "budget_used_samples": [],
+        "operation_saved_tokens": 0, "operation_savings_samples": [],
+        "estimated_context_saved_tokens": 0, "estimated_context_samples": [],
     })
 
     slowest: list[dict[str, Any]] = []
@@ -80,6 +83,10 @@ def compute_report(date_str: str) -> dict[str, Any]:
         saved_tokens = e.get("saved_tokens")
         savings_pct = e.get("savings_pct")
         budget_used_pct = e.get("budget_used_pct")
+        op_saved = e.get("operation_saved_tokens")
+        op_pct = e.get("operation_savings_pct")
+        est_saved = e.get("estimated_context_saved_tokens")
+        est_pct = e.get("estimated_context_reduction_pct")
 
         s = per_tool[tool]
         s["calls"] += 1
@@ -101,6 +108,14 @@ def compute_report(date_str: str) -> dict[str, Any]:
             s["savings_samples"].append(float(savings_pct))
         if isinstance(budget_used_pct, (int, float)):
             s["budget_used_samples"].append(float(budget_used_pct))
+        if isinstance(op_saved, (int, float)):
+            s["operation_saved_tokens"] += int(op_saved)
+        if isinstance(op_pct, (int, float)):
+            s["operation_savings_samples"].append(float(op_pct))
+        if isinstance(est_saved, (int, float)):
+            s["estimated_context_saved_tokens"] += int(est_saved)
+        if isinstance(est_pct, (int, float)):
+            s["estimated_context_samples"].append(float(est_pct))
 
         slowest.append({"tool": tool, "duration_ms": dur, "status": status, "ts": e.get("ts", "")})
 
@@ -122,8 +137,12 @@ def compute_report(date_str: str) -> dict[str, Any]:
         s["packet_modes"] = dict(s["packet_modes"])
         s["avg_savings_pct"] = round(sum(s["savings_samples"]) / max(len(s["savings_samples"]), 1), 1) if s["savings_samples"] else None
         s["avg_budget_used_pct"] = round(sum(s["budget_used_samples"]) / max(len(s["budget_used_samples"]), 1), 1) if s["budget_used_samples"] else None
+        s["avg_operation_savings_pct"] = round(sum(s["operation_savings_samples"]) / max(len(s["operation_savings_samples"]), 1), 1) if s["operation_savings_samples"] else None
+        s["avg_estimated_context_reduction_pct"] = round(sum(s["estimated_context_samples"]) / max(len(s["estimated_context_samples"]), 1), 1) if s["estimated_context_samples"] else None
         s.pop("savings_samples", None)
         s.pop("budget_used_samples", None)
+        s.pop("operation_savings_samples", None)
+        s.pop("estimated_context_samples", None)
 
     # Top slowest calls
     slowest_top = sorted(slowest, key=lambda x: x["duration_ms"], reverse=True)[:10]
@@ -147,6 +166,12 @@ def compute_report(date_str: str) -> dict[str, Any]:
     total_saved_tokens = sum(s.get("total_saved_tokens", 0) for s in per_tool.values())
     savings_values = [e.get("savings_pct") for e in tool_calls if isinstance(e.get("savings_pct"), (int, float))]
     avg_savings_pct = round(sum(savings_values) / max(len(savings_values), 1), 1) if savings_values else None
+    operation_saved_tokens = sum(s.get("operation_saved_tokens", 0) for s in per_tool.values())
+    operation_values = [e.get("operation_savings_pct") for e in tool_calls if isinstance(e.get("operation_savings_pct"), (int, float))]
+    avg_operation_savings_pct = round(sum(operation_values) / max(len(operation_values), 1), 1) if operation_values else None
+    estimated_saved_tokens = sum(s.get("estimated_context_saved_tokens", 0) for s in per_tool.values())
+    estimated_values = [e.get("estimated_context_reduction_pct") for e in tool_calls if isinstance(e.get("estimated_context_reduction_pct"), (int, float))]
+    avg_estimated_context_reduction_pct = round(sum(estimated_values) / max(len(estimated_values), 1), 1) if estimated_values else None
     server_starts = sum(1 for e in entries if e.get("event") == "server_start")
     savings_by_project_type: dict[str, dict[str, Any]] = defaultdict(lambda: {"calls": 0, "total_saved_tokens": 0, "savings_samples": []})
     for e in tool_calls:
@@ -177,6 +202,17 @@ def compute_report(date_str: str) -> dict[str, Any]:
             }
     except Exception:
         latest_benchmark = {"status": "unreadable"}
+    latest_agent_benchmark = None
+    try:
+        if SOMA_AGENT_BENCHMARK_FILE.exists():
+            stats = json.loads(SOMA_AGENT_BENCHMARK_FILE.read_text(encoding="utf-8"))
+            latest_agent_benchmark = {
+                "status": stats.get("status"),
+                "generated_at": stats.get("generated_at"),
+                "summary": stats.get("summary"),
+            }
+    except Exception:
+        latest_agent_benchmark = {"status": "unreadable"}
 
     report = {
         "date": date_str,
@@ -190,12 +226,17 @@ def compute_report(date_str: str) -> dict[str, Any]:
             "total_tokens": total_input_tokens + total_output_tokens,
             "total_saved_tokens": total_saved_tokens,
             "avg_savings_pct": avg_savings_pct,
+            "operation_saved_tokens": operation_saved_tokens,
+            "avg_operation_savings_pct": avg_operation_savings_pct,
+            "estimated_context_saved_tokens": estimated_saved_tokens,
+            "avg_estimated_context_reduction_pct": avg_estimated_context_reduction_pct,
             "error_count": total_errors,
             "server_starts": server_starts,
         },
         "per_tool": dict(per_tool),
         "savings_by_project_type": dict(savings_by_project_type),
         "latest_token_benchmark": latest_benchmark,
+        "latest_agent_benchmark": latest_agent_benchmark,
         "slowest_calls": slowest_top,
         "budget_utilization": budget_utilization,
     }
@@ -250,8 +291,10 @@ def _print_report(report: dict[str, Any]) -> None:
     print(f"{'='*60}")
     print(f"Tool calls:     {s['total_tool_calls']}")
     print(f"Total tokens:   {s['total_tokens']:,}  (in:{s['total_input_tokens']:,} out:{s['total_output_tokens']:,})")
-    if s.get("avg_savings_pct") is not None:
-        print(f"Token savings:  {s['total_saved_tokens']:,} saved avg {s['avg_savings_pct']:.1f}%")
+    if s.get("avg_operation_savings_pct") is not None:
+        print(f"Operation save: {s['operation_saved_tokens']:,} saved avg {s['avg_operation_savings_pct']:.1f}%")
+    if s.get("avg_estimated_context_reduction_pct") is not None:
+        print(f"Context reduce: {s['estimated_context_saved_tokens']:,} estimated avg {s['avg_estimated_context_reduction_pct']:.1f}%")
     print(f"Errors:         {s['error_count']}")
     print(f"Server starts:  {s['server_starts']}")
     print()

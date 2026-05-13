@@ -48,14 +48,39 @@ struct GatherBundle: Codable, Sendable {
     let token_budget: String?
     let estimated_tokens: Int?
     let token_savings: TokenSavings?
+    let estimated_context_reduction: TokenMetric?
+    let operation_savings: TokenMetric?
     let omitted_context: [String: AnyCodable]?
     let codex_packet: String?
     let enriched_prompt: String?
     let error: String?
 }
 
+struct TokenMetric: Codable, Sendable, Hashable {
+    let metric: String?
+    let status: String?
+    let model_profile: String?
+    let label: String?
+    let estimator: String?
+    let chars_per_token: Double?
+    let exact_encoding: String?
+    let packet_tokens: Int?
+    let budget: String?
+    let budget_tokens: Int?
+    let budget_used_pct: Double?
+    let baseline_type: String?
+    let baseline_tokens: Int?
+    let saved_tokens: Int?
+    let savings_pct: Double?
+    let operation_baseline_tokens: Int?
+    let operation_baseline_chars: Int?
+    let soma_response_tokens: Int?
+    let warnings: [String]?
+}
+
 struct TokenSavings: Codable, Sendable, Hashable {
     let status: String?
+    let primary_metric: String?
     let model_profile: String?
     let label: String?
     let estimator: String?
@@ -68,6 +93,8 @@ struct TokenSavings: Codable, Sendable, Hashable {
     let baseline_type: String?
     let saved_tokens: Int?
     let savings_pct: Double?
+    let estimated_context_reduction: TokenMetric?
+    let operation_savings: TokenMetric?
     let warnings: [String]?
 }
 
@@ -276,6 +303,14 @@ struct SomaLogEntry: Identifiable, Sendable {
     let budget_used_pct: Double?
     let saved_tokens: Int?
     let savings_pct: Double?
+    let primary_metric: String?
+    let operation_saved_tokens: Int?
+    let operation_savings_pct: Double?
+    let operation_baseline_tokens: Int?
+    let soma_response_tokens: Int?
+    let estimated_context_saved_tokens: Int?
+    let estimated_context_reduction_pct: Double?
+    let estimated_context_baseline_tokens: Int?
     let baseline_type: String?
     let token_estimator: String?
     let error: String?
@@ -301,6 +336,14 @@ struct SomaLogEntry: Identifiable, Sendable {
         self.budget_used_pct = SomaLogEntry.doubleValue(dict["budget_used_pct"])
         self.saved_tokens = SomaLogEntry.intValue(dict["saved_tokens"])
         self.savings_pct = SomaLogEntry.doubleValue(dict["savings_pct"])
+        self.primary_metric = dict["primary_metric"] as? String
+        self.operation_saved_tokens = SomaLogEntry.intValue(dict["operation_saved_tokens"])
+        self.operation_savings_pct = SomaLogEntry.doubleValue(dict["operation_savings_pct"])
+        self.operation_baseline_tokens = SomaLogEntry.intValue(dict["operation_baseline_tokens"])
+        self.soma_response_tokens = SomaLogEntry.intValue(dict["soma_response_tokens"])
+        self.estimated_context_saved_tokens = SomaLogEntry.intValue(dict["estimated_context_saved_tokens"])
+        self.estimated_context_reduction_pct = SomaLogEntry.doubleValue(dict["estimated_context_reduction_pct"])
+        self.estimated_context_baseline_tokens = SomaLogEntry.intValue(dict["estimated_context_baseline_tokens"])
         self.baseline_type = dict["baseline_type"] as? String
         self.token_estimator = dict["token_estimator"] as? String
         self.error = dict["error"] as? String
@@ -327,6 +370,10 @@ struct SomaToolStat: Identifiable, Sendable {
     let totalTokens: Int
     let totalSavedTokens: Int
     let avgSavingsPct: Double?
+    let totalOperationSavedTokens: Int
+    let avgOperationSavingsPct: Double?
+    let totalEstimatedContextSavedTokens: Int
+    let avgEstimatedContextReductionPct: Double?
 
     var errorRate: Double { calls > 0 ? Double(errors) / Double(calls) : 0 }
 }
@@ -362,4 +409,42 @@ struct TokenBenchmarkResult: Codable, Sendable {
     let soma_packet_tokens: Int?
     let saved_tokens: Int?
     let savings_pct: Double?
+}
+
+struct AgentBenchmarkReport: Codable, Sendable {
+    let status: String?
+    let generated_at: String?
+    let project_root: String?
+    let agents: [String]?
+    let model_profile: String?
+    let budget: String?
+    let depth: String?
+    let mode: String?
+    let summary: AgentBenchmarkSummary?
+    let comparisons: [AgentBenchmarkComparison]?
+}
+
+struct AgentBenchmarkSummary: Codable, Sendable {
+    let run_count: Int?
+    let failed_run_count: Int?
+    let comparison_count: Int?
+    let paired_result_count: Int?
+    let total_direct_tokens: Int?
+    let total_with_soma_tokens: Int?
+    let total_saved_tokens: Int?
+    let avg_savings_pct: Double?
+    let usage_sources: [String]?
+}
+
+struct AgentBenchmarkComparison: Codable, Sendable {
+    let task_id: String?
+    let agent: String?
+    let status: String?
+    let direct_tokens: Int?
+    let with_soma_tokens: Int?
+    let saved_tokens: Int?
+    let savings_pct: Double?
+    let direct_usage_source: String?
+    let with_soma_usage_source: String?
+    let acceptance_status: String?
 }

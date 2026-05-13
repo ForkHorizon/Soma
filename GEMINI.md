@@ -23,7 +23,7 @@ Read these first:
 - Structured logging: `Soma/soma_logger.py`
 - Analytics: `Soma/soma_analytics.py`
 - Universal verifier: `Soma/verify_soma_universal_workflow.py`
-- Token benchmark: `Soma/soma_token_benchmark.py`
+- Token measurement: `Soma/soma_token_savings.py`, `Soma/soma_token_benchmark.py`, `Soma/soma_agent_ab_benchmark.py`
 
 ## Hard Rules
 
@@ -33,6 +33,9 @@ Read these first:
 - Local ranker/analyst failures must degrade, not block deterministic packets.
 - `tools/list` stays stable for v1.
 - Keep logs metadata-oriented by default; do not log full request/response bodies.
+- Keep operation savings, estimated context reduction, and observed A/B usage separate.
+- Treat Soma Packet Mode as the default real AI workflow; live Codex/Gemini MCP is experimental.
+- `soma_prepare_context` must use project-only Graphify and return `degraded` when selected evidence is weak.
 - `graphify-out/` is generated and ignored by git.
 
 ## Canonical Commands

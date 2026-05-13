@@ -23,13 +23,15 @@ class GraphifyAdapter:
             self.graph_dir / root.name / "graph.json",
         ]
 
-    def find_graphs(self, project_root: str | None) -> list[Path]:
+    def find_graphs(self, project_root: str | None, project_only: bool | None = None) -> list[Path]:
         graphs: list[Path] = []
         for candidate in self.project_graph_candidates(project_root):
             if candidate.exists() and candidate not in graphs:
                 graphs.append(candidate)
 
-        if os.environ.get("SOMA_GRAPHIFY_PROJECT_ONLY") != "1":
+        if project_only is None:
+            project_only = os.environ.get("SOMA_GRAPHIFY_PROJECT_ONLY", "1") == "1"
+        if not project_only:
             cross_project = [
                 Path("/Users/daliys/Daliys/Swift/Soma/graphify-out/graph.json"),
                 Path("/Users/daliys/Daliys/UnityProjects/UnityTestForNexus/graphify-out/graph.json"),
@@ -67,8 +69,8 @@ class GraphifyAdapter:
             "recommended_action": None if project_graphs else "Run graphify in the project root.",
         }
 
-    def query(self, question: str, project_root: str | None, budget: int = 1500) -> dict[str, Any]:
-        graphs = self.find_graphs(project_root)
+    def query(self, question: str, project_root: str | None, budget: int = 1500, project_only: bool | None = None) -> dict[str, Any]:
+        graphs = self.find_graphs(project_root, project_only=project_only)
         answers: list[dict[str, str]] = []
         warnings: list[str] = []
         for graph in graphs[:2]:
@@ -88,7 +90,9 @@ class GraphifyAdapter:
                 warnings.append(stderr.splitlines()[0])
             if result.returncode == 0 and result.stdout.strip():
                 answers.append({"graph": str(graph), "answer": result.stdout.strip()[: max(400, budget * 5)]})
-        return {"graphs": [str(graph) for graph in graphs], "answers": answers, "warnings": warnings}
+        if not graphs:
+            warnings.append("graphify skipped: no project graph found")
+        return {"graphs": [str(graph) for graph in graphs], "answers": answers, "warnings": warnings, "project_only": project_only if project_only is not None else True}
 
     def god_nodes_from_report(self, project_root: str | None, limit: int = 8) -> list[str]:
         nodes: list[str] = []

@@ -53,6 +53,8 @@ final class SomaViewModel: ObservableObject {
     @Published var tokenBenchmarkReport: TokenBenchmarkReport?
     @Published var tokenBenchmarkBusy = false
     @Published var tokenBenchmarkError: String?
+    @Published var agentBenchmarkReport: AgentBenchmarkReport?
+    @Published var agentBenchmarkError: String?
 
     init() {}
 

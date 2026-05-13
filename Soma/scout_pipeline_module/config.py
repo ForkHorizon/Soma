@@ -61,13 +61,20 @@ SOURCE_EXTENSIONS = {'.c', '.cc', '.cpp', '.cs', '.go', '.h', '.hpp', '.java', '
 
 SCRIPT_EXTENSIONS = {'.bat', '.command', '.ps1', '.py', '.rb', '.sh', '.zsh'}
 
-LOG_EXTENSIONS = {'.crash', '.err', '.log', '.out', '.stderr', '.stdout', '.trace'}
+LOG_EXTENSIONS = {'.crash', '.err', '.jsonl', '.log', '.out', '.stderr', '.stdout', '.trace'}
 
-TEXT_EXTENSIONS = ((((SOURCE_EXTENSIONS | CONFIG_EXTENSIONS) | LOG_EXTENSIONS) | UNITY_EXTENSIONS) | {'.md', '.txt'})
+NOTE_EXTENSIONS = {'.md', '.txt'}
+
+TEXT_EXTENSIONS = ((((SOURCE_EXTENSIONS | CONFIG_EXTENSIONS) | LOG_EXTENSIONS) | UNITY_EXTENSIONS) | NOTE_EXTENSIONS)
 
 DEBUG_KEYWORDS = {'bug', 'broken', 'build', 'config', 'crash', 'debug', 'diagnose', "doesn't work", 'doesnt work', 'error', 'exception', 'fail', 'failing', 'failure', 'issue', 'log', 'not work', 'problem', 'script', 'stack trace', 'traceback', 'git', 'status', 'diff', 'changes', 'change', 'changed', 'changet', 'modified', 'recent', 'last', 'review', 'regression', 'unity'}
 
-STOP_WORDS = {'a', 'an', 'and', 'are', 'but', 'does', 'for', 'from', 'how', 'i', 'is', 'it', 'my', 'not', 'of', 'on', 'please', 'script', 'that', 'the', 'this', 'to', 'what', 'why', 'with', 'work'}
+STOP_WORDS = {
+    'a', 'an', 'and', 'any', 'are', 'artifacts', 'but', 'commands', 'direct', 'does', 'edit', 'file', 'files',
+    'find', 'for', 'from', 'generated', 'graphify', 'how', 'i', 'inspect', 'is', 'it', 'likely', 'minimal',
+    'my', 'not', 'of', 'on', 'only', 'plan', 'please', 'project', 'read', 'return', 'rg', 'root', 'script',
+    'sed', 'shell', 'should', 'that', 'the', 'this', 'to', 'use', 'what', 'why', 'with', 'work', 'xcode'
+}
 
 CHAT_SYSTEM = 'You are Soma, a highly capable local AI scout with full access to the filesystem.\n- list_directory: explore folders   - read_file: read files\n- Output tool calls as valid JSON in a code block, e.g.:\n```json\n{"name": "list_directory", "arguments": {"path": "/Users/daliys"}}\n```'
 

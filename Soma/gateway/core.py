@@ -195,7 +195,7 @@ def _analysis_depth(depth: str) -> str:
     return depth if depth in ANALYSIS_DEPTHS else "deterministic"
 
 
-def _evidence_summary(evidence_items: list[dict[str, Any]], limit: int = 5) -> list[dict[str, Any]]:
+def _evidence_summary(evidence_items: list[dict[str, Any]], limit: int = 8) -> list[dict[str, Any]]:
     compact = []
     for item in evidence_items[:limit]:
         compact.append(

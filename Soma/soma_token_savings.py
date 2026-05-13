@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +71,56 @@ def _baseline_result(
     }
 
 
+def _metric_result(
+    *,
+    metric: str,
+    packet: str,
+    budget: str,
+    budget_tokens: int,
+    model_profile: str,
+    baseline: dict[str, Any] | None,
+    status: str = "ok",
+    warnings: list[str] | None = None,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload = estimate_payload(packet or "", model_profile)
+    packet_tokens = int(payload["estimated_tokens"])
+    all_warnings = list(warnings or [])
+    if status != "ok" or not packet:
+        baseline = None
+        result_status = "unavailable"
+        all_warnings.append("No successful Soma packet was available, so savings were not calculated.")
+    elif baseline is None:
+        result_status = "degraded"
+        all_warnings.append("No baseline was available for this metric.")
+    elif (baseline.get("tokens") or 0) <= packet_tokens:
+        result_status = "degraded"
+        all_warnings.append("Baseline is not larger than the Soma packet for this request.")
+    else:
+        result_status = "ok"
+
+    result = {
+        "metric": metric,
+        "status": result_status,
+        "model_profile": profile_for(model_profile).key,
+        "estimator": payload["estimator"],
+        "chars_per_token": payload["chars_per_token"],
+        "exact_encoding": payload.get("exact_encoding"),
+        "packet_tokens": packet_tokens,
+        "budget": budget,
+        "budget_tokens": budget_tokens,
+        "budget_used_pct": _round_pct(100 * packet_tokens / max(budget_tokens, 1)),
+        "baseline_type": baseline.get("type") if baseline else None,
+        "baseline_tokens": baseline.get("tokens") if baseline else None,
+        "saved_tokens": baseline.get("saved_tokens") if baseline else None,
+        "savings_pct": baseline.get("savings_pct") if baseline else None,
+        "warnings": all_warnings,
+    }
+    if extra:
+        result.update(extra)
+    return result
+
+
 def build_task_candidate_baseline(
     *,
     project_root: str | None,
@@ -120,6 +172,217 @@ def build_task_candidate_baseline(
     )
 
 
+def build_estimated_context_reduction(
+    *,
+    packet: str,
+    budget: str,
+    budget_tokens: int,
+    model_profile: str | None = None,
+    task_candidate_baseline: dict[str, Any] | None = None,
+    raw_repo_plus_diff_baseline: dict[str, Any] | None = None,
+    status: str = "ok",
+    warnings: list[str] | None = None,
+) -> dict[str, Any]:
+    profile = profile_for(model_profile)
+    baselines = {
+        "task_candidates": task_candidate_baseline,
+        "raw_repo_plus_diff": raw_repo_plus_diff_baseline,
+    }
+    primary = raw_repo_plus_diff_baseline or task_candidate_baseline
+    result = _metric_result(
+        metric="estimated_context_reduction",
+        packet=packet,
+        budget=budget,
+        budget_tokens=budget_tokens,
+        model_profile=profile.key,
+        baseline=primary,
+        status=status,
+        warnings=warnings,
+        extra={"baselines": baselines},
+    )
+    result["label"] = "Estimated context reduction"
+    return result
+
+
+def _hash_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
+
+
+def _operation_item(
+    *,
+    source: str,
+    kind: str,
+    text: str,
+    model_profile: str,
+    path: str | None = None,
+    command: str | None = None,
+    truncated: bool = False,
+) -> dict[str, Any]:
+    return {
+        "source": source,
+        "kind": kind,
+        "path": path,
+        "command": command,
+        "characters": len(text or ""),
+        "tokens": estimate_tokens(text or "", model_profile),
+        "sha256": _hash_text(text or ""),
+        "truncated": truncated,
+    }
+
+
+def _git_diff_text(project_root: str | None) -> str:
+    if not project_root:
+        return ""
+    try:
+        return subprocess.run(
+            ["git", "diff", "--no-ext-diff", "--no-color"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=15,
+        ).stdout
+    except Exception:
+        return ""
+
+
+def build_operation_savings(
+    *,
+    packet: str,
+    project_root: str | None,
+    git_status: str | None,
+    evidence_items: list[dict[str, Any]],
+    budget: str,
+    budget_tokens: int,
+    model_profile: str | None = None,
+    max_chars_per_file: int = 60000,
+) -> dict[str, Any]:
+    """Estimate the concrete command/file outputs Soma avoided for this call.
+
+    This reads command/file output only to count and hash it. It never returns
+    raw source, raw logs, or raw diffs.
+    """
+    profile = profile_for(model_profile)
+    operations: list[dict[str, Any]] = []
+    if git_status:
+        operations.append(
+            _operation_item(
+                source="git_status",
+                kind="command",
+                text=git_status,
+                model_profile=profile.key,
+                command="git status --short",
+            )
+        )
+
+    diff = _git_diff_text(project_root)
+    if diff:
+        operations.append(
+            _operation_item(
+                source="git_diff",
+                kind="command",
+                text=diff,
+                model_profile=profile.key,
+                command="git diff --no-ext-diff --no-color",
+            )
+        )
+
+    seen: set[str] = set()
+    root_path = Path(project_root).resolve() if project_root else None
+    for item in evidence_items:
+        raw_path = item.get("path")
+        if not raw_path or raw_path in seen:
+            continue
+        seen.add(raw_path)
+        path = Path(raw_path)
+        if not path.is_file():
+            preview = item.get("preview") or ""
+            if preview:
+                operations.append(
+                    _operation_item(
+                        source="evidence_preview",
+                        kind=str(item.get("kind") or "file"),
+                        text=preview,
+                        model_profile=profile.key,
+                        path=_safe_rel_path(raw_path, project_root),
+                    )
+                )
+            continue
+        try:
+            text = path.read_text(errors="replace")
+        except Exception:
+            continue
+        truncated = len(text) > max_chars_per_file
+        clipped = text[:max_chars_per_file]
+        rel_path = _safe_rel_path(str(path), str(root_path) if root_path else project_root)
+        operations.append(
+            _operation_item(
+                source="selected_evidence_file",
+                kind=str(item.get("kind") or "file"),
+                text=clipped,
+                model_profile=profile.key,
+                path=rel_path,
+                truncated=truncated,
+            )
+        )
+
+    baseline_tokens = sum(int(op.get("tokens") or 0) for op in operations)
+    baseline_chars = sum(int(op.get("characters") or 0) for op in operations)
+    packet_tokens = estimate_tokens(packet or "", profile.key)
+    saved = max(0, baseline_tokens - packet_tokens)
+    baseline = {
+        "type": "operation_baseline",
+        "source": "git_status_git_diff_selected_evidence_outputs",
+        "characters": baseline_chars,
+        "tokens": baseline_tokens,
+        "included_file_count": sum(1 for op in operations if op.get("source") in {"selected_evidence_file", "evidence_preview"}),
+        "operation_count": len(operations),
+        "saved_tokens": saved,
+        "savings_pct": _round_pct(100 * saved / max(baseline_tokens, 1)),
+        "caps": {"max_chars_per_file": max_chars_per_file},
+    }
+    result = _metric_result(
+        metric="operation_savings",
+        packet=packet,
+        budget=budget,
+        budget_tokens=budget_tokens,
+        model_profile=profile.key,
+        baseline=baseline if operations else None,
+        extra={
+            "label": "Operation savings",
+            "operation_baseline_tokens": baseline_tokens,
+            "operation_baseline_chars": baseline_chars,
+            "soma_response_tokens": packet_tokens,
+            "operations": operations,
+        },
+    )
+    return result
+
+
+def finalize_operation_savings_response_tokens(operation_savings: dict[str, Any] | None, soma_response_tokens: int) -> dict[str, Any] | None:
+    """Recompute operation savings against the full Soma tool response.
+
+    Runtime callers build operation metadata before rendering the final JSON
+    response. This finalizer updates saved tokens after the response size is
+    known, which better matches what an agent actually receives from the tool.
+    """
+    if not isinstance(operation_savings, dict):
+        return operation_savings
+    updated = dict(operation_savings)
+    baseline_tokens = updated.get("operation_baseline_tokens") or updated.get("baseline_tokens")
+    updated["soma_response_tokens"] = max(0, int(soma_response_tokens or 0))
+    if isinstance(baseline_tokens, (int, float)):
+        saved = max(0, int(baseline_tokens) - updated["soma_response_tokens"])
+        updated["saved_tokens"] = saved
+        updated["savings_pct"] = _round_pct(100 * saved / max(int(baseline_tokens), 1))
+        if int(baseline_tokens) <= updated["soma_response_tokens"] and updated.get("status") == "ok":
+            updated["status"] = "degraded"
+            warnings = list(updated.get("warnings") or [])
+            warnings.append("Full Soma response was not smaller than the operation baseline.")
+            updated["warnings"] = warnings
+    return updated
+
+
 def build_raw_repo_plus_diff_baseline(
     *,
     raw_repo_chars: int,
@@ -148,47 +411,52 @@ def build_token_savings(
     model_profile: str | None = None,
     task_candidate_baseline: dict[str, Any] | None = None,
     raw_repo_plus_diff_baseline: dict[str, Any] | None = None,
+    estimated_context_reduction: dict[str, Any] | None = None,
+    operation_savings: dict[str, Any] | None = None,
     status: str = "ok",
     warnings: list[str] | None = None,
 ) -> dict[str, Any]:
     profile = profile_for(model_profile)
     payload = estimate_payload(packet or "", profile.key)
-    packet_tokens = int(payload["estimated_tokens"])
     all_warnings = list(warnings or [])
-    baselines = {
-        "task_candidates": task_candidate_baseline,
-        "raw_repo_plus_diff": raw_repo_plus_diff_baseline,
-    }
-
-    primary = task_candidate_baseline or raw_repo_plus_diff_baseline
+    if estimated_context_reduction is None:
+        estimated_context_reduction = build_estimated_context_reduction(
+            packet=packet,
+            budget=budget,
+            budget_tokens=budget_tokens,
+            model_profile=profile.key,
+            task_candidate_baseline=task_candidate_baseline,
+            raw_repo_plus_diff_baseline=raw_repo_plus_diff_baseline,
+            status=status,
+            warnings=warnings,
+        )
+    primary_metric = operation_savings if operation_savings is not None else estimated_context_reduction
     if status != "ok" or not packet:
-        all_warnings.append("No successful Soma packet was available, so savings were not calculated.")
-        primary = None
         result_status = "unavailable"
-    elif primary is None:
-        all_warnings.append("No baseline was available for this packet.")
-        result_status = "degraded"
-    elif (primary.get("tokens") or 0) <= packet_tokens:
-        all_warnings.append("Baseline is not larger than the Soma packet for this request.")
-        result_status = "degraded"
     else:
-        result_status = "ok"
+        result_status = (primary_metric or {}).get("status", "degraded")
 
     return {
         "status": result_status,
+        "primary_metric": "operation_savings" if operation_savings is not None else "estimated_context_reduction",
         "model_profile": profile.key,
         "label": profile.label,
         "estimator": payload["estimator"],
         "chars_per_token": payload["chars_per_token"],
         "exact_encoding": payload.get("exact_encoding"),
-        "packet_tokens": packet_tokens,
+        "packet_tokens": (primary_metric or {}).get("packet_tokens") or int(payload["estimated_tokens"]),
         "budget": budget,
         "budget_tokens": budget_tokens,
-        "budget_used_pct": _round_pct(100 * packet_tokens / max(budget_tokens, 1)),
-        "baseline_type": primary.get("type") if primary else None,
-        "baselines": baselines,
-        "saved_tokens": primary.get("saved_tokens") if primary else None,
-        "savings_pct": primary.get("savings_pct") if primary else None,
+        "budget_used_pct": (primary_metric or {}).get("budget_used_pct"),
+        "baseline_type": (primary_metric or {}).get("baseline_type"),
+        "baselines": estimated_context_reduction.get("baselines") if isinstance(estimated_context_reduction, dict) else {
+            "task_candidates": task_candidate_baseline,
+            "raw_repo_plus_diff": raw_repo_plus_diff_baseline,
+        },
+        "saved_tokens": (primary_metric or {}).get("saved_tokens"),
+        "savings_pct": (primary_metric or {}).get("savings_pct"),
+        "estimated_context_reduction": estimated_context_reduction,
+        "operation_savings": operation_savings,
         "warnings": all_warnings,
     }
 

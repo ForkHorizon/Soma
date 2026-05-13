@@ -79,14 +79,14 @@ struct LogsView: View {
             // Summary row
             let totalCalls = viewModel.toolStats.reduce(0) { $0 + $1.calls }
             let totalTok = viewModel.toolStats.reduce(0) { $0 + $1.totalTokens }
-            let totalSaved = viewModel.toolStats.reduce(0) { $0 + $1.totalSavedTokens }
+            let totalSaved = viewModel.toolStats.reduce(0) { $0 + max($1.totalOperationSavedTokens, $1.totalSavedTokens) }
             let totalErr = viewModel.toolStats.reduce(0) { $0 + $1.errors }
 
             HStack(spacing: 12) {
                 statBadge(value: "\(totalCalls)", label: "Calls", color: .blue)
                 statBadge(value: "\(totalTok)", label: "Tokens", color: .purple)
                 if totalSaved > 0 {
-                    statBadge(value: "\(totalSaved)", label: "Saved", color: .green)
+                    statBadge(value: "\(totalSaved)", label: "Op Saved", color: .green)
                 }
                 if totalErr > 0 {
                     statBadge(value: "\(totalErr)", label: "Errors", color: .red)
@@ -136,8 +136,8 @@ struct LogsView: View {
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundColor(.secondary)
                     }
-                    if let savings = stat.avgSavingsPct {
-                        Text(String(format: "%.1f%% saved", savings))
+                    if let savings = stat.avgOperationSavingsPct ?? stat.avgSavingsPct {
+                        Text(String(format: "%.1f%% ops", savings))
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundColor(.green)
                     }
@@ -206,12 +206,12 @@ struct LogsView: View {
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundColor(.blue.opacity(0.8))
                     }
-                    if let savings = entry.savings_pct {
-                        Text(String(format: "%.1f%% saved", savings))
+                    if let savings = entry.operation_savings_pct ?? entry.savings_pct {
+                        Text(String(format: "%.1f%% ops", savings))
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundColor(.green.opacity(0.9))
                     }
-                    if let saved = entry.saved_tokens, saved > 0 {
+                    if let saved = entry.operation_saved_tokens ?? entry.saved_tokens, saved > 0 {
                         Text("\(saved) saved")
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundColor(.green.opacity(0.9))
@@ -219,6 +219,11 @@ struct LogsView: View {
                 }
                 if entry.baseline_type != nil || entry.token_estimator != nil {
                     Text([entry.baseline_type, entry.token_estimator].compactMap { $0 }.joined(separator: " · "))
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+                if let estimated = entry.estimated_context_reduction_pct {
+                    Text(String(format: "estimated context reduction %.1f%%", estimated))
                         .font(.system(size: 10))
                         .foregroundColor(.secondary)
                 }

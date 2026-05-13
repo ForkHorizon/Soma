@@ -6,7 +6,7 @@ import os
 import sys
 from typing import Any
 
-from gateway.tool_registry import TOOL_CATALOG
+from gateway.tool_registry import TOOL_CATALOG, call_tool
 from soma_logger import log_mcp_request, log_mcp_response, log_server_start, log_server_stop
 
 
@@ -55,7 +55,7 @@ async def _handle_line(line: str) -> None:
 
 async def _dispatch(method: str | None, params: dict[str, Any]) -> str:
     if method in TOOL_CATALOG:
-        return await TOOL_CATALOG[method](**params)
+        return await call_tool(method, params)
     return json.dumps({"error": f"Unknown tool {method}"})
 
 

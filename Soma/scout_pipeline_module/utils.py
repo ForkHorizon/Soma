@@ -83,8 +83,10 @@ def categorize_path(path):
         return 'manifest'
     if (suffix in UNITY_EXTENSIONS):
         return 'unity'
-    if ((suffix in LOG_EXTENSIONS) or ('log' in name.lower()) or name.lower().startswith(('ollama_', 'stderr', 'stdout'))):
+    if ((suffix in LOG_EXTENSIONS) or name.lower().startswith(('ollama_', 'stderr', 'stdout'))):
         return 'log'
+    if (suffix in NOTE_EXTENSIONS):
+        return 'notes'
     if ((suffix in SOURCE_EXTENSIONS) and (suffix not in {'.bat', '.command', '.ps1', '.sh', '.zsh'})):
         return 'source'
     if ((suffix in SCRIPT_EXTENSIONS) or ((not suffix) and os.access(path, os.X_OK))):
@@ -93,6 +95,8 @@ def categorize_path(path):
         return 'source'
     if (suffix in CONFIG_EXTENSIONS):
         return 'config'
+    if ('log' in name.lower()):
+        return 'log'
     return None
 
 

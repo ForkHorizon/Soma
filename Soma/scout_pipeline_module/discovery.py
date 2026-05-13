@@ -23,6 +23,8 @@ from pathlib import Path
 
 from .config import *
 
+CACHE_VERSION = 3
+
 
 def _looks_like_file_items(items):
     if not isinstance(items, list):
@@ -138,6 +140,12 @@ def detect_project_type(project_root):
 
 def iter_project_files(project_root):
     from .daemon import GoDaemon
+    if os.environ.get('SOMA_USE_GO_SCANNER') != '1':
+        try:
+            return _scan_files_python(project_root)
+        except Exception as exc:
+            print(f"iter_project_files fallback failed: {exc}", file=sys.stderr)
+            return []
     daemon_items = []
     try:
         daemon = GoDaemon.get_instance()
@@ -182,9 +190,10 @@ def file_digest(path):
 
 
 def build_repo_index(project_root, discovered):
-    from .utils import normalize_path
+    from .utils import normalize_path, categorize_path
     from .symbols import extract_unity_refs, extract_symbols
     from .parser import read_text_file
+    from .classifier import split_identifier_terms
     cache_path = index_cache_path(project_root)
     cache = {}
     try:
@@ -200,18 +209,32 @@ def build_repo_index(project_root, discovered):
         if not isinstance(item, dict) or not item.get('path'):
             continue
         path = item['path']
+        category = categorize_path(path) or item.get('category')
         size = item.get('size', 0)
         mtime_ns = item.get('mtime_ns', 0)
-        cache_id = f'{path}:{size}:{mtime_ns}'
+        cache_id = f'v{CACHE_VERSION}:{path}:{size}:{mtime_ns}'
         cached = files_cache.get(path)
-        if (cached and (cached.get('cache_id') == cache_id)):
+        if (cached and (cached.get('cache_id') == cache_id) and ('search_terms' in cached) and (cached.get('category') == category)):
             indexed = cached
         else:
             changed_count += 1
             text = ''
             if ((os.path.splitext(path)[1].lower() in TEXT_EXTENSIONS) or (item['category'] in {'source', 'script', 'config', 'manifest', 'unity'})):
                 text = read_text_file(path)
-            indexed = {'cache_id': cache_id, 'path': path, 'category': item['category'], 'size': size, 'mtime': item.get('mtime', 0), 'digest': file_digest(path), 'symbols': extract_symbols(path, text), 'unity_refs': extract_unity_refs(path, text)}
+            search_terms = []
+            if text:
+                search_terms = list(dict.fromkeys(split_identifier_terms(path) + split_identifier_terms(text[:MAX_FILE_BYTES])))[:300]
+            indexed = {
+                'cache_id': cache_id,
+                'path': path,
+                'category': category,
+                'size': size,
+                'mtime': item.get('mtime', 0),
+                'digest': file_digest(path),
+                'symbols': extract_symbols(path, text),
+                'unity_refs': extract_unity_refs(path, text),
+                'search_terms': search_terms,
+            }
         new_files_cache[path] = indexed
         indexed_files.append(indexed)
     next_cache = {'project_root': normalize_path(project_root), 'updated_at': (int(os.path.getmtime(project_root)) if os.path.exists(project_root) else 0), 'files': new_files_cache}

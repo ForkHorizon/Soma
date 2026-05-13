@@ -19,57 +19,46 @@ from .config import *
 
 
 def find_errors(text):
-    from .daemon import GoDaemon
-    try:
-        daemon = GoDaemon.get_instance()
-        stdout = daemon.call('find-errors', text)
-        res = json.loads(stdout)
-        if isinstance(res, str):
-            res = json.loads(res)
-        return res if isinstance(res, list) else []
-    except Exception as exc:
-        print(f"find_errors failed: {exc}", file=sys.stderr)
-        return []
+    errors = []
+    for line in (text or '').splitlines():
+        lowered = line.lower()
+        if any(marker in lowered for marker in ('error', 'exception', 'failed', 'failure', 'traceback', 'panic')):
+            errors.append(line.strip()[:500])
+        if len(errors) >= MAX_ERROR_LINES:
+            break
+    return errors
 
 
 def group_compile_errors(errors):
     'Deduplicates and sanitizes compile errors into concise summaries.'
     if not errors:
         return []
-    from .daemon import GoDaemon
-    try:
-        daemon = GoDaemon.get_instance()
-        stdout = daemon.call('group-compile-errors', json.dumps(errors))
-        res = json.loads(stdout)
-        if isinstance(res, str):
-            res = json.loads(res)
-        return res if isinstance(res, list) else []
-    except Exception as exc:
-        print(f"group_compile_errors failed: {exc}", file=sys.stderr)
-        return []
+    grouped = []
+    seen = set()
+    for error in errors:
+        text = str(error).strip()
+        key = re.sub(r':\d+(?::\d+)?', ':#', text)
+        if key in seen:
+            continue
+        seen.add(key)
+        grouped.append(text[:500])
+        if len(grouped) >= MAX_ERROR_LINES:
+            break
+    return grouped
 
 
 def get_unity_logs(path):
-    from .daemon import GoDaemon
     try:
-        daemon = GoDaemon.get_instance()
-        stdout = daemon.call('tail-logs', path)
-        res = json.loads(stdout)
-        if isinstance(res, str):
-            res = json.loads(res)
-        return res if isinstance(res, list) else []
+        return find_errors(read_text_file(path))
     except Exception as exc:
         print(f"get_unity_logs failed: {exc}", file=sys.stderr)
-        pass
     return []
 
 
 def read_text_file(path):
-    from .daemon import GoDaemon
     try:
-        daemon = GoDaemon.get_instance()
-        stdout = daemon.call('read-text', path)
-        return stdout
+        with open(path, 'r', encoding='utf-8', errors='replace') as handle:
+            return handle.read(MAX_FILE_BYTES)
     except Exception as exc:
         return f'[Unable to read file: {exc}]'
 
@@ -77,42 +66,31 @@ def read_text_file(path):
 def excerpt_for_text(text, terms):
     if (not text):
         return ('', None, None)
-    from .daemon import GoDaemon
-    try:
-        daemon = GoDaemon.get_instance()
-        stdout = daemon.call('excerpt-for-text', text, json.dumps(terms))
-        res = json.loads(stdout)
-        if isinstance(res, str):
-            res = json.loads(res)
-        if isinstance(res, dict):
-            return (res.get('text', ''), res.get('start_line'), res.get('end_line'))
-        return ('', None, None)
-    except Exception as exc:
-        print(f"excerpt_for_text failed: {exc}", file=sys.stderr)
-        # Fallback
-        lines = text.splitlines()
+    lines = text.splitlines()
+    lowered_terms = [term.lower() for term in (terms or []) if len(str(term)) > 2]
+    match_index = None
+    for index, line in enumerate(lines):
+        lowered = line.lower()
+        if any(term in lowered for term in lowered_terms):
+            match_index = index
+            break
+    if match_index is None:
         preview = text[:MAX_PREVIEW_CHARS].strip()
         end_line = (min(len(lines), max(1, (preview.count('\n') + 1))) if preview else None)
         return (preview, (1 if preview else None), end_line)
+    start = max(0, match_index - 12)
+    end = min(len(lines), match_index + 28)
+    preview = '\n'.join(lines[start:end])[:MAX_PREVIEW_CHARS].strip()
+    return (preview, start + 1, end)
 
 
 def excerpt_for_log(text, terms):
-    from .daemon import GoDaemon
-    try:
-        daemon = GoDaemon.get_instance()
-        stdout = daemon.call('excerpt-for-log', text, json.dumps(terms))
-        res = json.loads(stdout)
-        if isinstance(res, str):
-            res = json.loads(res)
-        if isinstance(res, dict):
-            return (res.get('text', ''), res.get('start_line'), res.get('end_line'))
+    if not text:
         return ('', None, None)
-    except Exception as exc:
-        print(f"excerpt_for_log failed: {exc}", file=sys.stderr)
-        # Fallback
-        lines = text.splitlines()
-        start = max(0, (len(lines) - 80))
-        return ('\n'.join(lines[start:])[:MAX_PREVIEW_CHARS], ((start + 1) if lines else None), (len(lines) if lines else None))
+    errors = find_errors(text)
+    if errors:
+        return ('\n'.join(errors)[:MAX_PREVIEW_CHARS], 1, min(len(errors), MAX_ERROR_LINES))
+    return excerpt_for_text(text, terms)
 
 
 def format_line_range(item):

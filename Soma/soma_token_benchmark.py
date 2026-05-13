@@ -195,7 +195,7 @@ def _build_summary(results: list[dict[str, Any]], mode: str) -> dict[str, Any]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Measure Soma packet token savings against raw baselines.")
+    parser = argparse.ArgumentParser(description="Measure estimated Soma context reduction against raw baselines.")
     parser.add_argument("--fixtures", default=str(Path(__file__).parents[1] / "tests" / "fixtures" / "projects"))
     parser.add_argument("--project-root", default=None, help="Opt-in benchmark for a real selected project.")
     parser.add_argument("--model-profile", default="gpt-5.5")

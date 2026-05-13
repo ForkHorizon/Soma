@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,7 +16,7 @@ from scout_pipeline_module.discovery import build_repo_index, detect_project_typ
 from scout_pipeline_module.gather import build_preflight, select_evidence
 from scout_pipeline_module.git import get_git_diff_summary, get_git_status
 import token_calculator
-from soma_token_savings import build_token_savings
+from soma_token_savings import build_operation_savings, build_token_savings
 from token_calculator import estimate_payload, estimate_tokens, profile_for
 from universal_fixtures import fixture_templates, prepare_fixture_repo
 
@@ -23,6 +24,7 @@ import gateway.core
 import gateway.tools.context
 import verify_soma_universal_workflow as universal
 import soma_token_benchmark
+import soma_agent_ab_benchmark
 
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "projects"
@@ -41,6 +43,61 @@ EXPECTED_TYPES = {
     "php_project": "php",
     "ruby_project": "ruby",
 }
+
+
+def make_quiet_hours_repo():
+    tmp = tempfile.TemporaryDirectory()
+    root = Path(tmp.name)
+    (root / "Moodling" / "Core").mkdir(parents=True)
+    (root / "Moodling" / "Models").mkdir(parents=True)
+    (root / "Moodling" / "Views").mkdir(parents=True)
+    (root / "MoodlingTests").mkdir()
+    (root / "docs").mkdir()
+    (root / "fixtures" / "system_events").mkdir(parents=True)
+    (root / "Package.swift").write_text("// swift-tools-version: 5.9\n", encoding="utf-8")
+    (root / "Moodling" / "Core" / "CooldownPolicy.swift").write_text(
+        "import Foundation\nstruct CooldownPolicy {\n"
+        "func isQuietTime(currentMinute: Int, start: Int, end: Int) -> Bool {\n"
+        "if start == end { return true }\n"
+        "if start < end { return currentMinute >= start && currentMinute < end }\n"
+        "return currentMinute >= start || currentMinute < end\n}\n}\n",
+        encoding="utf-8",
+    )
+    (root / "Moodling" / "Core" / "NudgeScheduler.swift").write_text(
+        "struct NudgeScheduler { let cooldownPolicy = CooldownPolicy() }\n",
+        encoding="utf-8",
+    )
+    (root / "Moodling" / "AppState.swift").write_text(
+        "final class AppState { let nudgeScheduler = NudgeScheduler(); func testNudge() {} }\n",
+        encoding="utf-8",
+    )
+    (root / "Moodling" / "Models" / "MoodlingSettings.swift").write_text(
+        "struct MoodlingSettings { var quietHoursEnabled = true; var quietHoursStartMinutes = 23 * 60; var quietHoursEndMinutes = 8 * 60 }\n",
+        encoding="utf-8",
+    )
+    (root / "Moodling" / "Views" / "SettingsView.swift").write_text(
+        "struct SettingsView { let label = \"Quiet hours\" }\n",
+        encoding="utf-8",
+    )
+    (root / "MoodlingTests" / "CooldownPolicyTests.swift").write_text(
+        "import XCTest\nfinal class CooldownPolicyTests: XCTestCase { func testQuietHoursCrossMidnight() {} }\n",
+        encoding="utf-8",
+    )
+    (root / "docs" / "behavior.md").write_text(
+        "# Behavior\nQuiet hours suppress nudges and bubbles between start and end, including midnight crossing intervals.\n",
+        encoding="utf-8",
+    )
+    (root / "fixtures" / "system_events" / "quiet_hours_cross_midnight.jsonl").write_text(
+        "{\"type\":\"manual_nudge\",\"expected\":\"allowed_before_quiet_hours\"}\n"
+        "{\"type\":\"agent_log\",\"expected\":\"suppressed_after_midnight\"}\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+    subprocess.run(["git", "add", "."], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=root, check=True, capture_output=True)
+    return tmp, root
 
 
 class UniversalReadinessTests(unittest.TestCase):
@@ -86,8 +143,10 @@ class UniversalReadinessTests(unittest.TestCase):
                 self.assertEqual(payload["status"], "ok")
                 self.assertTrue(payload["packet"])
                 self.assertLessEqual(payload["estimated_tokens"], TOKEN_BUDGETS["fast"])
-                self.assertEqual(payload["token_savings"]["status"], "ok")
-                self.assertGreater(payload["token_savings"]["saved_tokens"], 0)
+                self.assertEqual(payload["token_savings"]["primary_metric"], "operation_savings")
+                self.assertIn(payload["operation_savings"]["status"], {"ok", "degraded"})
+                self.assertEqual(payload["estimated_context_reduction"]["status"], "ok")
+                self.assertGreater(payload["estimated_context_reduction"]["saved_tokens"], 0)
                 self.assertTrue(payload["evidence"])
                 self.assertNotIn("diff --git", payload["packet"])
                 self.assertNotIn(".DS_Store", payload["packet"])
@@ -109,6 +168,42 @@ class UniversalReadinessTests(unittest.TestCase):
         self.assertTrue(any(item["kind"] == "log" for item in evidence))
         self.assertTrue(any(item["kind"] == "source" for item in evidence))
         self.assertGreater((diff or {}).get("raw_diff_chars_omitted", 0), 0)
+
+    def test_quiet_hours_packet_selects_real_case_chain_without_cross_graph(self):
+        tmp, root = make_quiet_hours_repo()
+        prompt = (
+            "Read-only analysis. Investigate whether Moodling quiet hours can fail when "
+            "the quiet interval crosses midnight. Return likely root cause, exact files to inspect, "
+            "test cases that should exist, and a minimal fix plan."
+        )
+        with tmp, patch.object(gateway.core.graphify, "query", return_value={"graphs": [], "answers": [], "warnings": []}):
+            os.environ["SOMA_PROJECT_ROOT"] = str(root)
+            payload = json.loads(asyncio.run(gateway.tools.context.soma_prepare_context(prompt, "fast", "deterministic")))
+
+        packet = payload["packet"]
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["omitted"]["graphify"], "skipped")
+        for expected in [
+            "CooldownPolicy.swift",
+            "NudgeScheduler.swift",
+            "AppState.swift",
+            "MoodlingSettings.swift",
+            "SettingsView.swift",
+            "CooldownPolicyTests.swift",
+            "docs/behavior.md",
+            "quiet_hours_cross_midnight.jsonl",
+        ]:
+            self.assertIn(expected, packet)
+        self.assertNotIn("UnityTestForNexus", packet)
+
+    def test_prepare_context_degrades_when_no_strong_evidence_matches(self):
+        tmp, root = make_quiet_hours_repo()
+        with tmp, patch.object(gateway.core.graphify, "query", return_value={"graphs": [], "answers": [], "warnings": []}):
+            os.environ["SOMA_PROJECT_ROOT"] = str(root)
+            payload = json.loads(asyncio.run(gateway.tools.context.soma_prepare_context("Debug phantom zyxwvu crash", "fast", "deterministic")))
+
+        self.assertEqual(payload["status"], "degraded")
+        self.assertEqual(payload["evidence_quality"]["status"], "degraded")
 
 
 class TokenAndUniversalCLITests(unittest.TestCase):
@@ -135,6 +230,61 @@ class TokenAndUniversalCLITests(unittest.TestCase):
         )
         self.assertEqual(savings["status"], "unavailable")
         self.assertIsNone(savings["savings_pct"])
+
+    def test_operation_savings_stores_counts_hashes_not_raw_bodies(self):
+        template = FIXTURES / "python_package"
+        tmp, root = prepare_fixture_repo(template)
+        with tmp:
+            secret = "SOMA_SECRET_SHOULD_NOT_APPEAR"
+            source = root / "src" / "python_fixture" / "app.py"
+            source.write_text(source.read_text() + f"\n# {secret}\n", encoding="utf-8")
+            result = build_operation_savings(
+                packet="Compact Soma packet",
+                project_root=str(root),
+                git_status=" M src/sample_pkg/core.py",
+                evidence_items=[{"path": str(source), "kind": "source"}],
+                budget="fast",
+                budget_tokens=TOKEN_BUDGETS["fast"],
+                model_profile="gpt-5.5",
+            )
+        rendered = json.dumps(result)
+        self.assertIn("operations", result)
+        self.assertNotIn(secret, rendered)
+        self.assertIn("sha256", rendered)
+        self.assertGreater(result["operation_baseline_tokens"], 0)
+
+    def test_agent_usage_extractor_handles_cli_usage_and_fallback(self):
+        stdout = "\n".join([
+            json.dumps({"event": "started"}),
+            json.dumps({"usage": {"input_tokens": 120, "output_tokens": 30, "total_tokens": 150}}),
+        ])
+        usage = soma_agent_ab_benchmark.extract_usage_from_events(stdout)
+        self.assertEqual(usage["usage_source"], "cli_event")
+        self.assertEqual(usage["total_tokens"], 150)
+        self.assertIsNone(soma_agent_ab_benchmark.extract_usage_from_events("plain transcript"))
+
+    def test_agent_acceptance_rubric_uses_hash_safe_transcript_scan(self):
+        task = {
+            "expected_files": ["CooldownPolicy.swift"],
+            "must_mention": ["midnight"],
+            "must_not_claim": ["delete settings"],
+        }
+        passed = soma_agent_ab_benchmark._evaluate_acceptance(task, "Check CooldownPolicy.swift around midnight.", "", "ok")
+        failed = soma_agent_ab_benchmark._evaluate_acceptance(task, "Check SettingsView.swift.", "delete settings", "ok")
+        self.assertEqual(passed["status"], "passed")
+        self.assertEqual(failed["status"], "failed")
+        self.assertIn("CooldownPolicy.swift", failed["expected_files_missing"])
+
+    def test_agent_ab_summary_does_not_fake_failed_savings(self):
+        runs = [
+            {"task_id": "debug", "agent": "codex", "mode": "direct", "status": "ok", "total_tokens": 1000, "acceptance_status": "manual_review_required"},
+            {"task_id": "debug", "agent": "codex", "mode": "with_soma", "status": "error", "total_tokens": 100, "acceptance_status": "not_applicable", "soma_packet_status": "degraded"},
+        ]
+        comparisons = soma_agent_ab_benchmark._compare_pairs(runs)
+        summary = soma_agent_ab_benchmark._build_summary(runs, comparisons)
+        self.assertEqual(comparisons[0]["status"], "unavailable")
+        self.assertEqual(summary["paired_result_count"], 0)
+        self.assertIsNone(summary["avg_savings_pct"])
 
     def test_universal_report_saves_core_fields_with_mocked_fixture_result(self):
         fake = {

@@ -19,6 +19,7 @@ import gateway.tools.nexus
 import gateway.tools.query
 import gateway.tools.context
 import gateway.tools.memory
+import gateway.tool_registry
 
 
 class SomaMCPServerTests(unittest.TestCase):
@@ -57,6 +58,24 @@ class SomaMCPServerTests(unittest.TestCase):
         self.assertIn("soma_prepare_context", names)
         self.assertIn("soma_apply", names)
         self.assertFalse(any(name.startswith("unity_") for name in names))
+
+    def test_tool_schema_exposes_prepare_context_inputs(self):
+        schema = gateway.tool_registry.tool_schema("soma_prepare_context")
+        self.assertEqual(schema["properties"]["goal"]["type"], "string")
+        self.assertIn("goal", schema["required"])
+        self.assertFalse(schema["additionalProperties"])
+
+    def test_tool_call_ignores_client_added_arguments(self):
+        tmp, root = self.make_repo()
+        with tmp, patch.object(gateway.core.nexus, "discover", return_value=gateway.core.NexusState()), patch.object(
+            gateway.core.graphify,
+            "status",
+            return_value={"stale": True, "recommended_action": "Run graphify in the project root."},
+        ), patch.object(gateway.core.graphify, "god_nodes_from_report", return_value=[]):
+            os.environ["SOMA_PROJECT_ROOT"] = str(root)
+            payload = json.loads(asyncio.run(gateway.tool_registry.call_tool("soma_get_map", {"wait_for_previous": True})))
+
+        self.assertEqual(payload["status"], "ok")
 
     def test_prepare_context_returns_structured_budgeted_packet(self):
         tmp, root = self.make_repo()

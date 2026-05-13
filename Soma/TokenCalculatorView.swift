@@ -68,7 +68,7 @@ struct TokenCalculatorView: View {
     }
 
     private var headerSection: some View {
-        Text("Token Savings Lab")
+        Text("Token Measurement Lab")
             .font(.title2)
             .bold()
     }

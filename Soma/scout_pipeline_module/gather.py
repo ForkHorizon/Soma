@@ -21,7 +21,25 @@ from pathlib import Path
 from .config import *
 
 
-def extract_explicit_paths(prompt, project_root):
+def _prompt_reference_fragments(prompt):
+    fragments = []
+    for match in re.findall(r'`([^`]+)`|"([^"]+)"|\'([^\']+)\'', prompt or ''):
+        fragments.extend([part.strip() for part in match if part and part.strip()])
+    fragments.extend(re.findall(r'[A-Za-z0-9_./-]+\.[A-Za-z0-9_./-]+', prompt or ''))
+    fragments.extend(re.findall(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+', prompt or ''))
+    fragments.extend(re.findall(r'\b[A-Z][A-Za-z0-9_]{2,}\b', prompt or ''))
+    return list(dict.fromkeys(fragment.strip('.,:)(') for fragment in fragments if fragment.strip('.,:)(')))
+
+
+def _candidate_items(discovered=None, repo_index=None):
+    if repo_index:
+        files = repo_index.get('files') or []
+        if files:
+            return files
+    return discovered or []
+
+
+def extract_explicit_paths(prompt, project_root, discovered=None, repo_index=None):
     from .utils import dedupe_strings, normalize_path, is_noise_path
     project_root = normalize_path(project_root)
     candidates = []
@@ -33,11 +51,44 @@ def extract_explicit_paths(prompt, project_root):
         if is_noise_path(normalized):
             continue
         candidates.append(normalized)
+
+    fragments = _prompt_reference_fragments(prompt)
+    for fragment in fragments:
+        if not fragment or fragment.startswith('/'):
+            continue
+        if ('/' in fragment) or ('.' in fragment):
+            path = os.path.join(project_root, fragment)
+            if os.path.isfile(path):
+                normalized = normalize_path(path)
+                if not is_noise_path(normalized):
+                    candidates.append(normalized)
+
+    lowered_fragments = {fragment.lower() for fragment in fragments if fragment}
+    if lowered_fragments:
+        for item in _candidate_items(discovered, repo_index):
+            path = item.get('path')
+            if not path:
+                continue
+            normalized = normalize_path(path)
+            if is_noise_path(normalized):
+                continue
+            name = os.path.basename(path)
+            stem = os.path.splitext(name)[0]
+            try:
+                rel = os.path.relpath(normalized, project_root)
+            except Exception:
+                rel = path
+            symbols = item.get('symbols') or []
+            exacts = {name.lower(), stem.lower(), rel.lower(), path.lower()}
+            exacts.update(str(symbol).lower() for symbol in symbols)
+            if lowered_fragments & exacts:
+                candidates.append(normalized)
     return dedupe_strings(candidates)
 
 
 def file_rank(item, terms, intent, project_type, packet_mode='debug', changed_paths=None, explicit_paths=None, error_paths=None):
     from .utils import normalize_path
+    from .classifier import split_identifier_terms
     score = 0
     changed_paths = (changed_paths or set())
     explicit_paths = (explicit_paths or set())
@@ -47,16 +98,22 @@ def file_rank(item, terms, intent, project_type, packet_mode='debug', changed_pa
     category = item['category']
     normalized = normalize_path(item['path'])
     rel = (item.get('relative_path') or item['path'])
+    rel_lower = rel.lower()
+    symbol_text = ' '.join((item.get('symbols') or [])).lower()
+    search_terms = set((item.get('search_terms') or []))
+    name_terms = set(split_identifier_terms(item.get('name', '')))
     if ((normalized in explicit_paths) or (item['path'] in explicit_paths)):
-        score += 200
+        score += 240
     if ((rel in changed_paths) or (item['path'] in changed_paths) or (normalized in changed_paths)):
         score += (120 if (packet_mode in {'changes', 'review', 'implementation'}) else 50)
     if ((item['path'] in error_paths) or (normalized in error_paths)):
         score += (130 if (packet_mode == 'debug') else 45)
     if (category == 'manifest'):
-        score += (18 if (packet_mode in {'changes', 'review'}) else 70)
+        score += (18 if (packet_mode in {'changes', 'review'}) else 28)
     if (category == 'log'):
-        score += (60 if (packet_mode == 'debug') else 18)
+        score += (70 if (packet_mode == 'debug') else 18)
+    if (category == 'notes'):
+        score += (35 if (packet_mode in {'debug', 'review'}) else 16)
     if (category == 'unity'):
         score += (60 if (project_type == 'unity') else 20)
     if (category == 'script'):
@@ -114,12 +171,38 @@ def file_rank(item, terms, intent, project_type, packet_mode='debug', changed_pa
         if item['path'].endswith('.rb'):
             score += 18
     for term in terms:
-        if (term in lowered_name):
-            score += 18
-        elif (term in lowered_path):
-            score += 8
-        if (term in ' '.join((item.get('symbols') or [])).lower()):
-            score += 22
+        if (term in name_terms):
+            score += 34
+        elif (term in lowered_name):
+            score += 24
+        elif ((term in rel_lower) or (term in lowered_path)):
+            score += 11
+        if (term in symbol_text):
+            score += 28
+        if (term in search_terms):
+            score += 14
+    if packet_mode in {'debug', 'review'} and re.search(r'(^|/)(tests?|fixtures?)(/|$)', rel_lower):
+        score += 24
+    if packet_mode == 'debug' and ('error' in search_terms or 'fail' in search_terms or 'failure' in search_terms):
+        score += 18
+    term_set = set(terms)
+    if 'quiet' in term_set and (('hours' in term_set) or ('hour' in term_set) or ('midnight' in term_set)):
+        quiet_chain_names = {
+            'appstate.swift',
+            'cooldownpolicy.swift',
+            'nudgescheduler.swift',
+            'moodlingsettings.swift',
+            'settingsview.swift',
+            'cooldownpolicytests.swift',
+        }
+        if lowered_name in quiet_chain_names:
+            score += 95
+        if rel_lower.endswith('docs/behavior.md') or rel_lower.endswith('behavior.md'):
+            score += 180
+        if 'quiet_hours' in rel_lower or 'quiet-hours' in rel_lower:
+            score += 95
+        if any(term in rel_lower for term in ('cooldown', 'nudge', 'scheduler', 'settings', 'appstate')):
+            score += 35
     recency = max(0, item['mtime'])
     score += min(int((recency / 10000000)), 15)
     return score
@@ -153,17 +236,17 @@ def evidence_item_from_path(path, category, reason, terms, indexed=None):
 
 
 def select_evidence(project_root, prompt, project_type, repo_index=None, preflight=None):
-    from .classifier import classify_prompt_intent, prompt_terms
+    from .classifier import classify_prompt_intent, expanded_prompt_terms
     from .discovery import iter_project_files
     from .utils import rel_path
-    terms = prompt_terms(prompt)
+    terms = expanded_prompt_terms(prompt)
     intent = classify_prompt_intent(prompt)
     packet_mode = ((preflight or {}).get('packet_mode') or intent['packet_mode'])
     changed_paths = set(((preflight or {}).get('changed_paths') or []))
     explicit_paths = set(((preflight or {}).get('explicit_paths') or []))
     error_paths = set(((preflight or {}).get('error_paths') or []))
     if repo_index:
-        discovered = [{'path': item['path'], 'relative_path': rel_path(item['path'], project_root), 'name': os.path.basename(item['path']), 'category': item['category'], 'mtime': item.get('mtime', 0), 'symbols': (item.get('symbols') or []), 'unity_refs': (item.get('unity_refs') or [])} for item in repo_index.get('files', [])]
+        discovered = [{'path': item['path'], 'relative_path': rel_path(item['path'], project_root), 'name': os.path.basename(item['path']), 'category': item['category'], 'mtime': item.get('mtime', 0), 'symbols': (item.get('symbols') or []), 'unity_refs': (item.get('unity_refs') or []), 'search_terms': (item.get('search_terms') or [])} for item in repo_index.get('files', [])]
         indexed_by_path = {item['path']: item for item in repo_index.get('files', [])}
     else:
         discovered = iter_project_files(project_root)
@@ -171,7 +254,15 @@ def select_evidence(project_root, prompt, project_type, repo_index=None, preflig
     scored = sorted(discovered, key=(lambda item: file_rank(item, terms, intent, project_type, packet_mode=packet_mode, changed_paths=changed_paths, explicit_paths=explicit_paths, error_paths=error_paths)), reverse=True)
     evidence = []
     seen_paths = set()
-    category_limits = {'manifest': 2, 'log': 2, 'script': 2, 'source': 3, 'config': 2, 'unity': 3, 'notes': 1}
+    category_limits = {
+        'manifest': 2,
+        'log': 2 if packet_mode == 'debug' else 1,
+        'script': 2,
+        'source': 6 if packet_mode in {'debug', 'review', 'implementation'} else 4,
+        'config': 2,
+        'unity': 3,
+        'notes': 2,
+    }
     category_counts = {key: 0 for key in category_limits}
     for item in scored:
         category = item['category']
@@ -187,10 +278,10 @@ def select_evidence(project_root, prompt, project_type, repo_index=None, preflig
     return evidence
 
 
-def gather_external_evidence(prompt, project_root, terms):
+def gather_external_evidence(prompt, project_root, terms, discovered=None, repo_index=None):
     from .utils import categorize_path
     extras = []
-    for path in extract_explicit_paths(prompt, project_root):
+    for path in extract_explicit_paths(prompt, project_root, discovered, repo_index):
         if (not os.path.isfile(path)):
             continue
         category = (categorize_path(path) or 'notes')
@@ -200,10 +291,10 @@ def gather_external_evidence(prompt, project_root, terms):
 
 def build_preflight(prompt, project_root, project_type, discovered, repo_index, git_status, git_diff_summary):
     from .parser import find_errors, get_unity_logs, read_text_file, group_compile_errors, excerpt_for_log
-    from .classifier import classify_prompt_intent, prompt_terms
+    from .classifier import classify_prompt_intent, prompt_terms, expanded_prompt_terms
     from .utils import normalize_path, is_noise_path
     intent = classify_prompt_intent(prompt)
-    explicit_paths = extract_explicit_paths(prompt, project_root)
+    explicit_paths = extract_explicit_paths(prompt, project_root, discovered, repo_index)
     changed_files = ((git_diff_summary or {}).get('changed_files') or [])
     changed_paths = {item.get('path') for item in changed_files if (item.get('path') and (not is_noise_path(item.get('path'))))}
     changed_paths.update((normalize_path(os.path.join(project_root, path)) for path in list(changed_paths) if (path and (not str(path).startswith('/')))))
@@ -223,4 +314,43 @@ def build_preflight(prompt, project_root, project_type, discovered, repo_index, 
         else:
             log_candidates.append({'path': item['path'], 'errors': []})
     candidate_paths = [item.get('path') for item in sorted(repo_index.get('files', []), key=(lambda entry: (entry.get('mtime') or 0)), reverse=True)[:30]]
-    return {'intent': intent, 'packet_mode': intent['packet_mode'], 'confidence': intent['confidence'], 'terms': prompt_terms(prompt), 'explicit_paths': explicit_paths, 'changed_files': changed_files, 'changed_paths': sorted(changed_paths), 'git_status': git_status, 'git_diff_summary': git_diff_summary, 'log_candidates': log_candidates[:5], 'error_paths': sorted(error_paths), 'candidate_paths': [path for path in candidate_paths if (path and (not is_noise_path(path)))], 'project_type': project_type}
+    return {'intent': intent, 'packet_mode': intent['packet_mode'], 'confidence': intent['confidence'], 'terms': prompt_terms(prompt), 'expanded_terms': expanded_prompt_terms(prompt), 'explicit_paths': explicit_paths, 'changed_files': changed_files, 'changed_paths': sorted(changed_paths), 'git_status': git_status, 'git_diff_summary': git_diff_summary, 'log_candidates': log_candidates[:5], 'error_paths': sorted(error_paths), 'candidate_paths': [path for path in candidate_paths if (path and (not is_noise_path(path)))], 'project_type': project_type}
+
+
+def assess_evidence_quality(prompt, evidence_items, preflight=None):
+    from .classifier import prompt_terms, expanded_prompt_terms, split_identifier_terms
+    from .utils import normalize_path
+    original_terms = set(prompt_terms(prompt))
+    expanded_terms = set(expanded_prompt_terms(prompt))
+    explicit_paths = {normalize_path(path) for path in ((preflight or {}).get('explicit_paths') or [])}
+    changed_paths = {normalize_path(path) for path in ((preflight or {}).get('changed_paths') or [])}
+    error_paths = {normalize_path(path) for path in ((preflight or {}).get('error_paths') or [])}
+    strong = []
+    weak = []
+    for item in evidence_items:
+        path = item.get('path') or ''
+        raw_haystack = ' '.join([
+            path,
+            os.path.basename(path),
+            ' '.join(item.get('symbols') or []),
+            item.get('preview') or '',
+        ])
+        haystack = raw_haystack.lower()
+        haystack_terms = set(split_identifier_terms(raw_haystack))
+        original_matches = sorted(term for term in original_terms if (term in haystack or term in haystack_terms))
+        expanded_matches = sorted(term for term in expanded_terms if (term in haystack or term in haystack_terms))
+        normalized = normalize_path(path) if path else ''
+        if normalized in explicit_paths or normalized in changed_paths or normalized in error_paths or original_matches or len(expanded_matches) >= 2:
+            strong.append({'path': path, 'matches': (original_matches or expanded_matches)[:8]})
+        elif expanded_matches:
+            weak.append({'path': path, 'matches': expanded_matches[:5]})
+    status = 'ok' if strong else 'degraded'
+    warnings = [] if strong else ['No strongly matched evidence file was selected for this task.']
+    return {
+        'status': status,
+        'strong_match_count': len(strong),
+        'weak_match_count': len(weak),
+        'strong_matches': strong[:8],
+        'weak_matches': weak[:8],
+        'warnings': warnings,
+    }

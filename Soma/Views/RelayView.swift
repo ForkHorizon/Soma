@@ -95,7 +95,9 @@ struct RelayView: View {
                         if let confidence = bundle.confidence { badge(text: String(format: "confidence %.2f", confidence)) }
                         if let tokenBudget = bundle.token_budget { badge(text: "budget \(tokenBudget)") }
                         if let estimatedTokens = bundle.estimated_tokens { badge(text: "~\(estimatedTokens) tokens") }
-                        if let savings = bundle.token_savings?.savings_pct { badge(text: String(format: "%.1f%% saved", savings)) }
+                        if let savings = bundle.operation_savings?.savings_pct ?? bundle.token_savings?.savings_pct {
+                            badge(text: String(format: "%.1f%% ops", savings))
+                        }
                     }
                     if let reason = bundle.gather_reason { labeledBlock(title: "Why This Route", text: reason) }
                     if let root = bundle.project_root { labeledBlock(title: "Project Root", text: root) }
