@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 struct ScoutView: View {
     @ObservedObject var viewModel: ScoutViewModel
@@ -9,58 +9,109 @@ struct ScoutView: View {
     var body: some View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        if viewModel.scoutTranscript.isEmpty {
-                            emptyState(icon: "folder.badge.magnifyingglass", title: "Scout mode", subtitle: "Chat directly with \(ollama.modelName) to explore your files")
-                        } else {
-                            Text(viewModel.scoutTranscript).font(.system(.body, design: .monospaced)).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
+                SomaPage {
+                    WorkflowHeader(
+                        title: "Scout Files",
+                        subtitle: "Optional exploration mode using the Scout model \(ollama.modelName). Use Prepare Packet when you want a compact handoff for another model.",
+                        icon: "folder.badge.magnifyingglass",
+                        tone: .info
+                    )
+
+                    if !ollama.isOllamaRunning {
+                        StatusBanner(
+                            title: "Local AI is offline",
+                            detail: "Scout depends on Ollama because it chats directly with \(ollama.modelName). Launch Local AI from the top bar to use this screen.",
+                            tone: .warning
+                        )
+                    } else if !ollama.isModelLoaded {
+                        StatusBanner(
+                            title: "Model is not loaded yet",
+                            detail: "Ollama is running. Load \(ollama.modelName) from the top bar before asking Scout to inspect files.",
+                            tone: .info
+                        )
+                    }
+
+                    if viewModel.scoutTranscript.isEmpty {
+                        SomaPanel(title: "Optional Explorer", subtitle: "Use this when you want a direct local-model conversation with project files.", icon: "folder.badge.magnifyingglass", tone: .info) {
+                            EmptyStateView(
+                                icon: "folder.badge.magnifyingglass",
+                                title: "Ask focused file questions",
+                                subtitle: "Examples: find the auth entrypoint, explain recent errors, inspect a suspected file, or summarize how a feature is wired."
+                            )
                         }
-                        if viewModel.scoutLoading {
-                            HStack {
-                                ProgressView().controlSize(.small)
-                                Text("Soma is scouting…").foregroundColor(.secondary).italic()
-                            }.id("loading")
-                        }
-                    }.padding()
+                    } else {
+                        transcriptPanel
+                    }
+
+                    if viewModel.scoutLoading {
+                        StatusBanner(
+                            title: "Scout is reading context",
+                            detail: "Soma is calling the local scout pipeline and will append the answer to the transcript.",
+                            tone: .warning,
+                            isLoading: true
+                        )
+                        .id("loading")
+                    }
                 }
-                .background(Color(NSColor.textBackgroundColor).opacity(0.5)).cornerRadius(8).padding(.horizontal)
-                .onChange(of: viewModel.scoutTranscript) { _, _ in proxy.scrollTo("loading", anchor: .bottom) }
+                .onChange(of: viewModel.scoutTranscript) { _, _ in
+                    proxy.scrollTo("loading", anchor: .bottom)
+                }
             }
-            inputBar(text: $viewModel.scoutPrompt, placeholder: "Ask Soma to find or read files…", disabled: viewModel.scoutLoading || !ollama.isOllamaRunning, buttonLabel: "Scout Files", icon: "magnifyingglass") {
+
+            PromptInputBar(
+                text: $viewModel.scoutPrompt,
+                placeholder: "Ask Soma to find, read, or explain files in the selected project...",
+                buttonLabel: "Scout Files",
+                icon: "magnifyingglass",
+                disabled: viewModel.scoutLoading || !ollama.isOllamaRunning || !ollama.isModelLoaded,
+                disabledReason: scoutDisabledReason,
+                minHeight: 52,
+                onClear: { viewModel.resetState() }
+            ) {
                 viewModel.runScout(ollama: ollama, somaViewModel: somaViewModel)
             }
         }
     }
 
-    private func emptyState(icon: String, title: String, subtitle: String) -> some View {
-        VStack(spacing: 12) {
-            Spacer(minLength: 60)
-            Image(systemName: icon).font(.system(size: 44)).foregroundColor(.secondary.opacity(0.4))
-            Text(title).font(.title3).bold()
-            Text(subtitle).foregroundColor(.secondary).multilineTextAlignment(.center)
-            Spacer()
-        }.frame(maxWidth: .infinity)
+    private var scoutDisabledReason: String? {
+        if viewModel.scoutLoading {
+            return "Scout is already working."
+        }
+        if !ollama.isOllamaRunning {
+            return "Launch Local AI in the top bar first."
+        }
+        if !ollama.isModelLoaded {
+            return "Load the local model in the top bar first."
+        }
+        return nil
     }
 
-    @ViewBuilder
-    private func inputBar(text: Binding<String>, placeholder: String, disabled: Bool, buttonLabel: String, icon: String, action: @escaping () -> Void) -> some View {
-        VStack(spacing: 8) {
-            ZStack(alignment: .topLeading) {
-                if text.wrappedValue.isEmpty { Text(placeholder).foregroundColor(.secondary).padding(.leading, 5).padding(.top, 8).font(.body).allowsHitTesting(false).accessibilityHidden(true) }
-                TextEditor(text: text).font(.body).frame(minHeight: 60, maxHeight: 100).padding(4).background(Color.clear)
-                    .accessibilityLabel(Text(placeholder))
-                    .onSubmit { if !disabled { action() } }
-            }.background(Color(NSColor.controlBackgroundColor)).cornerRadius(6).overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.2)))
+    private var transcriptPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
+                Label("Scout Transcript", systemImage: "text.bubble")
+                    .font(.headline)
                 Spacer()
-                Button(action: action) { HStack { Image(systemName: icon); Text(buttonLabel) }.bold().padding(.horizontal, 8) }
-                    .buttonStyle(BorderedProminentButtonStyle())
-                    .controlSize(.regular)
-                    .disabled(disabled || text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .keyboardShortcut(.return, modifiers: .command)
-                    .help(disabled ? "Currently unavailable" : (text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Enter a prompt to continue" : "Submit (⌘ ↵)"))
+                Button {
+                    copyToClipboard(viewModel.scoutTranscript)
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
-        }.padding()
+
+            Text(viewModel.scoutTranscript)
+                .font(.system(.body, design: .monospaced))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
+                .padding(12)
+                .background(Color(NSColor.textBackgroundColor).opacity(0.80))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .padding(14)
+        .background(Color(NSColor.controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.12)))
     }
 }

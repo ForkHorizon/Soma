@@ -16,9 +16,14 @@ from typing import Any
 from gateway.client_config import (
     build_client_config,
     codex_config_default_path,
+    install_hermes_config,
+    install_gemini_config,
     install_codex_config,
+    rollback_gemini_config,
     rollback_codex_config,
     server_script_path,
+    verify_hermes_config,
+    verify_gemini_config,
     verify_codex_config,
 )
 from gateway.jsonrpc import run_daemon
@@ -26,13 +31,16 @@ from gateway.status import (
     build_status_payload,
     discover_nexus,
     find_graph_json,
+    graphify,
     get_memory_dir,
     load_memory,
     query_graph_simple,
     save_memory,
 )
 from gateway.tool_registry import TOOL_CATALOG, call_tool, tool_schema
+from soma_audit import context_from_arguments
 from soma_logger import log_mcp_request, log_mcp_response, log_server_start, log_server_stop
+from soma_project_setup import analyze_project_ai_setup, harden_project_ai_setup, rollback_project_ai_setup
 from scout_pipeline import normalize_path
 
 _project_root: str | None = os.environ.get("SOMA_PROJECT_ROOT")
@@ -74,17 +82,18 @@ async def _run_mcp_package_server(transport: str) -> None:
 
     @server.call_tool()
     async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
-        start = log_mcp_request(f"tools/call:{name}", None, len(json.dumps(arguments or {}, default=str)))
+        audit_context = context_from_arguments(arguments)
+        start = log_mcp_request(f"tools/call:{name}", None, len(json.dumps(arguments or {}, default=str)), extra=audit_context)
         if name not in TOOL_CATALOG:
-            log_mcp_response(f"tools/call:{name}", None, start, "error", 0)
+            log_mcp_response(f"tools/call:{name}", None, start, "error", 0, extra=audit_context)
             raise ValueError(f"Unknown tool: {name}")
         try:
             result = await call_tool(name, arguments)
-            log_mcp_response(f"tools/call:{name}", None, start, "ok", len(str(result)))
+            log_mcp_response(f"tools/call:{name}", None, start, "ok", len(str(result)), extra=audit_context)
             return [TextContent(type="text", text=str(result))]
         except Exception as exc:
             text = json.dumps({"status": "failed", "error": str(exc)})
-            log_mcp_response(f"tools/call:{name}", None, start, "error", len(text))
+            log_mcp_response(f"tools/call:{name}", None, start, "error", len(text), extra=audit_context)
             return [TextContent(type="text", text=text)]
 
     async with stdio_server() as (read, write):
@@ -103,11 +112,19 @@ def main() -> None:
     parser.add_argument("--transport", default="stdio", choices=["stdio", "sse"])
     parser.add_argument("--port", type=int, default=8090, help="Port for SSE mode")
     parser.add_argument("--project-root", default=None, help="Override project root")
-    parser.add_argument("--print-client-config", choices=["codex", "gemini", "claude"], default=None)
+    parser.add_argument("--print-client-config", choices=["codex", "gemini", "claude", "hermes"], default=None)
     parser.add_argument("--status-json", action="store_true", help="Print compact Soma/Nexus/Graphify status and exit")
+    parser.add_argument("--graph-storage-json", action="store_true", help="Print managed Graphify storage info and exit")
+    parser.add_argument("--migrate-graph", action="store_true", help="Copy a legacy graphify-out into Soma managed graph storage")
     parser.add_argument("--install-codex-config", action="store_true", help="Back up and install a Soma-only Codex MCP config")
     parser.add_argument("--rollback-codex-config", action="store_true", help="Restore Codex config from the newest Soma backup")
-    parser.add_argument("--verify-client-config", choices=["codex"], default=None, help="Verify a client config points to Soma only")
+    parser.add_argument("--install-gemini-config", action="store_true", help="Back up and install a Soma-only Gemini MCP config")
+    parser.add_argument("--install-hermes-config", action="store_true", help="Back up and install a Soma-only Hermes MCP config")
+    parser.add_argument("--rollback-gemini-config", action="store_true", help="Restore Gemini config from the newest Soma backup")
+    parser.add_argument("--verify-client-config", choices=["codex", "gemini", "hermes"], default=None, help="Verify a client config points to Soma only")
+    parser.add_argument("--analyze-project-ai-setup", action="store_true", help="Analyze global/project AI configs and prompts for Soma-first routing")
+    parser.add_argument("--harden-project-ai-setup", action="store_true", help="Back up and rewrite project AI setup for Soma-first routing")
+    parser.add_argument("--rollback-project-ai-setup", action="store_true", help="Restore files changed by the latest project AI setup hardening")
     parser.add_argument("--config-path", default=None, help="Override client config path for install/verify")
     parser.add_argument("--backup-path", default=None, help="Explicit backup path for Codex rollback")
     parser.add_argument("--daemon", action="store_true", help="Run as a long-lived Python daemon over stdio")
@@ -125,14 +142,59 @@ def main() -> None:
     if args.status_json:
         print(json.dumps(build_status_payload(_project_root), indent=2, sort_keys=True))
         raise SystemExit(0)
+    if args.graph_storage_json:
+        if not _project_root:
+            print(json.dumps({"status": "error", "summary": "--project-root is required for graph storage info"}, indent=2, sort_keys=True))
+            raise SystemExit(2)
+        print(json.dumps(graphify.storage_info(_project_root), indent=2, sort_keys=True))
+        raise SystemExit(0)
+    if args.migrate_graph:
+        if not _project_root:
+            print(json.dumps({"status": "error", "summary": "--project-root is required for graph migration"}, indent=2, sort_keys=True))
+            raise SystemExit(2)
+        print(json.dumps(graphify.migrate_graph(_project_root), indent=2, sort_keys=True))
+        raise SystemExit(0)
     if args.verify_client_config == "codex":
-        print(json.dumps(verify_codex_config(args.config_path), indent=2, sort_keys=True))
+        print(json.dumps(verify_codex_config(args.config_path, _project_root), indent=2, sort_keys=True))
+        raise SystemExit(0)
+    if args.verify_client_config == "gemini":
+        print(json.dumps(verify_gemini_config(args.config_path, _project_root), indent=2, sort_keys=True))
+        raise SystemExit(0)
+    if args.verify_client_config == "hermes":
+        print(json.dumps(verify_hermes_config(args.config_path, _project_root), indent=2, sort_keys=True))
         raise SystemExit(0)
     if args.install_codex_config:
         print(json.dumps(install_codex_config(args.config_path, _project_root, sys.executable), indent=2, sort_keys=True))
         raise SystemExit(0)
+    if args.install_gemini_config:
+        print(json.dumps(install_gemini_config(args.config_path, _project_root, sys.executable), indent=2, sort_keys=True))
+        raise SystemExit(0)
+    if args.install_hermes_config:
+        print(json.dumps(install_hermes_config(args.config_path, _project_root, sys.executable), indent=2, sort_keys=True))
+        raise SystemExit(0)
     if args.rollback_codex_config:
         print(json.dumps(rollback_codex_config(args.config_path, args.backup_path), indent=2, sort_keys=True))
+        raise SystemExit(0)
+    if args.rollback_gemini_config:
+        print(json.dumps(rollback_gemini_config(args.config_path, args.backup_path), indent=2, sort_keys=True))
+        raise SystemExit(0)
+    if args.analyze_project_ai_setup:
+        if not _project_root:
+            print(json.dumps({"status": "error", "summary": "--project-root is required for project AI setup analysis"}, indent=2, sort_keys=True))
+            raise SystemExit(2)
+        print(json.dumps(analyze_project_ai_setup(_project_root), indent=2, sort_keys=True))
+        raise SystemExit(0)
+    if args.harden_project_ai_setup:
+        if not _project_root:
+            print(json.dumps({"status": "error", "summary": "--project-root is required for project AI setup hardening"}, indent=2, sort_keys=True))
+            raise SystemExit(2)
+        print(json.dumps(harden_project_ai_setup(_project_root, python_executable=sys.executable), indent=2, sort_keys=True))
+        raise SystemExit(0)
+    if args.rollback_project_ai_setup:
+        if not _project_root:
+            print(json.dumps({"status": "error", "summary": "--project-root is required for project AI setup rollback"}, indent=2, sort_keys=True))
+            raise SystemExit(2)
+        print(json.dumps(rollback_project_ai_setup(_project_root), indent=2, sort_keys=True))
         raise SystemExit(0)
     if args.daemon:
         asyncio.run(run_daemon(_project_root))

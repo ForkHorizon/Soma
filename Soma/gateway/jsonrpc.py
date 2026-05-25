@@ -6,7 +6,8 @@ import os
 import sys
 from typing import Any
 
-from gateway.tool_registry import TOOL_CATALOG, call_tool
+from gateway.tool_registry import TOOL_CATALOG, call_tool, tool_schema
+from soma_audit import context_from_arguments
 from soma_logger import log_mcp_request, log_mcp_response, log_server_start, log_server_stop
 
 
@@ -35,11 +36,12 @@ async def _handle_line(line: str) -> None:
         req_id = req.get("id")
         method = req.get("method")
         params = req.get("params", {})
-        start = log_mcp_request(method or "unknown", req_id, len(json.dumps(params, default=str)))
+        audit_context = _audit_context_from_request(method, params)
+        start = log_mcp_request(method or "unknown", req_id, len(json.dumps(params, default=str)), extra=audit_context)
         res = await _dispatch(method, params)
         response = {"jsonrpc": "2.0", "id": req_id, "result": _result_object(res)}
         response_text = json.dumps(response)
-        log_mcp_response(method or "unknown", req_id, start, "ok", len(response_text))
+        log_mcp_response(method or "unknown", req_id, start, "ok", len(response_text), extra=audit_context)
         print(response_text, flush=True)
     except Exception as exc:
         try:
@@ -53,7 +55,41 @@ async def _handle_line(line: str) -> None:
         print(response_text, flush=True)
 
 
+def _audit_context_from_request(method: str | None, params: Any) -> dict[str, Any]:
+    if not isinstance(params, dict):
+        return {}
+    if method == "tools/call":
+        arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+        return context_from_arguments(arguments)
+    return context_from_arguments(params)
+
+
 async def _dispatch(method: str | None, params: dict[str, Any]) -> str:
+    if method == "initialize":
+        return json.dumps(
+            {
+                "protocolVersion": "2024-11-05",
+                "serverInfo": {"name": "soma-gateway", "version": "local"},
+                "capabilities": {"tools": {}},
+            }
+        )
+    if method == "tools/list":
+        return json.dumps(
+            {
+                "tools": [
+                    {
+                        "name": name,
+                        "description": func.__doc__ or "Soma tool",
+                        "inputSchema": tool_schema(name),
+                    }
+                    for name, func in TOOL_CATALOG.items()
+                ]
+            }
+        )
+    if method == "tools/call":
+        name = str(params.get("name") or "")
+        arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+        return await call_tool(name, arguments)
     if method in TOOL_CATALOG:
         return await call_tool(method, params)
     return json.dumps({"error": f"Unknown tool {method}"})

@@ -6,6 +6,7 @@ import sys
 import json
 
 import os
+import re
 
 
 
@@ -49,6 +50,38 @@ def is_noise_path(path):
         return False
     else:
         return ((path.name in NOISE_PATH_NAMES) or (path.suffix.lower() in NOISE_SUFFIXES) or ('__pycache__' in path.parts))
+
+
+def path_parts_for_policy(path, project_root=None):
+    try:
+        raw = rel_path(path, project_root) if project_root else str(path)
+    except Exception:
+        raw = str(path)
+    return [part for part in raw.replace('\\', '/').split('/') if part]
+
+
+def is_generated_dependency_path(path, project_root=None):
+    parts = path_parts_for_policy(path, project_root)
+    rel = '/'.join(parts)
+    lower_parts = {part.lower() for part in parts}
+    lower_rel = rel.lower()
+    for marker in GENERATED_DEPENDENCY_PARTS:
+        marker_lower = marker.lower()
+        if '/' in marker_lower:
+            if marker_lower in lower_rel:
+                return True
+        elif marker_lower in lower_parts:
+            return True
+    return False
+
+
+def is_project_owned_path(path, project_root=None, project_type=None):
+    parts = path_parts_for_policy(path, project_root)
+    if not parts:
+        return False
+    if project_type == 'unity':
+        return parts[0] in PROJECT_OWNED_UNITY_PARTS or len(parts) == 1
+    return not is_generated_dependency_path(path, project_root)
 
 
 def rel_path(path, project_root):
@@ -95,7 +128,7 @@ def categorize_path(path):
         return 'source'
     if (suffix in CONFIG_EXTENSIONS):
         return 'config'
-    if ('log' in name.lower()):
+    if re.search(r'(^|[_.-])logs?([_.-]|$)', name.lower()):
         return 'log'
     return None
 

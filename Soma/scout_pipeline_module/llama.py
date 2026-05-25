@@ -8,14 +8,19 @@ import json
 import re
 
 import shutil
+import time
 
 
 import urllib.request
 
 
-from mcp import ClientSession, StdioServerParameters
-
-from mcp.client.stdio import stdio_client
+try:
+    from mcp import ClientSession, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+except ModuleNotFoundError:  # Optional dependency: only needed for live Scout MCP chat.
+    ClientSession = None
+    StdioServerParameters = None
+    stdio_client = None
 
 
 from .config import *
@@ -64,11 +69,50 @@ def extract_tool_calls(content):
     return tool_calls
 
 
-async def query_ollama(messages, tools=None, timeout=120):
-    return (await query_ollama_model(MODEL, messages, tools=tools, timeout=timeout))
+def _estimate_local_tokens(text):
+    try:
+        from token_calculator import estimate_tokens
+
+        return estimate_tokens(text or "", "local")
+    except Exception:
+        return max(0, len(text or "") // 4)
 
 
-async def query_ollama_model(model, messages, tools=None, timeout=120, num_predict=None, json_mode=False):
+def _log_local_model_call(*, model, stage, status, duration_ms, messages, response_text="", error=None, json_mode=False, num_predict=None, tools=None, metadata=None):
+    try:
+        from soma_logger import log_mcp_event
+        import os
+
+        input_text = json.dumps(messages or [], default=str)
+        output_text = response_text or ""
+        log_mcp_event(
+            event="local_model_call",
+            status=status,
+            duration_ms=duration_ms,
+            input_tokens=_estimate_local_tokens(input_text),
+            output_tokens=_estimate_local_tokens(output_text),
+            error=error,
+            project_root=os.environ.get("SOMA_PROJECT_ROOT"),
+            extra={
+                "local_model_provider": "ollama",
+                "local_model": model,
+                "local_model_stage": stage or "ollama_chat",
+                "local_model_json_mode": bool(json_mode),
+                "local_model_num_predict": num_predict,
+                "local_model_tool_count": len(tools or []),
+                "local_model_message_count": len(messages or []),
+                **(metadata or {}),
+            },
+        )
+    except Exception:
+        pass
+
+
+async def query_ollama(messages, tools=None, timeout=120, stage=None):
+    return (await query_ollama_model(MODEL, messages, tools=tools, timeout=timeout, stage=stage))
+
+
+async def query_ollama_model(model, messages, tools=None, timeout=120, num_predict=None, json_mode=False, stage=None, metadata=None):
     data = {'model': model, 'think': False, 'messages': messages, 'stream': False, 'options': {'num_ctx': 4096, 'temperature': 0.1}}
     if json_mode:
         data['format'] = 'json'
@@ -77,14 +121,45 @@ async def query_ollama_model(model, messages, tools=None, timeout=120, num_predi
     if num_predict:
         data['options']['num_predict'] = num_predict
     req = urllib.request.Request('http://127.0.0.1:11434/api/chat', data=json.dumps(data).encode(), headers={'Content-Type': 'application/json'})
+    start = time.monotonic()
     try:
         with urllib.request.urlopen(req, timeout=timeout) as response:
-            return json.loads(response.read().decode())
+            response_text = response.read().decode()
+            decoded = json.loads(response_text)
+            status = "error" if isinstance(decoded, dict) and decoded.get("error") else "ok"
+            _log_local_model_call(
+                model=model,
+                stage=stage,
+                status=status,
+                duration_ms=(time.monotonic() - start) * 1000,
+                messages=messages,
+                response_text=response_text,
+                error=decoded.get("error") if isinstance(decoded, dict) else None,
+                json_mode=json_mode,
+                num_predict=num_predict,
+                tools=tools,
+                metadata=metadata,
+            )
+            return decoded
     except Exception as exc:
+        _log_local_model_call(
+            model=model,
+            stage=stage,
+            status="error",
+            duration_ms=(time.monotonic() - start) * 1000,
+            messages=messages,
+            error=str(exc),
+            json_mode=json_mode,
+            num_predict=num_predict,
+            tools=tools,
+            metadata=metadata,
+        )
         return {'error': str(exc)}
 
 
 def get_server_params(allowed_dirs=None):
+    if StdioServerParameters is None:
+        raise RuntimeError("The optional 'mcp' package is required for live Scout MCP chat")
     npx = (shutil.which('npx') or 'npx')
     return StdioServerParameters(command=npx, args=(['-y', '@modelcontextprotocol/server-filesystem'] + (allowed_dirs or CHAT_ALLOWED_DIRS)))
 
@@ -96,6 +171,9 @@ async def get_ollama_tools(session):
 
 async def run_chat(user_prompt, history):
     from .utils import fix_path
+    if ClientSession is None or stdio_client is None:
+        print(json.dumps({'error': "MCP Error: optional 'mcp' package is not installed"}))
+        return
     system = {'role': 'system', 'content': CHAT_SYSTEM}
     messages = (([system] + history) + [{'role': 'user', 'content': user_prompt}])
     try:

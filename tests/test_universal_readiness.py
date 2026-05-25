@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -10,10 +11,12 @@ from unittest.mock import patch
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "Soma"))
+from soma_test_bootstrap import install_soma_imports
+install_soma_imports()
 
 from scout_pipeline import TOKEN_BUDGETS
 from scout_pipeline_module.discovery import build_repo_index, detect_project_type, iter_project_files
-from scout_pipeline_module.gather import build_preflight, select_evidence
+from scout_pipeline_module.gather import assess_evidence_quality, build_preflight, select_evidence
 from scout_pipeline_module.git import get_git_diff_summary, get_git_status
 import token_calculator
 from soma_token_savings import build_operation_savings, build_token_savings
@@ -21,10 +24,14 @@ from token_calculator import estimate_payload, estimate_tokens, profile_for
 from universal_fixtures import fixture_templates, prepare_fixture_repo
 
 import gateway.core
+import gateway.tool_registry
 import gateway.tools.context
 import verify_soma_universal_workflow as universal
 import soma_token_benchmark
 import soma_agent_ab_benchmark
+import soma_language_optimizer
+import soma_audit
+import soma_analytics
 
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "projects"
@@ -194,6 +201,7 @@ class UniversalReadinessTests(unittest.TestCase):
             "quiet_hours_cross_midnight.jsonl",
         ]:
             self.assertIn(expected, packet)
+        self.assertIn("return currentMinute >= start || currentMinute < end", packet)
         self.assertNotIn("UnityTestForNexus", packet)
 
     def test_prepare_context_degrades_when_no_strong_evidence_matches(self):
@@ -204,6 +212,215 @@ class UniversalReadinessTests(unittest.TestCase):
 
         self.assertEqual(payload["status"], "degraded")
         self.assertEqual(payload["evidence_quality"]["status"], "degraded")
+
+    def test_language_optimizer_translates_russian_and_preserves_protected_spans(self):
+        prompt = (
+            "Проверь `CooldownPolicy.swift`, /tmp/project/docs/behavior.md и https://example.com/quiet. "
+            "Не меняй JSON {\"mode\":\"quiet\",\"after\":\"00:00\"}. "
+            "Код:\n```swift\nlet policy = CooldownPolicy()\n```\n"
+            "Запусти rg quiet и верни план."
+        )
+
+        def fake_translate(text, model, timeout):
+            placeholders = re.findall(r"SOMAPROTECTED\d+", text)
+            self.assertGreaterEqual(len(placeholders), 5)
+            return "Check " + ", ".join(placeholders) + ". Run rg quiet and return a plan."
+
+        with patch.object(soma_language_optimizer, "_local_ollama_translate", side_effect=fake_translate):
+            normalized, metadata = soma_language_optimizer.optimize_prompt_language(prompt, "gpt-5.5")
+
+        self.assertEqual(metadata["status"], "translated")
+        self.assertEqual(metadata["source_language"], "ru")
+        self.assertIn("`CooldownPolicy.swift`", normalized)
+        self.assertIn("/tmp/project/docs/behavior.md", normalized)
+        self.assertIn("https://example.com/quiet", normalized)
+        self.assertIn("{\"mode\":\"quiet\",\"after\":\"00:00\"}", normalized)
+        self.assertIn("```swift\nlet policy = CooldownPolicy()\n```", normalized)
+        self.assertIn("rg quiet", normalized)
+        self.assertGreater(metadata["protected_spans_count"], 0)
+        self.assertNotIn("Проверь", normalized)
+
+    def test_language_optimizer_fallback_does_not_block(self):
+        prompt = "Проверь тихие часы и верни план."
+        with patch.object(soma_language_optimizer, "_local_ollama_translate", side_effect=RuntimeError("offline")):
+            normalized, metadata = soma_language_optimizer.optimize_prompt_language(prompt, "gpt-5.5")
+
+        self.assertEqual(normalized, prompt)
+        self.assertEqual(metadata["status"], "failed_fallback")
+        self.assertEqual(metadata["source_language"], "ru")
+
+    def test_russian_quiet_hours_prompt_uses_english_packet_without_original_prompt(self):
+        tmp, root = make_quiet_hours_repo()
+        prompt = (
+            "Проверь, может ли Moodling quiet hours ломаться, когда интервал пересекает полночь. "
+            "Верни причину, точные файлы, тесты и минимальный план исправления."
+        )
+
+        def fake_translate(text, model, timeout):
+            return (
+                "Investigate whether Moodling quiet hours can fail when the quiet interval crosses midnight. "
+                "Return likely root cause, exact files, tests, and minimal fix plan."
+            )
+
+        with tmp, patch.object(gateway.core.graphify, "query", return_value={"graphs": [], "answers": [], "warnings": []}), patch.object(
+            soma_language_optimizer, "_local_ollama_translate", side_effect=fake_translate
+        ), patch.dict(os.environ, {"SOMA_PROJECT_ROOT": str(root), "SOMA_TRANSLATION_ENABLED": "1", "SOMA_TRANSLATION_PROVIDER": "local"}):
+            payload = json.loads(asyncio.run(gateway.tools.context.soma_prepare_context(prompt, "fast", "deterministic")))
+
+        packet = payload["packet"]
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["language_optimization"]["status"], "translated")
+        self.assertEqual(payload["language_optimization"]["source_language"], "ru")
+        self.assertIn("Expected answer language: English", packet)
+        self.assertIn("Original language: ru", packet)
+        self.assertNotIn("Проверь", packet)
+        for expected in ["CooldownPolicy.swift", "NudgeScheduler.swift", "AppState.swift", "MoodlingSettings.swift"]:
+            self.assertIn(expected, packet)
+
+    def test_audit_report_metadata_only_by_default_and_tracks_missing_evidence(self):
+        tmp, root = make_quiet_hours_repo()
+        sentinel = "SOMA_AUDIT_SENTINEL_PROMPT"
+        audit_tmp = tempfile.TemporaryDirectory()
+        with tmp, audit_tmp, patch.object(gateway.core.graphify, "query", return_value={"graphs": [], "answers": [], "warnings": []}), patch.object(
+            soma_audit, "SOMA_AUDIT_DIR", Path(audit_tmp.name) / ".soma" / "audit"
+        ), patch.object(
+            soma_audit, "SOMA_AUDIT_RUNS_DIR", Path(audit_tmp.name) / ".soma" / "audit" / "runs"
+        ), patch.object(
+            soma_audit, "SOMA_AUDIT_RAW_DIR", Path(audit_tmp.name) / ".soma" / "audit" / "raw"
+        ), patch.object(
+            soma_audit, "SOMA_AUDIT_LATEST", Path(audit_tmp.name) / ".soma" / "audit" / "latest.json"
+        ), patch.dict(
+            os.environ,
+            {
+                "SOMA_PROJECT_ROOT": str(root),
+                "SOMA_AUDIT_RAW_CAPTURE": "0",
+            },
+        ):
+            payload = json.loads(
+                asyncio.run(
+                    gateway.tool_registry.call_tool(
+                        "soma_prepare_context",
+                        {
+                            "goal": f"Investigate {sentinel} in CooldownPolicy.swift and MissingThing.swift",
+                            "budget": "fast",
+                            "depth": "deterministic",
+                            "run_id": "run_audit_default",
+                            "task_id": "audit_default",
+                        },
+                    )
+                )
+            )
+            latest_text = soma_audit.SOMA_AUDIT_LATEST.read_text(encoding="utf-8")
+            latest = json.loads(latest_text)
+
+        self.assertEqual(payload["audit"]["run_id"], "run_audit_default")
+        self.assertIn("MissingThing.swift", json.dumps(payload["audit"]["missing_evidence"]))
+        self.assertNotIn(sentinel, latest_text)
+        self.assertFalse((Path(audit_tmp.name) / ".soma" / "audit" / "raw" / "run_audit_default").exists())
+        self.assertEqual(latest["prompt_hash"], payload["audit"]["prompt_hash"])
+
+    def test_audit_slash_concepts_do_not_become_missing_files(self):
+        tmp, root = make_quiet_hours_repo()
+        with tmp:
+            discovered = iter_project_files(str(root))
+            repo_index = build_repo_index(str(root), discovered)
+            evidence = select_evidence(
+                str(root),
+                "Investigate compile/runtime and registration/listing in CooldownPolicy",
+                "swift",
+                repo_index,
+                {"packet_mode": "debug", "explicit_paths": [], "changed_paths": [], "error_paths": []},
+            )
+            quality = assess_evidence_quality("CooldownPolicy", evidence, {})
+            missing = soma_audit.build_missing_evidence(
+                original_prompt="Investigate compile/runtime and registration/listing for GitHub",
+                normalized_prompt="Investigate compile/runtime and registration/listing for GitHub",
+                project_root=str(root),
+                discovered=discovered,
+                repo_index=repo_index,
+                evidence_items=evidence,
+                preflight={},
+                evidence_quality=quality,
+            )
+
+        self.assertEqual(missing["missing_files"], [])
+        self.assertTrue(any(item["reference"] == "compile/runtime" for item in missing["unresolved_concepts"]))
+        self.assertTrue(any(item["reference"] == "GitHub" for item in missing["unresolved_concepts"]))
+
+    def test_audit_raw_capture_opt_in_writes_local_artifacts(self):
+        tmp, root = make_quiet_hours_repo()
+        audit_tmp = tempfile.TemporaryDirectory()
+        sentinel = "SOMA_AUDIT_RAW_SENTINEL"
+        with tmp, audit_tmp, patch.object(gateway.core.graphify, "query", return_value={"graphs": [], "answers": [], "warnings": []}), patch.object(
+            soma_audit, "SOMA_AUDIT_DIR", Path(audit_tmp.name) / ".soma" / "audit"
+        ), patch.object(
+            soma_audit, "SOMA_AUDIT_RUNS_DIR", Path(audit_tmp.name) / ".soma" / "audit" / "runs"
+        ), patch.object(
+            soma_audit, "SOMA_AUDIT_RAW_DIR", Path(audit_tmp.name) / ".soma" / "audit" / "raw"
+        ), patch.object(
+            soma_audit, "SOMA_AUDIT_LATEST", Path(audit_tmp.name) / ".soma" / "audit" / "latest.json"
+        ), patch.dict(
+            os.environ,
+            {
+                "SOMA_PROJECT_ROOT": str(root),
+                "SOMA_AUDIT_RAW_CAPTURE": "1",
+            },
+        ):
+            payload = json.loads(
+                asyncio.run(
+                    gateway.tool_registry.call_tool(
+                        "soma_prepare_context",
+                        {
+                            "goal": f"Investigate {sentinel} in CooldownPolicy.swift",
+                            "budget": "fast",
+                            "depth": "deterministic",
+                            "run_id": "run_audit_raw",
+                            "task_id": "audit_raw",
+                        },
+                    )
+                )
+            )
+            latest = json.loads(soma_audit.SOMA_AUDIT_LATEST.read_text(encoding="utf-8"))
+            prompt_path = Path(latest["raw_artifacts"]["prompt"])
+            packet_path = Path(latest["raw_artifacts"]["packet"])
+            prompt_text = prompt_path.read_text(encoding="utf-8")
+            packet_text = packet_path.read_text(encoding="utf-8")
+
+        self.assertTrue(payload["audit"]["raw_capture_enabled"])
+        self.assertIn(sentinel, prompt_text)
+        self.assertTrue(packet_text.startswith("Goal:"))
+
+    def test_audit_quality_mark_updates_report_without_removing_trace(self):
+        audit_tmp = tempfile.TemporaryDirectory()
+        with audit_tmp, patch.object(soma_audit, "SOMA_AUDIT_DIR", Path(audit_tmp.name) / ".soma" / "audit"), patch.object(
+            soma_audit, "SOMA_AUDIT_RUNS_DIR", Path(audit_tmp.name) / ".soma" / "audit" / "runs"
+        ), patch.object(
+            soma_audit, "SOMA_AUDIT_RAW_DIR", Path(audit_tmp.name) / ".soma" / "audit" / "raw"
+        ), patch.object(
+            soma_audit, "SOMA_AUDIT_LATEST", Path(audit_tmp.name) / ".soma" / "audit" / "latest.json"
+        ):
+            report = soma_audit.write_prepare_audit(
+                soma_audit.build_prepare_audit(
+                    context={"run_id": "run_mark", "task_id": "task_mark", "workflow": "packet_mode"},
+                    status="ok",
+                    project_root="/tmp/project",
+                    project_type="python",
+                    original_prompt="Check app.py",
+                    normalized_prompt="Check app.py",
+                    packet="Goal:\nCheck app.py",
+                    estimated_tokens=10,
+                    evidence_items=[{"path": "/tmp/project/app.py", "kind": "source", "reason": "test"}],
+                    missing_evidence={"status": "ok", "unresolved_references": []},
+                    evidence_quality={"status": "ok", "warnings": []},
+                    tool_calls_expected=["Use packet first."],
+                    language_optimization={},
+                )
+            )
+            marked = soma_audit.mark_quality("run_mark", "needs_more_evidence", "Need one more file.")
+
+        self.assertEqual(report["selected_evidence"][0]["path"], marked["selected_evidence"][0]["path"])
+        self.assertEqual(marked["status"], "degraded")
+        self.assertEqual(marked["quality_review"]["status"], "needs_more_evidence")
 
 
 class TokenAndUniversalCLITests(unittest.TestCase):
@@ -263,17 +480,44 @@ class TokenAndUniversalCLITests(unittest.TestCase):
         self.assertEqual(usage["total_tokens"], 150)
         self.assertIsNone(soma_agent_ab_benchmark.extract_usage_from_events("plain transcript"))
 
+    def test_agent_command_supports_hermes_with_file_terminal_tools(self):
+        args, cwd = soma_agent_ab_benchmark._agent_command("hermes", "Check quiet hours", Path("/tmp/project"), None, True)
+        self.assertEqual(cwd, Path("/tmp/project"))
+        self.assertEqual(args[:3], ["hermes", "--toolsets", "file,terminal"])
+        self.assertIn("-z", args)
+        self.assertEqual(soma_agent_ab_benchmark._redacted_command(args)[-1], "<prompt>")
+
+    def test_hermes_moodling_scenario_fixture_loads_relative_project(self):
+        scenario = soma_agent_ab_benchmark._load_scenario(
+            str(Path(__file__).resolve().parent / "fixtures" / "agent_scenarios" / "moodling_quiet_hours_hermes.json")
+        )
+        task = scenario["tasks"][0]
+
+        self.assertEqual(scenario["agents"], ["hermes"])
+        self.assertTrue(Path(scenario["project_root"]).is_dir())
+        self.assertTrue(str(scenario["project_root"]).endswith("moodling_quiet_hours"))
+        self.assertIn("QuietHoursManager.swift", task["must_not_mention_files"])
+        self.assertIn("CooldownPolicy.swift", task["expected_files"])
+
     def test_agent_acceptance_rubric_uses_hash_safe_transcript_scan(self):
         task = {
             "expected_files": ["CooldownPolicy.swift"],
             "must_mention": ["midnight"],
             "must_not_claim": ["delete settings"],
+            "must_not_mention_files": ["QuietHoursManager.swift", "Configuration.swift"],
         }
         passed = soma_agent_ab_benchmark._evaluate_acceptance(task, "Check CooldownPolicy.swift around midnight.", "", "ok")
-        failed = soma_agent_ab_benchmark._evaluate_acceptance(task, "Check SettingsView.swift.", "delete settings", "ok")
+        failed = soma_agent_ab_benchmark._evaluate_acceptance(
+            task,
+            "Check SettingsView.swift and QuietHoursManager.swift.",
+            "delete settings Configuration.swift",
+            "ok",
+        )
         self.assertEqual(passed["status"], "passed")
         self.assertEqual(failed["status"], "failed")
         self.assertIn("CooldownPolicy.swift", failed["expected_files_missing"])
+        self.assertIn("QuietHoursManager.swift", failed["must_not_claim_found"])
+        self.assertIn("Configuration.swift", failed["must_not_claim_found"])
 
     def test_agent_ab_summary_does_not_fake_failed_savings(self):
         runs = [
@@ -344,6 +588,57 @@ class TokenAndUniversalCLITests(unittest.TestCase):
         self.assertEqual(summary["avg_savings_pct"], 80.0)
         self.assertEqual(summary["failed_fixture_count"], 1)
         self.assertEqual(summary["valid_result_count"], 1)
+
+    def test_analytics_aggregates_local_model_usage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log_dir = Path(tmp) / "logs"
+            analytics_dir = Path(tmp) / "analytics"
+            log_dir.mkdir()
+            log_file = log_dir / "soma_20260515.jsonl"
+            entries = [
+                {
+                    "ts": "2026-05-15T12:00:00+00:00",
+                    "event": "local_model_call",
+                    "status": "ok",
+                    "duration_ms": 120.0,
+                    "input_tokens": 40,
+                    "output_tokens": 10,
+                    "local_model_provider": "ollama",
+                    "local_model": "gemma4:e4b",
+                    "local_model_stage": "ranker",
+                },
+                {
+                    "ts": "2026-05-15T12:00:01+00:00",
+                    "event": "local_model_call",
+                    "status": "error",
+                    "duration_ms": 30.0,
+                    "input_tokens": 20,
+                    "output_tokens": 0,
+                    "local_model_provider": "ollama",
+                    "local_model": "qwen3-coder:30b-a3b-q4_K_M",
+                    "local_model_stage": "analyst",
+                },
+                {
+                    "ts": "2026-05-15T12:00:02+00:00",
+                    "event": "mcp_request",
+                    "method": "tools/list",
+                    "status": "ok",
+                },
+            ]
+            log_file.write_text("\n".join(json.dumps(entry) for entry in entries), encoding="utf-8")
+            with patch.object(soma_analytics, "SOMA_LOG_DIR", log_dir), patch.object(
+                soma_analytics, "SOMA_ANALYTICS_DIR", analytics_dir
+            ):
+                report = soma_analytics.compute_report("20260515")
+
+        self.assertEqual(report["summary"]["local_model_call_count"], 2)
+        self.assertEqual(report["summary"]["local_model_error_count"], 1)
+        self.assertEqual(report["summary"]["local_model_total_tokens"], 70)
+        self.assertEqual(report["summary"]["mcp_tools_list_count"], 1)
+        self.assertEqual(report["summary"]["soma_tool_call_count"], 0)
+        self.assertIn("mcp_discovered_but_no_soma_tool_calls", report["mcp_usage_health"]["warnings"])
+        self.assertEqual(report["local_model_usage"]["by_stage"]["ranker"]["calls"], 1)
+        self.assertEqual(report["local_model_usage"]["by_model"]["gemma4:e4b"]["calls"], 1)
 
 
 if __name__ == "__main__":

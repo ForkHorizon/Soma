@@ -18,7 +18,7 @@ Soma has two layers:
 - Scout pipeline layer: compiles compact deterministic evidence packets.
 
 Unity/Nexus is a plugin path. Do not make core readiness depend on it.
-Soma Packet Mode is the first production-like AI workflow. Live MCP use by Codex/Gemini is experimental until approval behavior and usage accounting are stable.
+Soma Packet Mode is the first production-like AI workflow. Codex-first live helper mode builds on that packet: use `soma_code_context` for missing context, `soma_debug` for bugs, `soma_delta` after edits/tests, and `soma_review` before final review while preserving `run_id`/`task_id`.
 
 ## Key Files
 
@@ -29,7 +29,8 @@ Soma Packet Mode is the first production-like AI workflow. Live MCP use by Codex
 | Context tools | `Soma/gateway/tools/context.py`, `Soma/gateway/tools/query.py` |
 | Optional Unity tools | `Soma/gateway/tools/nexus.py` |
 | Evidence pipeline | `Soma/scout_pipeline_module/` |
-| Logging | `Soma/soma_logger.py`, `Soma/soma_analytics.py` |
+| Prompt language optimization | `Soma/soma_language_optimizer.py` |
+| Logging and audit | `Soma/soma_logger.py`, `Soma/soma_analytics.py`, `Soma/soma_audit.py` |
 | Universal acceptance | `Soma/verify_soma_universal_workflow.py` |
 | Token measurement | `Soma/soma_token_savings.py`, `Soma/soma_token_benchmark.py`, `Soma/soma_agent_ab_benchmark.py` |
 | Swift app | `Soma/ViewModels/`, `Soma/Views/` |
@@ -38,6 +39,12 @@ Soma Packet Mode is the first production-like AI workflow. Live MCP use by Codex
 
 - Preserve the 12-tool public catalog unless intentionally changing a public interface.
 - Keep deterministic packets working without Ollama.
+- Keep prompt language optimization best-effort: failures must fall back, not block packets.
+- Do not log or packetize the full original non-English prompt by default.
+- Keep audit metadata private by default: hashes/counts/paths only, raw artifacts only behind explicit opt-in.
+- Propagate `run_id` and `task_id` through packet generation, tool logs, MCP calls, and benchmark reports when available.
+- Follow-up live MCP calls should also pass `client="codex"` and `workflow="live_mcp"` when the packet came from Codex usage.
+- Log every local model request as `local_model_call` with model, stage, status, latency, and token estimates; do not log raw prompts or responses.
 - Keep `soma_prepare_context` project-scoped: no cross-project Graphify context in packets.
 - Return `degraded` when evidence selection lacks a strong task match.
 - Keep non-Unity acceptance passing before touching Unity/Nexus behavior.
@@ -68,8 +75,10 @@ Core tools should return compact JSON with stable fields such as:
 - `packet_mode`
 - `estimated_tokens`
 - `analysis_stages`
+- `language_optimization`
 - `estimated_context_reduction`
 - `operation_savings`
 - `token_savings`
+- `audit`
 
 If a response shape changes, update tests and docs together.

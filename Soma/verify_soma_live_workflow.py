@@ -12,8 +12,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+try:
+    from mcp import ClientSession, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+except ModuleNotFoundError:  # Optional dependency: only needed when running the live MCP verifier.
+    ClientSession = None
+    StdioServerParameters = None
+    stdio_client = None
 
 
 EXPECTED_TOOLS = [

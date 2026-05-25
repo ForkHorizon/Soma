@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from token_calculator import estimate_payload, estimate_tokens
+from soma_audit import append_event, new_run_id
 
 
 BENCHMARK_DIR = Path.home() / ".soma" / "agent_benchmarks"
@@ -41,7 +42,8 @@ def _now() -> str:
 def _load_scenario(path: str) -> dict[str, Any]:
     scenario_path = Path(path).expanduser().resolve()
     data = json.loads(scenario_path.read_text(encoding="utf-8"))
-    project_root = Path(str(data.get("project_root") or "")).expanduser().resolve()
+    project_root_raw = Path(str(data.get("project_root") or "")).expanduser()
+    project_root = (scenario_path.parent / project_root_raw).resolve() if not project_root_raw.is_absolute() else project_root_raw.resolve()
     if not project_root.is_dir():
         raise ValueError(f"Scenario project_root does not exist: {project_root}")
     tasks = data.get("tasks")
@@ -155,7 +157,7 @@ def _transcript_usage(prompt: str, stdout: str, stderr: str, model_profile: str)
 def _redacted_command(args: list[str]) -> list[str]:
     redacted = list(args)
     for index, arg in enumerate(args[:-1]):
-        if arg == "--prompt":
+        if arg in {"--prompt", "-z", "--oneshot"}:
             redacted[index + 1] = "<prompt>"
     if len(args) >= 3 and args[0] == "codex" and args[1] == "exec":
         # Codex receives prompt as the final positional argument.
@@ -172,7 +174,7 @@ def _string_list(value: Any) -> list[str]:
 def _evaluate_acceptance(task: dict[str, Any], stdout: str, stderr: str, run_status: str) -> dict[str, Any]:
     expected_files = _string_list(task.get("expected_files"))
     must_mention = _string_list(task.get("must_mention"))
-    must_not_claim = _string_list(task.get("must_not_claim"))
+    must_not_claim = _string_list(task.get("must_not_claim")) + _string_list(task.get("must_not_mention_files"))
     text = f"{stdout or ''}\n{stderr or ''}".lower()
 
     matched_files = [item for item in expected_files if item.lower() in text]
@@ -200,6 +202,21 @@ def _evaluate_acceptance(task: dict[str, Any], stdout: str, stderr: str, run_sta
         "must_not_claim_found": forbidden_found,
         "manual_acceptance_notes": str(task.get("manual_acceptance_notes") or ""),
     }
+
+
+def _tool_marker_count(stdout: str, stderr: str) -> int:
+    text = f"{stdout or ''}\n{stderr or ''}".lower()
+    markers = (
+        '"role": "tool"',
+        '"type": "tool"',
+        "tool_call",
+        "function_call",
+        "mcp_servers",
+        "terminal",
+        "read_file",
+        "list_files",
+    )
+    return sum(text.count(marker) for marker in markers)
 
 
 def _run_process(args: list[str], cwd: Path, timeout: int) -> dict[str, Any]:
@@ -252,10 +269,16 @@ def _agent_command(agent: str, prompt: str, project_root: Path, model: str | Non
             args.extend(["--model", model])
         args.append("--skip-trust")
         return args, project_root
+    if agent == "hermes":
+        args = ["hermes", "--toolsets", "file,terminal"]
+        if model:
+            args.extend(["--model", model])
+        args.extend(["-z", prompt])
+        return args, project_root
     raise ValueError(f"Unsupported agent: {agent}")
 
 
-def _prepare_soma_packet(project_root: Path, task_prompt: str, python: str, budget: str, depth: str, timeout: int, model_profile: str) -> dict[str, Any]:
+def _prepare_soma_packet(project_root: Path, task_prompt: str, python: str, budget: str, depth: str, timeout: int, model_profile: str, run_id: str, task_id: str) -> dict[str, Any]:
     env = os.environ.copy()
     env["SOMA_PROJECT_ROOT"] = str(project_root)
     env["SOMA_TOKEN_MODEL_PROFILE"] = model_profile
@@ -268,7 +291,7 @@ def _prepare_soma_packet(project_root: Path, task_prompt: str, python: str, budg
             str(project_root),
             "--run-tool",
             "soma_prepare_context",
-            json.dumps({"goal": task_prompt, "budget": budget, "depth": depth}),
+            json.dumps({"goal": task_prompt, "budget": budget, "depth": depth, "run_id": run_id, "task_id": task_id, "client": "agent_benchmark", "workflow": "packet_mode"}),
         ],
         capture_output=True,
         text=True,
@@ -290,8 +313,7 @@ def _prepare_soma_packet(project_root: Path, task_prompt: str, python: str, budg
 def _with_soma_prompt(task_prompt: str, packet: str) -> str:
     return (
         "Run this task in read-only mode using Soma Packet Mode v1. Use the Soma evidence packet as compact project context. "
-        "Avoid broad repo scans unless the packet is clearly insufficient.\n\n"
-        f"Task:\n{task_prompt}\n\n"
+        "The packet Goal is authoritative. Avoid broad repo scans unless the packet is clearly insufficient.\n\n"
         "Soma evidence packet:\n"
         "```text\n"
         f"{packet}\n"
@@ -311,17 +333,19 @@ def run_agent_once(
     model_profile: str,
     soma_packet_tokens: int | None = None,
     soma_packet_status: str | None = None,
+    run_id: str | None = None,
 ) -> dict[str, Any]:
     read_only = bool(task.get("read_only", True))
     args, cwd = _agent_command(agent, prompt, project_root, model, read_only)
     raw = _run_process(args, cwd, timeout)
     usage = extract_usage_from_events(raw["stdout"], raw["stderr"]) or _transcript_usage(prompt, raw["stdout"], raw["stderr"], model_profile)
     acceptance = _evaluate_acceptance(task, raw["stdout"], raw["stderr"], raw["status"])
-    return {
+    result = {
+        "run_id": run_id,
         "task_id": str(task.get("id")),
         "agent": agent,
         "mode": mode,
-        "workflow": "direct_agent" if mode == "direct" else "with_soma_packet",
+        "workflow": "direct_agent_english_optional" if mode == "direct_english" else ("direct_agent" if mode == "direct" else "with_soma_packet"),
         "status": raw["status"],
         "exit_code": raw["exit_code"],
         "duration_ms": raw["duration_ms"],
@@ -338,11 +362,30 @@ def run_agent_once(
         "stderr_chars": len(raw["stderr"]),
         "stderr_sha256": _sha256(raw["stderr"]),
         "command": _redacted_command(args),
+        "tool_marker_count": _tool_marker_count(raw["stdout"], raw["stderr"]),
         "soma_packet_tokens": soma_packet_tokens,
         "soma_packet_status": soma_packet_status,
         "acceptance_status": acceptance["status"],
         "acceptance": acceptance,
     }
+    if run_id:
+        append_event(
+            run_id,
+            {
+                "event": "agent_run",
+                "agent": agent,
+                "mode": mode,
+                "workflow": result["workflow"],
+                "status": raw["status"],
+                "duration_ms": raw["duration_ms"],
+                "usage_source": usage["usage_source"],
+                "total_tokens": usage.get("total_tokens"),
+                "acceptance_status": acceptance["status"],
+                "stdout_sha256": result["stdout_sha256"],
+                "stderr_sha256": result["stderr_sha256"],
+            },
+        )
+    return result
 
 
 def skipped_with_soma_run(
@@ -353,8 +396,10 @@ def skipped_with_soma_run(
     soma_packet_tokens: int | None,
     soma_packet_status: str | None,
     reason: str,
+    run_id: str | None = None,
 ) -> dict[str, Any]:
     return {
+        "run_id": run_id,
         "task_id": str(task.get("id")),
         "agent": agent,
         "mode": "with_soma",
@@ -375,6 +420,7 @@ def skipped_with_soma_run(
         "stderr_chars": 0,
         "stderr_sha256": None,
         "command": [],
+        "tool_marker_count": 0,
         "soma_packet_tokens": soma_packet_tokens,
         "soma_packet_status": soma_packet_status,
         "acceptance_status": "not_applicable",
@@ -412,6 +458,7 @@ def _compare_pairs(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         comparisons.append(
             {
                 "task_id": task_id,
+                "run_id": with_soma.get("run_id") or direct.get("run_id"),
                 "agent": agent,
                 "status": "ok" if comparable else "unavailable",
                 "direct_tokens": direct.get("total_tokens"),
@@ -458,13 +505,17 @@ def run_benchmark(scenario: dict[str, Any], args: argparse.Namespace) -> dict[st
     soma_calls: list[dict[str, Any]] = []
     for task in scenario["tasks"]:
         prompt = str(task["prompt"])
-        soma = _prepare_soma_packet(project_root, prompt, args.python, args.budget, args.depth, args.soma_timeout, args.model_profile)
+        task_run_id = str(task.get("run_id") or new_run_id())
+        task["run_id"] = task_run_id
+        english_prompt = str(task.get("prompt_english") or task.get("english_prompt") or "").strip()
+        soma = _prepare_soma_packet(project_root, prompt, args.python, args.budget, args.depth, args.soma_timeout, args.model_profile, task_run_id, str(task.get("id")))
         packet = soma.get("packet") or ""
         packet_tokens = estimate_tokens(packet, args.model_profile) if packet else None
         packet_status = soma.get("status")
         soma_calls.append(
             {
                 "task_id": str(task.get("id")),
+                "run_id": task_run_id,
                 "status": packet_status,
                 "summary": soma.get("summary"),
                 "packet_tokens": packet_tokens,
@@ -472,6 +523,7 @@ def run_benchmark(scenario: dict[str, Any], args: argparse.Namespace) -> dict[st
                 "evidence": soma.get("evidence"),
                 "operation_savings": soma.get("operation_savings"),
                 "estimated_context_reduction": soma.get("estimated_context_reduction"),
+                "language_optimization": soma.get("language_optimization"),
             }
         )
         with_soma_prompt = _with_soma_prompt(prompt, packet) if packet else prompt
@@ -487,8 +539,23 @@ def run_benchmark(scenario: dict[str, Any], args: argparse.Namespace) -> dict[st
                     model=model,
                     timeout=args.timeout,
                     model_profile=args.model_profile,
+                    run_id=task_run_id,
                 )
             )
+            if english_prompt and english_prompt != prompt:
+                runs.append(
+                    run_agent_once(
+                        agent=agent,
+                        mode="direct_english",
+                        prompt=english_prompt,
+                        project_root=project_root,
+                        task=task,
+                        model=model,
+                        timeout=args.timeout,
+                        model_profile=args.model_profile,
+                        run_id=task_run_id,
+                    )
+                )
             if packet_status != "ok" or not packet:
                 runs.append(
                     skipped_with_soma_run(
@@ -498,6 +565,7 @@ def run_benchmark(scenario: dict[str, Any], args: argparse.Namespace) -> dict[st
                         soma_packet_tokens=packet_tokens,
                         soma_packet_status=packet_status,
                         reason="Soma packet was not ok; with-Soma run skipped to avoid fake savings.",
+                        run_id=task_run_id,
                     )
                 )
                 continue
@@ -513,6 +581,7 @@ def run_benchmark(scenario: dict[str, Any], args: argparse.Namespace) -> dict[st
                     model_profile=args.model_profile,
                     soma_packet_tokens=packet_tokens,
                     soma_packet_status=packet_status,
+                    run_id=task_run_id,
                 )
             )
 
@@ -533,7 +602,7 @@ def run_benchmark(scenario: dict[str, Any], args: argparse.Namespace) -> dict[st
         "budget": args.budget,
         "depth": args.depth,
         "mode": "packet_prompt",
-        "workflows": ["direct_agent", "with_soma_packet"],
+        "workflows": ["direct_agent", "direct_agent_english_optional", "with_soma_packet"],
         "experimental_workflows": ["with_soma_mcp_experimental"],
         "summary": summary,
         "comparisons": comparisons,
@@ -558,7 +627,7 @@ def _write_report(report: dict[str, Any]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run observed direct-vs-Soma agent token benchmarks.")
     parser.add_argument("--scenario", required=True, help="Scenario JSON with project_root and tasks.")
-    parser.add_argument("--agents", default=None, help="Comma-separated agents: codex,gemini")
+    parser.add_argument("--agents", default=None, help="Comma-separated agents: codex,gemini,hermes")
     parser.add_argument("--model-profile", default="gpt-5.5")
     parser.add_argument("--budget", default="fast", choices=["micro", "fast", "balanced", "deep", "full"])
     parser.add_argument("--depth", default="deterministic", choices=["deterministic", "ranked", "analyst"])

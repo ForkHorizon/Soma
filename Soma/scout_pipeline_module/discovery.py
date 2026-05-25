@@ -65,6 +65,11 @@ def detect_project_type(project_root):
         return ('unity', 'Detected Unity project markers (`Assets` and `ProjectSettings`).')
     if os.path.exists(os.path.join(project_root, 'Package.swift')):
         return ('swift', 'Detected Swift/Xcode markers in the project root.')
+    try:
+        if any(entry.endswith(('.xcodeproj', '.xcworkspace')) for entry in os.listdir(project_root)):
+            return ('swift', 'Detected Swift/Xcode markers in the project root.')
+    except OSError:
+        pass
     if os.path.exists(os.path.join(project_root, 'go.mod')):
         return ('go', 'Detected Go module marker (`go.mod`).')
     if os.path.exists(os.path.join(project_root, 'Cargo.toml')):

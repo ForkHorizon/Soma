@@ -11,6 +11,7 @@ final class RelayViewModel: ObservableObject {
     @Published var relayResponse: RelayResponse?
     @Published var showContextPanel = false
     @Published var relayError: String?
+    @Published var lastPacketHistoryID: String?
 
     func resetState(somaViewModel: SomaViewModel) {
         relayPrompt = ""
@@ -19,6 +20,7 @@ final class RelayViewModel: ObservableObject {
         relayResponse = nil
         showContextPanel = false
         relayError = nil
+        lastPacketHistoryID = nil
         somaViewModel.activityLogs = [] // relay also cleared this in SomaViewModel.resetState
     }
 
@@ -57,6 +59,7 @@ final class RelayViewModel: ObservableObject {
                 await MainActor.run {
                     gatherBundle = bundle
                     somaViewModel.latestTokenSavings = bundle.token_savings
+                    lastPacketHistoryID = somaViewModel.recordPacketRun(prompt: prompt, bundle: bundle)
                     showContextPanel = true
                     relayPhase = .done
                     ollama.checkStatus()

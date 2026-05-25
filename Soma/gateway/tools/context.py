@@ -28,7 +28,11 @@ from scout_pipeline import (
     normalize_path,
     prompt_terms,
     rank_evidence_with_model,
+    filter_candidates_with_model,
+    referee_evidence_with_model,
+    summarize_local_ai_stages,
     select_evidence,
+    evidence_policy_summary,
 )
 from soma_token_savings import (
     build_estimated_context_reduction,
@@ -38,10 +42,19 @@ from soma_token_savings import (
     finalize_operation_savings_response_tokens,
     unavailable_token_savings,
 )
+from soma_language_optimizer import optimize_prompt_language
+from soma_audit import (
+    build_missing_evidence,
+    build_prepare_audit,
+    compact_response_audit,
+    ensure_context,
+    hash_text,
+    write_audit_log_event,
+    write_prepare_audit,
+)
 
 from gateway.core import (
     _analysis_depth,
-    _append_graph_context,
     _compact_result,
     _enforce_packet_budget,
     _error_response,
@@ -55,6 +68,25 @@ from gateway.core import (
     memory_store,
     nexus,
 )
+from gateway.tools.protocol import CODEX_START_NEXT_CALLS, codex_next_calls
+
+
+def _graph_suggestion_lines(graph_result: dict[str, Any], limit: int = 3) -> list[str]:
+    suggestions: list[str] = []
+    for answer in graph_result.get("answers") or []:
+        if not isinstance(answer, dict):
+            continue
+        text = str(answer.get("answer") or "").strip()
+        if not text:
+            continue
+        for line in text.splitlines():
+            cleaned = line.strip().lstrip("-*0123456789. ")
+            if cleaned:
+                suggestions.append(cleaned[:180])
+                break
+        if len(suggestions) >= limit:
+            break
+    return suggestions[:limit]
 
 
 async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str = "deterministic") -> str:
@@ -62,7 +94,19 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
     budget = _packet_budget(budget)
     depth = _analysis_depth(depth)
     token_model_profile = os.environ.get("SOMA_TOKEN_MODEL_PROFILE", "gpt-5.5")
+    audit_context = ensure_context(workflow="packet_mode")
+    normalized_goal, language_optimization = optimize_prompt_language(goal, token_model_profile)
+    selection_goal = f"{normalized_goal}\n{goal}" if normalized_goal != goal else normalized_goal
     project_root = get_active_project_root()
+    write_audit_log_event(
+        "audit_start",
+        status="ok",
+        run_id=audit_context["run_id"],
+        task_id=audit_context["task_id"],
+        workflow=audit_context["workflow"],
+        project_root=project_root,
+        extra={"prompt_hash": hash_text(goal)},
+    )
     if not project_root or not os.path.isdir(project_root):
         token_savings = unavailable_token_savings(
             reason="No project root configured.",
@@ -70,21 +114,41 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
             budget_tokens=TOKEN_BUDGETS[budget],
             model_profile=token_model_profile,
         )
+        audit_report = write_prepare_audit(
+            build_prepare_audit(
+                context=audit_context,
+                status="failed",
+                project_root=project_root,
+                project_type=None,
+                original_prompt=goal,
+                normalized_prompt=normalized_goal,
+                packet="",
+                estimated_tokens=0,
+                evidence_items=[],
+                missing_evidence={"status": "degraded", "reason": "no_project_root"},
+                evidence_quality={"status": "degraded", "warnings": ["No project root configured."]},
+                tool_calls_expected=["Set SOMA_PROJECT_ROOT or select a project in the app."],
+                language_optimization=language_optimization,
+            )
+        )
         return _error_response(
             "No project root configured.",
             budget=budget,
+            language_optimization=language_optimization,
+            audit=compact_response_audit(audit_report),
             token_savings=token_savings,
             estimated_context_reduction=token_savings.get("estimated_context_reduction"),
             operation_savings=token_savings.get("operation_savings"),
-            next_calls=["Set SOMA_PROJECT_ROOT or start Nexus Unity so Soma can discover projectPath."],
+            next_calls=codex_next_calls("Set SOMA_PROJECT_ROOT or select a project in Soma before calling live tools."),
         )
 
     try:
         project_root = normalize_path(project_root)
-        intent = classify_prompt_intent(goal)
+        intent = classify_prompt_intent(normalized_goal)
 
         if not intent["needs_gather"]:
-            bundle = bundle_for_direct_pass(goal, intent["reason"], project_root, budget, depth)
+            bundle = bundle_for_direct_pass(normalized_goal, intent["reason"], project_root, budget, depth)
+            bundle["language_optimization"] = language_optimization
             packet = bundle["codex_packet"]
             token_savings = build_token_savings(
                 packet=packet,
@@ -95,29 +159,50 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
             )
             estimated_context_reduction = token_savings.get("estimated_context_reduction")
             operation_savings = token_savings.get("operation_savings")
+            missing_evidence = {"status": "ok", "reason": intent["reason"], "unresolved_references": [], "found_not_selected": []}
+            audit_report = write_prepare_audit(
+                build_prepare_audit(
+                    context=audit_context,
+                    status="ok",
+                    project_root=project_root,
+                    project_type=None,
+                    original_prompt=goal,
+                    normalized_prompt=normalized_goal,
+                    packet=packet,
+                    estimated_tokens=estimate_tokens(packet),
+                    evidence_items=[],
+                    missing_evidence=missing_evidence,
+                    evidence_quality={"status": "ok", "warnings": []},
+                    tool_calls_expected=CODEX_START_NEXT_CALLS,
+                    language_optimization=language_optimization,
+                )
+            )
             return _ok_response(
                 "Direct prompt does not need local evidence.",
                 packet=packet,
                 mode="direct",
                 budget=budget,
+                language_optimization=language_optimization,
+                audit=compact_response_audit(audit_report),
                 estimated_tokens=estimate_tokens(packet),
                 token_savings=token_savings,
                 estimated_context_reduction=estimated_context_reduction,
                 operation_savings=operation_savings,
                 omitted={"reason": intent["reason"]},
-                next_calls=["Call soma_prepare_context again with a concrete code/debug/review goal if evidence is needed."],
+                next_calls=CODEX_START_NEXT_CALLS,
             )
 
-        terms = prompt_terms(goal)
+        terms = prompt_terms(selection_goal)
         project_type, type_reason = detect_project_type(project_root)
         git_status = get_git_status(project_root)
         git_diff_summary = get_git_diff_summary(project_root, terms)
         discovered = iter_project_files(project_root)
         repo_index = build_repo_index(project_root, discovered)
-        preflight = build_preflight(goal, project_root, project_type, discovered, repo_index, git_status, git_diff_summary)
+        preflight = build_preflight(selection_goal, project_root, project_type, discovered, repo_index, git_status, git_diff_summary)
 
-        explicit_items = gather_external_evidence(goal, project_root, terms, discovered, repo_index)
-        evidence_items = explicit_items + select_evidence(project_root, goal, project_type, repo_index, preflight)
+        explicit_items = gather_external_evidence(selection_goal, project_root, terms, discovered, repo_index)
+        selection_limit = MAX_EVIDENCE_ITEMS * 3 if depth in {"ranked", "analyst"} else MAX_EVIDENCE_ITEMS
+        evidence_items = explicit_items + select_evidence(project_root, selection_goal, project_type, repo_index, preflight, max_items=selection_limit)
         seen: set[str] = set()
         deduped: list[dict[str, Any]] = []
         for item in evidence_items:
@@ -125,7 +210,7 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
             if path and path not in seen:
                 seen.add(path)
                 deduped.append(item)
-                if len(deduped) >= MAX_EVIDENCE_ITEMS:
+                if len(deduped) >= selection_limit:
                     break
         evidence_items = deduped
 
@@ -140,29 +225,49 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
 
         stages = [{"stage": "preflight", "status": "ok"}, {"stage": "deterministic", "status": "ok"}]
         if depth in {"ranked", "analyst"}:
-            evidence_items, rank_stage = await rank_evidence_with_model(goal, preflight, evidence_items)
+            evidence_items, filter_stage = await filter_candidates_with_model(normalized_goal, preflight, evidence_items, MAX_EVIDENCE_ITEMS)
+            stages.append(filter_stage)
+            evidence_items, rank_stage = await rank_evidence_with_model(normalized_goal, preflight, evidence_items)
+            evidence_items = evidence_items[:MAX_EVIDENCE_ITEMS]
             stages.append(rank_stage)
 
         model_analysis = None
         if depth == "analyst":
-            model_analysis, analyst_stage = await analyze_packet_with_model(goal, preflight, evidence_items, error_lines)
+            model_analysis, analyst_stage = await analyze_packet_with_model(normalized_goal, preflight, evidence_items, error_lines)
             stages.append(analyst_stage)
 
-        graph_result = graphify.query(goal, project_root, budget=1200, project_only=True)
-        graph_context = "\n\n".join(answer["answer"] for answer in graph_result["answers"])
-        summary = fallback_summary(goal, project_root, project_type, evidence_items, error_lines, preflight["packet_mode"])
-        evidence_quality = assess_evidence_quality(goal, evidence_items, preflight)
+        graph_result = graphify.query(normalized_goal, project_root, budget=1200, project_only=True)
+        graph_suggestions = _graph_suggestion_lines(graph_result)
+        summary = fallback_summary(normalized_goal, project_root, project_type, evidence_items, error_lines, preflight["packet_mode"])
+        evidence_quality = assess_evidence_quality(selection_goal, evidence_items, preflight)
+        policy_summary = evidence_policy_summary(evidence_items, project_root, project_type)
+        if policy_summary["warnings"]:
+            evidence_quality["warnings"] = dedupe_strings((evidence_quality.get("warnings") or []) + policy_summary["warnings"])[:10]
+        if depth in {"ranked", "analyst"} and not any(stage.get("stage") == "ranker" and stage.get("status") == "failed" for stage in stages if isinstance(stage, dict)):
+            evidence_quality, referee_stage = await referee_evidence_with_model(normalized_goal, preflight, evidence_items, evidence_quality)
+            stages.append(referee_stage)
+        local_ai_metrics = summarize_local_ai_stages(stages)
+
+        open_questions = dedupe_strings(summary.get("open_questions", []))[:3]
+        if evidence_quality.get("status") != "ok":
+            open_questions = dedupe_strings([
+                "Evidence is degraded; ask for 1-3 exact files or commands before treating this packet as complete.",
+                *open_questions,
+            ])[:3]
 
         bundle = {
             "mode": "gather",
             "status": evidence_quality["status"],
-            "original_prompt": goal,
+            "original_prompt": None if language_optimization.get("source_language") != "en" else goal,
+            "normalized_prompt": normalized_goal,
+            "language_optimization": language_optimization,
             "project_root": project_root,
             "project_type": project_type,
             "routing_decision": "gathered_and_relayed",
             "packet_mode": preflight["packet_mode"],
             "analysis_depth": depth,
             "analysis_stages": stages,
+            "local_ai_metrics": local_ai_metrics,
             "preflight": {k: v for k, v in preflight.items() if k not in {"changed_paths", "error_paths", "candidate_paths"}},
             "model_analysis": model_analysis,
             "gather_reason": intent["reason"],
@@ -176,7 +281,8 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
             "evidence_quality": evidence_quality,
             "error_lines": error_lines,
             "context_summary": summary.get("summary", ""),
-            "open_questions": dedupe_strings(summary.get("open_questions", []))[:3],
+            "graph_suggestions": graph_suggestions,
+            "open_questions": open_questions,
             "assumptions": [type_reason] + dedupe_strings(summary.get("assumptions", []))[:3],
             "omitted_context": {
                 "discovered_files": len(discovered),
@@ -186,11 +292,13 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
                 "graph_warnings": graph_result["warnings"][:2],
                 "graphify": "project_only" if graph_result.get("graphs") else "skipped",
                 "evidence_quality": evidence_quality,
+                "evidence_policy": policy_summary,
+                **local_ai_metrics,
             },
         }
 
-        packet = _append_graph_context(build_codex_packet(goal, bundle, budget), graph_context, budget)
-        packet = _enforce_packet_budget(goal, bundle, packet, budget)
+        packet = build_codex_packet(normalized_goal, bundle, budget)
+        packet = _enforce_packet_budget(normalized_goal, bundle, packet, budget)
         estimated = estimate_tokens(packet)
         task_baseline = build_task_candidate_baseline(
             project_root=project_root,
@@ -246,14 +354,48 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
             "confidence": summary.get("confidence", 0.55),
             "estimated_tokens": estimated,
             "token_savings": token_savings,
+            "language_optimization": language_optimization,
             "estimated_context_reduction": estimated_context_reduction,
             "operation_savings": operation_savings,
             "evidence": _evidence_summary(evidence_items),
             "omitted": omitted,
             "evidence_quality": evidence_quality,
             "analysis_stages": stages,
-            "next_calls": ["Use packet first.", "Call soma_code_context for 1 focused missing area.", "Call soma_inspect for 1 Unity object/component."],
+            "local_ai_metrics": local_ai_metrics,
+            **local_ai_metrics,
+            "next_calls": CODEX_START_NEXT_CALLS,
         }
+        missing_evidence = build_missing_evidence(
+            original_prompt=goal,
+            normalized_prompt=normalized_goal,
+            project_root=project_root,
+            discovered=discovered,
+            repo_index=repo_index,
+            evidence_items=evidence_items,
+            preflight=preflight,
+            evidence_quality=evidence_quality,
+            graph_result=graph_result,
+            analysis_stages=stages,
+            next_calls=response_kwargs["next_calls"],
+        )
+        audit_report = write_prepare_audit(
+            build_prepare_audit(
+                context=audit_context,
+                status="ok" if evidence_quality["status"] == "ok" and missing_evidence["status"] == "ok" else "degraded",
+                project_root=project_root,
+                project_type=project_type,
+                original_prompt=goal,
+                normalized_prompt=normalized_goal,
+                packet=packet,
+                estimated_tokens=estimated,
+                evidence_items=evidence_items,
+                missing_evidence=missing_evidence,
+                evidence_quality=evidence_quality,
+                tool_calls_expected=response_kwargs["next_calls"],
+                language_optimization=language_optimization,
+            )
+        )
+        response_kwargs["audit"] = compact_response_audit(audit_report)
         if evidence_quality["status"] == "ok":
             first_render = _ok_response(summary_text, **response_kwargs)
         else:
@@ -282,9 +424,30 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
         return _error_response(
             f"soma_prepare_context failed: {exc}",
             budget=budget,
+            language_optimization=language_optimization,
+            audit=compact_response_audit(
+                write_prepare_audit(
+                    build_prepare_audit(
+                        context=audit_context,
+                        status="failed",
+                        project_root=project_root if "project_root" in locals() else None,
+                        project_type=None,
+                        original_prompt=goal,
+                        normalized_prompt=normalized_goal,
+                        packet="",
+                        estimated_tokens=0,
+                        evidence_items=[],
+                        missing_evidence={"status": "degraded", "reason": str(exc)[:300]},
+                        evidence_quality={"status": "degraded", "warnings": [str(exc)[:300]]},
+                        tool_calls_expected=[],
+                        language_optimization=language_optimization,
+                    )
+                )
+            ),
             token_savings=token_savings,
             estimated_context_reduction=token_savings.get("estimated_context_reduction"),
             operation_savings=token_savings.get("operation_savings"),
+            next_calls=codex_next_calls("Fix the reported Soma error, then rerun soma_prepare_context for the same task."),
         )
 
 
@@ -292,7 +455,7 @@ async def soma_get_map() -> str:
     """Return a compact living project map from git, Graphify, Nexus, and memory."""
     project_root = get_active_project_root()
     if not project_root:
-        return _error_response("No project root configured.", next_calls=["Set SOMA_PROJECT_ROOT or start Nexus Unity."])
+        return _error_response("No project root configured.", next_calls=codex_next_calls("Set SOMA_PROJECT_ROOT or select a project in Soma."))
 
     project_type, type_reason = detect_project_type(project_root)
     state = nexus.discover()
@@ -352,7 +515,7 @@ async def soma_get_map() -> str:
         f"Living map for {Path(project_root).name}.",
         map=serializable_map,
         omitted=omitted,
-        next_calls=["Call soma_prepare_context with the concrete task.", "Call soma_code_context for a focused subsystem."],
+        next_calls=codex_next_calls("Call soma_prepare_context with the concrete task.", "Call soma_code_context for a focused subsystem."),
     )
 
 
@@ -360,7 +523,7 @@ async def soma_code_context(query: str) -> str:
     """Return Graphify context plus deterministic source snippets for a focused query."""
     project_root = get_active_project_root()
     if not project_root:
-        return _error_response("No project root configured.", next_calls=["Set SOMA_PROJECT_ROOT or start Nexus Unity."])
+        return _error_response("No project root configured.", next_calls=codex_next_calls("Set SOMA_PROJECT_ROOT or select a project in Soma."))
 
     terms = prompt_terms(query)
     discovered = iter_project_files(project_root)
@@ -405,5 +568,5 @@ async def soma_code_context(query: str) -> str:
             "graphs_consulted": graph_result["graphs"][:3],
             "graph_warnings": graph_result["warnings"][:2],
         },
-        next_calls=["Use these snippets first.", "Call soma_prepare_context if this becomes an implementation task."],
+        next_calls=codex_next_calls("Use these snippets first.", "Call soma_prepare_context if this becomes an implementation task."),
     )

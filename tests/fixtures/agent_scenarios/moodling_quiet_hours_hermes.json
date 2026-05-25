@@ -1,0 +1,25 @@
+{
+  "name": "moodling_quiet_hours_hermes",
+  "project_root": "../agent_projects/moodling_quiet_hours",
+  "agents": ["hermes"],
+  "tasks": [
+    {
+      "id": "quiet_hours_cross_midnight",
+      "prompt": "Read-only analysis. Investigate whether Moodling quiet hours can fail when the quiet interval crosses midnight. Return likely root cause, exact files to inspect, test cases that should exist, and a minimal fix plan.",
+      "expected_files": [
+        "CooldownPolicy.swift",
+        "NudgeScheduler.swift",
+        "AppState.swift",
+        "MoodlingSettings.swift",
+        "SettingsView.swift",
+        "CooldownPolicyTests.swift",
+        "docs/behavior.md",
+        "quiet_hours_cross_midnight.jsonl"
+      ],
+      "must_mention": ["midnight", "quiet hours"],
+      "must_not_mention_files": ["QuietHoursManager.swift", "Configuration.swift"],
+      "manual_acceptance_notes": "Hermes should ground the answer in the real Moodling files and avoid invented quiet-hours managers.",
+      "read_only": true
+    }
+  ]
+}

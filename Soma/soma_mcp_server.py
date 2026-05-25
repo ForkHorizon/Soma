@@ -7,9 +7,13 @@ The core server logic has been moved to mcp/server.py.
 import sys
 from pathlib import Path
 
-# Add the current directory to sys.path so 'mcp' can be imported
-sys.path.insert(0, str(Path(__file__).parent))
+# Add the current directory to sys.path so bundled modules can be imported.
+server_root = Path(__file__).parent
+sys.path.insert(0, str(server_root))
 
+from soma_import_bootstrap import install_soma_gateway_namespace
+
+install_soma_gateway_namespace(server_root)
 
 
 if __name__ == "__main__":

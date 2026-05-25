@@ -6,6 +6,8 @@ import AppKit
 
 import Combine
 
+import UniformTypeIdentifiers
+
 
 extension SomaViewModel {
 
@@ -66,7 +68,8 @@ func runRelay(ollama: OllamaManager) {
                 let bundle = try await runGather(
                     prompt: prompt,
                     projectRoot: selectedProjectRoot,
-                    recentRoots: recentProjectRoots
+                    recentRoots: recentProjectRoots,
+                    rawCapture: auditRawCaptureNextRun
                 )
                 let stepDuration = Date().timeIntervalSince(stepStart)
 
@@ -78,9 +81,12 @@ func runRelay(ollama: OllamaManager) {
                 await MainActor.run {
                     gatherBundle = bundle
                     latestTokenSavings = bundle.token_savings
+                    _ = recordPacketRun(prompt: prompt, bundle: bundle)
+                    auditRawCaptureNextRun = false
                     showContextPanel = true
                     relayPhase = .done
                     ollama.checkStatus()
+                    loadAuditReport()
                     logActivity("Prepared Codex packet (~\(bundle.estimated_tokens ?? 0) tokens)")
                     logActivity("Evidence compile total time", duration: Date().timeIntervalSince(startTime))
                 }
@@ -89,6 +95,7 @@ func runRelay(ollama: OllamaManager) {
                     logActivity("Relay failed: \(error.localizedDescription)")
                     relayPhase = .failed(error.localizedDescription)
                     relayError = error.localizedDescription
+                    auditRawCaptureNextRun = false
                 }
             }
         }
@@ -106,10 +113,13 @@ func runRelay(ollama: OllamaManager) {
         }.value
     }
 
-    func runGather(prompt: String, projectRoot: String, recentRoots: [String]) async throws -> GatherBundle {
+    func runGather(prompt: String, projectRoot: String, recentRoots: [String], rawCapture: Bool = false) async throws -> GatherBundle {
         let scriptPath = try scriptURL(named: "scout_pipeline").path
         let pyPath = pythonPath()
-        let env = scriptEnvironment(projectRoot: projectRoot)
+        var env = scriptEnvironment(projectRoot: projectRoot)
+        if rawCapture {
+            env["SOMA_AUDIT_RAW_CAPTURE"] = "1"
+        }
         let depth = analysisDepth.rawValue
 
         return try await Task.detached(priority: .userInitiated) {
@@ -129,6 +139,61 @@ func runRelay(ollama: OllamaManager) {
             )
             return try JSONDecoder().decode(GatherBundle.self, from: output)
         }.value
+    }
+
+func loadAuditReport() {
+        Task {
+            let file = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".soma/audit/latest.json")
+            guard FileManager.default.fileExists(atPath: file.path) else { return }
+            do {
+                let data = try Data(contentsOf: file)
+                let report = try JSONDecoder().decode(AuditReport.self, from: data)
+                await MainActor.run {
+                    self.auditReport = report
+                    self.auditError = nil
+                }
+            } catch {
+                await MainActor.run {
+                    self.auditError = "Audit report unreadable: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+func markAudit(status: String, notes: String = "") {
+        guard let runID = auditReport?.run_id else {
+            auditError = "No audit run selected."
+            return
+        }
+        auditMarkBusy = true
+        auditError = nil
+        Task {
+            do {
+                let script = try scriptURL(named: "soma_audit")
+                let data = try await runScript(
+                    path: pythonPath(),
+                    args: [
+                        script.path,
+                        "--mark", runID,
+                        "--status", status,
+                        "--notes", notes,
+                    ]
+                )
+                let report = try JSONDecoder().decode(AuditReport.self, from: data)
+                await MainActor.run {
+                    self.auditReport = report
+                    self.auditMarkBusy = false
+                    self.auditError = nil
+                    self.logActivity("Audit \(runID) marked \(status)")
+                }
+            } catch {
+                await MainActor.run {
+                    self.auditMarkBusy = false
+                    self.auditError = error.localizedDescription
+                }
+            }
+        }
     }
 
     func runRelayScript(bundle: GatherBundle) async throws -> RelayResponse {
@@ -220,6 +285,56 @@ func runTokenBenchmark() {
         }
     }
 
+func chooseAndRunAgentBenchmark() {
+        guard !selectedProjectRoot.isEmpty else {
+            agentBenchmarkError = "Select a project root before running an A/B benchmark."
+            return
+        }
+        let panel = NSOpenPanel()
+        panel.title = "Choose A/B benchmark scenario"
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        if panel.runModal() == .OK, let url = panel.url {
+            runAgentBenchmark(scenarioPath: url.path)
+        }
+    }
+
+func runAgentBenchmark(scenarioPath: String) {
+        agentBenchmarkBusy = true
+        agentBenchmarkError = nil
+        logActivity("Running agent A/B benchmark from \((scenarioPath as NSString).lastPathComponent)...")
+        Task {
+            do {
+                let script = try scriptURL(named: "soma_agent_ab_benchmark")
+                let data = try await runScript(
+                    path: pythonPath(),
+                    args: [
+                        script.path,
+                        "--scenario", scenarioPath,
+                        "--agents", "codex,gemini,hermes",
+                        "--budget", "fast",
+                        "--python", pythonPath(),
+                    ]
+                )
+                let report = try JSONDecoder().decode(AgentBenchmarkReport.self, from: data)
+                await MainActor.run {
+                    self.agentBenchmarkReport = report
+                    self.agentBenchmarkBusy = false
+                    self.agentBenchmarkError = nil
+                    self.logActivity("A/B benchmark \(report.status ?? "unknown"): \(report.summary?.paired_result_count ?? 0) accepted pairs")
+                }
+            } catch {
+                await MainActor.run {
+                    self.agentBenchmarkBusy = false
+                    self.agentBenchmarkError = error.localizedDescription
+                    self.logActivity("A/B benchmark failed: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
 func runSomaHelper(args: [String]) async throws -> Data {
         let scriptPath = try scriptURL(named: "soma_mcp_server").path
         return try await runScript(path: pythonPath(), args: [scriptPath] + args)
@@ -255,9 +370,7 @@ func scriptEnvironment(projectRoot: String? = nil) -> [String: String] {
         let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
         environment["PATH"] = (environment["PATH"] ?? "") + ":/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:\(homeDir)/.local/bin"
         environment["PYTHONDONTWRITEBYTECODE"] = "1"
-        environment["SOMA_LOCAL_MODEL"] = environment["SOMA_LOCAL_MODEL"] ?? "gemma4:e4b"
-        environment["SOMA_RANKER_MODEL"] = environment["SOMA_RANKER_MODEL"] ?? "gemma4:e4b"
-        environment["SOMA_ANALYST_MODEL"] = environment["SOMA_ANALYST_MODEL"] ?? "qwen3-coder:30b-a3b-q4_K_M"
+        LocalModelSettingsStore.apply(to: &environment)
         if let projectRoot, !projectRoot.isEmpty {
             environment["SOMA_PROJECT_ROOT"] = projectRoot
         } else if !selectedProjectRoot.isEmpty {

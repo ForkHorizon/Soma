@@ -17,9 +17,11 @@ if __name__ == "__main__":
     parser.add_argument("--token-budget", default=DEFAULT_TOKEN_BUDGET, choices=sorted(TOKEN_BUDGETS.keys()))
     parser.add_argument("--use-local-summary", action="store_true")
     parser.add_argument("--analysis-depth", default="deterministic", choices=sorted(ANALYSIS_DEPTHS))
+    parser.add_argument("--packet-profile", default="standard", choices=["standard", "prompt_compiler"])
+    parser.add_argument("--planning-mode", default="auto", choices=["off", "local", "auto"])
     args = parser.parse_args()
 
-    if args.mode == "gather": asyncio.run(run_gather(args.prompt, args.project_root, args.recent_roots_json, args.token_budget, args.use_local_summary, args.analysis_depth))
+    if args.mode == "gather": asyncio.run(run_gather(args.prompt, args.project_root, args.recent_roots_json, args.token_budget, args.use_local_summary, args.analysis_depth, args.packet_profile, args.planning_mode))
     else:
         history = []
         try: history = json.loads(args.history)

@@ -21,6 +21,8 @@ RANKER_MODEL = os.environ.get('SOMA_RANKER_MODEL', 'gemma4:e4b')
 
 ANALYST_MODEL = os.environ.get('SOMA_ANALYST_MODEL', 'qwen3-coder:30b-a3b-q4_K_M')
 
+DEFAULT_OPENAI_REFEREE_MODEL = 'gpt-5.4-mini'
+
 CHAT_ALLOWED_DIRS = ([path for path in ['/Users/daliys', '/Users/daliys/Downloads', '/Users/daliys/Daliys', '/Users/daliys/Library/Logs'] if os.path.exists(path)] or ['/Users/daliys'])
 
 MAX_ERROR_LINES = 20
@@ -49,7 +51,19 @@ NOISE_PATH_NAMES = {'.DS_Store'}
 
 NOISE_SUFFIXES = {'.pyc', '.pyo'}
 
-SKIP_DIRS = {'.git', '.build', '.idea', '.venv', 'Assets.xcassets', 'DerivedData', 'Pods', 'build', 'dist', 'node_modules', 'venv', 'xcuserdata', '__pycache__'}
+SKIP_DIRS = {
+    '.git', '.build', '.idea', '.venv', 'Assets.xcassets', 'Build', 'Builds',
+    'DerivedData', 'Library', 'Logs', 'Obj', 'Pods', 'Temp', 'build', 'dist',
+    'node_modules', 'obj', 'venv', 'xcuserdata', '__pycache__',
+}
+
+GENERATED_DEPENDENCY_PARTS = {
+    '.build', '.cache', 'build', 'dist', 'vendor', 'generated', 'obj',
+    'DerivedData', 'Library/PackageCache', 'Library/Bee', 'Library/Artifacts', 'Temp',
+    'node_modules', 'xcuserdata',
+}
+
+PROJECT_OWNED_UNITY_PARTS = {'Assets', 'Packages', 'ProjectSettings'}
 
 MANIFEST_NAMES = {'package.json', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'requirements.txt', 'requirements-dev.txt', 'pyproject.toml', 'Pipfile', 'Pipfile.lock', 'setup.py', 'setup.cfg', 'Package.swift', 'Podfile', 'Cartfile', 'Gemfile', 'Makefile', 'Dockerfile', '.env', 'go.mod', 'go.sum', 'Cargo.toml', 'Cargo.lock', 'pom.xml', 'build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts', 'composer.json', 'composer.lock', 'Rakefile', 'CMakeLists.txt'}
 

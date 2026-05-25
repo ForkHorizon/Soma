@@ -4,6 +4,11 @@ import json
 import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "Soma"))
+from soma_test_bootstrap import install_soma_imports
+install_soma_imports()
 
 from gateway.core import (
     _safe_text,
@@ -85,13 +90,24 @@ class TestGraphifyAdapterAndMemoryStore(unittest.TestCase):
         self.assertEqual(adapter.project_graph_candidates(None), [])
 
     def test_graphify_project_graph_candidates_valid(self):
-        adapter = GraphifyAdapter(graph_dir=Path("/tmp/graphs"))
-        candidates = adapter.project_graph_candidates("/my/project")
+        with tempfile.TemporaryDirectory() as tmp:
+            adapter = GraphifyAdapter(graph_dir=Path(tmp) / "graphs")
+            candidates = adapter.project_graph_candidates("/my/project")
 
-        self.assertEqual(len(candidates), 3)
-        self.assertIn(Path("/my/project/graphify-out/graph.json"), candidates)
-        self.assertIn(Path("/my/project/Assets/NexusUnity/graphify-out/graph.json"), candidates)
-        self.assertIn(Path("/tmp/graphs/project/graph.json"), candidates)
+            self.assertGreaterEqual(len(candidates), 4)
+            self.assertEqual(candidates[0], adapter.storage.graph_json("/my/project"))
+            self.assertIn(Path("/my/project/graphify-out/graph.json"), candidates)
+            self.assertIn(Path("/my/project/Assets/NexusUnity/graphify-out/graph.json"), candidates)
+
+    def test_graphify_project_id_is_stable_and_collision_safe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            adapter = GraphifyAdapter(graph_dir=Path(tmp) / "graphs")
+            first = adapter.storage.project_id("/repo/a/Soma")
+            second = adapter.storage.project_id("/repo/a/./Soma")
+            other = adapter.storage.project_id("/repo/b/Soma")
+
+        self.assertEqual(first, second)
+        self.assertNotEqual(first, other)
 
     @patch.object(Path, 'exists')
     def test_graphify_find_graphs_no_existing(self, mock_exists):
@@ -101,16 +117,37 @@ class TestGraphifyAdapterAndMemoryStore(unittest.TestCase):
         self.assertEqual(graphs, [])
 
     def test_graphify_find_graphs_some_existing(self):
-        def fake_exists(path_obj):
-            return "UnityTestForNexus" in str(path_obj)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "project"
+            legacy = root / "graphify-out"
+            legacy.mkdir(parents=True)
+            (legacy / "graph.json").write_text('{"nodes":[],"edges":[]}', encoding="utf-8")
+            adapter = GraphifyAdapter(graph_dir=Path(tmp) / "graphs")
+            graphs = adapter.find_graphs(str(root))
+            cross_project = adapter.find_graphs(str(root), project_only=False)
 
-        with patch.object(Path, 'exists', autospec=True, side_effect=fake_exists):
-            adapter = GraphifyAdapter()
-            graphs = adapter.find_graphs("/my/project")
-            self.assertEqual(graphs, [])
-            cross_project = adapter.find_graphs("/my/project", project_only=False)
-            self.assertEqual(len(cross_project), 1)
-            self.assertTrue("UnityTestForNexus" in str(cross_project[0]))
+        self.assertEqual([str(path) for path in graphs], [str((legacy / "graph.json").resolve())])
+        self.assertEqual(cross_project, graphs)
+
+    def test_graphify_managed_graph_wins_over_legacy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "project"
+            legacy = root / "graphify-out"
+            legacy.mkdir(parents=True)
+            (legacy / "graph.json").write_text('{"nodes":[{"id":"legacy"}],"edges":[]}', encoding="utf-8")
+            adapter = GraphifyAdapter(graph_dir=Path(tmp) / "graphs")
+            managed = adapter.storage.graph_dir(str(root))
+            managed.mkdir(parents=True)
+            (managed / "graph.json").write_text('{"nodes":[{"id":"managed"}],"edges":[{}]}', encoding="utf-8")
+            graphs = adapter.find_graphs(str(root))
+            status = adapter.status(str(root))
+
+        self.assertEqual(graphs[0], managed / "graph.json")
+        self.assertEqual(status["storage_kind"], "managed")
+        self.assertTrue(status["managed_available"])
+        self.assertTrue(status["legacy_available"])
+        self.assertEqual(status["node_count"], 1)
+        self.assertEqual(status["edge_count"], 1)
 
     def test_memory_store_project_dir_default(self):
         with tempfile.TemporaryDirectory() as tmp:

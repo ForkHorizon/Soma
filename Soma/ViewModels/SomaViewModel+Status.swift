@@ -19,10 +19,21 @@ func refreshSomaStatus() {
                     nexusConnected = status.nexus?.connected ?? false
                     graphAvailable = status.graph?.project_graph_available ?? status.graph?.available ?? false
                     graphStale = status.graph?.stale ?? false
+                    graphManagedAvailable = status.graph?.managed_available ?? false
+                    graphLegacyAvailable = status.graph?.legacy_available ?? false
+                    graphStorageKind = status.graph?.storage_kind ?? (graphAvailable ? "legacy" : "missing")
+                    graphNodeCount = status.graph?.node_count
+                    graphEdgeCount = status.graph?.edge_count
+                    graphStoragePath = status.graph?.storage_path
+                    graphManagedPath = status.graph?.managed_path
+                    graphLegacyPaths = status.graph?.legacy_paths ?? []
+                    if let version = status.graph?.graphify_version, !version.isEmpty {
+                        graphifyVersion = version
+                    }
                     nexusVersion = status.nexus?.unity_version ?? "Offline"
                     
                     let nexusText = nexusConnected ? "Unity plugin connected (\(nexusVersion))" : "Unity plugin skipped/offline"
-                    let graphText = graphAvailable ? (graphStale ? "graph stale" : "graph ready") : "graph missing"
+                    let graphText = graphAvailable ? "\(graphStorageKind) graph \(graphStale ? "stale" : "ready")" : "graph optional/missing"
                     let toolCount = status.server?.tool_count ?? 0
                     let nexusProject = status.nexus?.project_path
                     let mismatch = nexusConnected && !projectPathsMatch(selectedProjectRoot, nexusProject)
@@ -38,6 +49,8 @@ func refreshSomaStatus() {
             loadStructuredLogs()
             loadTokenBenchmarkReport()
             loadAgentBenchmarkReport()
+            loadMCPSmokeReport()
+            verifyClientConfigs()
         }
     }
 
@@ -74,9 +87,13 @@ func upgradeGraphify() {
             do {
                 let uvPath = FileManager.default.homeDirectoryForCurrentUser.path + "/.local/bin/uv"
                 _ = try await runScript(path: uvPath, args: ["tool", "upgrade", "graphifyy"])
+                let graphifyBin = FileManager.default.homeDirectoryForCurrentUser.path + "/.local/bin/graphify"
+                for platform in ["claude", "codex", "agents", "gemini", "hermes"] {
+                    _ = try? await runScript(path: graphifyBin, args: ["install", "--platform", platform])
+                }
                 await MainActor.run {
                     self.systemBusy = false
-                    self.logActivity("Graphify upgraded successfully")
+                    self.logActivity("Graphify upgraded and client integrations refreshed")
                     self.fetchSystemVersions()
                 }
             } catch {
@@ -91,18 +108,24 @@ func upgradeGraphify() {
     func initializeGraphify() {
         guard !selectedProjectRoot.isEmpty else { return }
         graphifyBusy = true
-        logActivity("Initializing Graphify graph for \((selectedProjectRoot as NSString).lastPathComponent)...")
+        logActivity("Building managed Graphify graph for \((selectedProjectRoot as NSString).lastPathComponent)...")
         Task {
             do {
-                // Look for graphify binary via uv tool or direct path
+                let storageData = try await runSomaHelper(args: ["--graph-storage-json", "--project-root", selectedProjectRoot])
+                let storage = try JSONDecoder().decode(GraphStorageInfo.self, from: storageData)
+                guard let outputRoot = storage.output_root, !outputRoot.isEmpty else {
+                    throw SomaError("Graphify storage path was not returned by Soma helper")
+                }
                 let graphifyBin = FileManager.default.homeDirectoryForCurrentUser.path + "/.local/bin/graphify"
-                let args = ["update", "."]
+                let args = ["extract", selectedProjectRoot, "--out", outputRoot]
                 _ = try await runScript(path: graphifyBin, args: args, workingDirectory: selectedProjectRoot)
                 await MainActor.run {
                     self.graphifyBusy = false
                     self.graphAvailable = true
+                    self.graphManagedAvailable = true
+                    self.graphStorageKind = "managed"
                     self.graphStale = false
-                    self.logActivity("Graphify graph created/updated successfully")
+                    self.logActivity("Managed Graphify graph created/updated successfully")
                     self.refreshSomaStatus()
                 }
             } catch {
@@ -112,6 +135,37 @@ func upgradeGraphify() {
                 }
             }
         }
+    }
+
+    func migrateGraphifyGraph() {
+        guard !selectedProjectRoot.isEmpty else { return }
+        graphifyBusy = true
+        logActivity("Moving legacy Graphify graph into Soma storage...")
+        Task {
+            do {
+                _ = try await runSomaHelper(args: ["--migrate-graph", "--project-root", selectedProjectRoot])
+                await MainActor.run {
+                    self.graphifyBusy = false
+                    self.logActivity("Legacy Graphify graph copied into Soma storage")
+                    self.refreshSomaStatus()
+                }
+            } catch {
+                await MainActor.run {
+                    self.graphifyBusy = false
+                    self.logActivity("Graphify migration failed: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    func openGraphifyReport() {
+        let basePath = graphStoragePath ?? graphManagedPath
+        guard let basePath, !basePath.isEmpty else { return }
+        let reportPath = (basePath as NSString).appendingPathComponent("GRAPH_REPORT.md")
+        let htmlPath = (basePath as NSString).appendingPathComponent("graph.html")
+        let target = FileManager.default.fileExists(atPath: htmlPath) ? htmlPath : reportPath
+        guard FileManager.default.fileExists(atPath: target) else { return }
+        NSWorkspace.shared.open(URL(fileURLWithPath: target))
     }
 
 func projectPathsMatch(_ lhs: String, _ rhs: String?) -> Bool {

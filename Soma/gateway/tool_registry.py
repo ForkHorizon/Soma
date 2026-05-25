@@ -19,6 +19,7 @@ from gateway.tools.nexus import (
     soma_scene,
 )
 from gateway.tools.query import soma_ask, soma_debug, soma_review
+from soma_audit import AUDIT_ARGUMENT_KEYS, context_from_arguments, scoped_context
 from soma_logger import log_tool_call
 
 
@@ -113,7 +114,11 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
     },
     "soma_execute": {
         "type": "object",
-        "properties": {"requests": {"type": "array", "items": {"type": "object"}}},
+        "properties": {
+            "requests": {"type": "array", "items": {"type": "object"}},
+            "include_raw": {"type": "boolean", "default": False},
+            "raw_capture": {"type": "boolean", "default": False},
+        },
         "required": ["requests"],
         "additionalProperties": False,
     },
@@ -136,7 +141,13 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
 
 
 def tool_schema(name: str) -> dict[str, Any]:
-    return TOOL_SCHEMAS.get(name, {"type": "object", "properties": {}, "additionalProperties": True})
+    schema = json.loads(json.dumps(TOOL_SCHEMAS.get(name, {"type": "object", "properties": {}, "additionalProperties": True})))
+    properties = schema.setdefault("properties", {})
+    properties.setdefault("run_id", {"type": "string", "description": "Optional Soma audit run correlation id."})
+    properties.setdefault("task_id", {"type": "string", "description": "Optional Soma audit task correlation id."})
+    properties.setdefault("client", {"type": "string", "description": "Optional client name such as codex or gemini."})
+    properties.setdefault("workflow", {"type": "string", "description": "Optional workflow label such as packet_mode or live_mcp."})
+    return schema
 
 
 def sanitize_tool_arguments(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
@@ -152,10 +163,11 @@ def sanitize_tool_arguments(name: str, arguments: dict[str, Any] | None) -> dict
     }
     if not allowed:
         return {}
-    return {key: value for key, value in raw.items() if key in allowed}
+    return {key: value for key, value in raw.items() if key in allowed and key not in AUDIT_ARGUMENT_KEYS}
 
 
 async def call_tool(name: str, arguments: dict[str, Any] | None = None) -> str:
     if name not in TOOL_CATALOG:
         return json.dumps({"error": f"Unknown tool {name}"})
-    return await TOOL_CATALOG[name](**sanitize_tool_arguments(name, arguments))
+    with scoped_context(**context_from_arguments(arguments)):
+        return await TOOL_CATALOG[name](**sanitize_tool_arguments(name, arguments))

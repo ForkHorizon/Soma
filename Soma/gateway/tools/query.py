@@ -13,6 +13,7 @@ from gateway.core import (
     nexus,
 )
 from gateway.tools.context import soma_prepare_context
+from gateway.tools.protocol import CODEX_START_NEXT_CALLS, codex_next_calls
 
 
 async def soma_ask(question: str) -> str:
@@ -24,13 +25,13 @@ async def soma_ask(question: str) -> str:
             "Answered from project graph.",
             answers=result["answers"],
             omitted={"graphs_consulted": result["graphs"], "warnings": result["warnings"][:2]},
-            next_calls=["Call soma_code_context if exact source snippets are needed."],
+            next_calls=codex_next_calls("Call soma_code_context if exact source snippets are needed."),
         )
     return _compact_result(
         "degraded",
         "No graph answer available.",
         omitted={"graphs_consulted": result["graphs"], "warnings": result["warnings"][:3]},
-        next_calls=["Run graphify in the project or call soma_code_context for deterministic snippets."],
+        next_calls=codex_next_calls("Run Graphify for the project or call soma_code_context for deterministic snippets."),
     )
 
 
@@ -49,11 +50,13 @@ async def soma_debug(symptom: str) -> str:
         else:
             base.setdefault("omitted", {})["nexus_lint_error"] = err
     base["summary"] = f"Debug packet for: {symptom}"
-    base["next_calls"] = ["Use packet first.", "Call soma_inspect for the object/component named by errors."]
+    base["next_calls"] = codex_next_calls("Use packet first.", "Call soma_inspect for the object/component named by errors.")
     return _json(base)
 
 
 async def soma_review(focus: str = "current diff") -> str:
     """Prepare a bug/regression review packet."""
     goal = f"Review {focus} for behavioral regressions. Focus on bugs and missing tests, not style."
-    return await soma_prepare_context(goal=goal, budget="balanced", depth="ranked")
+    payload = json.loads(await soma_prepare_context(goal=goal, budget="balanced", depth="ranked"))
+    payload["next_calls"] = codex_next_calls(*payload.get("next_calls", CODEX_START_NEXT_CALLS))
+    return _json(payload)

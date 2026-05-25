@@ -69,10 +69,12 @@ def excerpt_for_text(text, terms):
     lines = text.splitlines()
     lowered_terms = [term.lower() for term in (terms or []) if len(str(term)) > 2]
     match_index = None
-    for index, line in enumerate(lines):
-        lowered = line.lower()
-        if any(term in lowered for term in lowered_terms):
-            match_index = index
+    for term in lowered_terms:
+        for index, line in enumerate(lines):
+            if term in line.lower():
+                match_index = index
+                break
+        if match_index is not None:
             break
     if match_index is None:
         preview = text[:MAX_PREVIEW_CHARS].strip()

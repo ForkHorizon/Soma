@@ -114,6 +114,13 @@ def log_mcp_event(
 
     write_log_entry(entry)
     _update_session_stats(entry)
+    try:
+        from soma_audit import append_event
+
+        if entry.get("run_id"):
+            append_event(str(entry.get("run_id")), entry)
+    except Exception:
+        pass
 
 
 # ── Session stats ─────────────────────────────────────────────────────────────
@@ -206,16 +213,41 @@ def log_tool_call(func: Callable) -> Callable:
             omitted = parsed_result.get("omitted") if isinstance(parsed_result, dict) else {}
             evidence = parsed_result.get("evidence") if isinstance(parsed_result, dict) else []
             analysis_stages = parsed_result.get("analysis_stages") if isinstance(parsed_result, dict) else []
+            local_ai_metrics = parsed_result.get("local_ai_metrics") if isinstance(parsed_result, dict) else {}
             token_savings = parsed_result.get("token_savings") if isinstance(parsed_result, dict) else {}
+            language_optimization = parsed_result.get("language_optimization") if isinstance(parsed_result, dict) else {}
             if not isinstance(token_savings, dict):
                 token_savings = {}
+            if not isinstance(language_optimization, dict):
+                language_optimization = {}
+            if not isinstance(local_ai_metrics, dict):
+                local_ai_metrics = {}
             operation_savings = parsed_result.get("operation_savings") or token_savings.get("operation_savings")
             estimated_context = parsed_result.get("estimated_context_reduction") or token_savings.get("estimated_context_reduction")
             if not isinstance(operation_savings, dict):
                 operation_savings = {}
             if not isinstance(estimated_context, dict):
                 estimated_context = {}
+            audit = parsed_result.get("audit") if isinstance(parsed_result, dict) else {}
+            if not isinstance(audit, dict):
+                audit = {}
+            try:
+                from soma_audit import current_context
+
+                audit_context = current_context()
+            except Exception:
+                audit_context = {}
+            run_id = audit.get("run_id") or audit_context.get("run_id")
+            task_id = audit.get("task_id") or audit_context.get("task_id")
+            workflow = audit.get("workflow") or audit_context.get("workflow")
+            client = audit_context.get("client")
             extra = {
+                "run_id": run_id,
+                "task_id": task_id,
+                "workflow": workflow,
+                "client": client,
+                "prompt_hash": audit.get("prompt_hash"),
+                "packet_hash": audit.get("packet_hash"),
                 "project_type": parsed_result.get("project_type"),
                 "packet_mode": parsed_result.get("packet_mode") or parsed_result.get("mode"),
                 "estimated_tokens": parsed_result.get("estimated_tokens"),
@@ -242,6 +274,22 @@ def log_tool_call(func: Callable) -> Callable:
                 "estimated_context_saved_tokens": estimated_context.get("saved_tokens"),
                 "estimated_context_reduction_pct": estimated_context.get("savings_pct"),
                 "estimated_context_baseline_tokens": estimated_context.get("baseline_tokens"),
+                "source_language": language_optimization.get("source_language"),
+                "translation_status": language_optimization.get("status"),
+                "translation_engine": language_optimization.get("engine"),
+                "prompt_saved_tokens": language_optimization.get("saved_tokens"),
+                "prompt_savings_pct": language_optimization.get("savings_pct"),
+                "protected_spans_count": language_optimization.get("protected_spans_count"),
+                "local_ai_policy": local_ai_metrics.get("local_ai_policy"),
+                "local_ai_call_count": local_ai_metrics.get("local_ai_call_count"),
+                "local_ai_input_tokens": local_ai_metrics.get("local_ai_input_tokens"),
+                "local_ai_output_tokens": local_ai_metrics.get("local_ai_output_tokens"),
+                "local_ai_latency_ms": local_ai_metrics.get("local_ai_latency_ms"),
+                "candidate_tokens_before": local_ai_metrics.get("candidate_tokens_before"),
+                "candidate_tokens_after": local_ai_metrics.get("candidate_tokens_after"),
+                "local_ai_net_savings_tokens": local_ai_metrics.get("local_ai_net_savings_tokens"),
+                "output_truncated": omitted.get("output_truncated") if isinstance(omitted, dict) else None,
+                "omitted_output_tokens": omitted.get("omitted_output_tokens") if isinstance(omitted, dict) else None,
             }
             log_mcp_event(
                 event="tool_call",
@@ -264,19 +312,19 @@ def log_tool_call(func: Callable) -> Callable:
 
 # ── MCP request/response logging ──────────────────────────────────────────────
 
-def log_mcp_request(method: str, req_id: Any, params_size: int) -> float:
+def log_mcp_request(method: str, req_id: Any, params_size: int, extra: dict[str, Any] | None = None) -> float:
     """Log an incoming MCP request. Returns the start timestamp."""
     start = time.monotonic()
     log_mcp_event(
         event="mcp_request",
         method=method,
         status="received",
-        extra={"req_id": req_id, "params_chars": params_size},
+        extra={"req_id": req_id, "params_chars": params_size, **(extra or {})},
     )
     return start
 
 
-def log_mcp_response(method: str, req_id: Any, start: float, status: str, output_size: int) -> None:
+def log_mcp_response(method: str, req_id: Any, start: float, status: str, output_size: int, extra: dict[str, Any] | None = None) -> None:
     """Log an outgoing MCP response."""
     duration_ms = (time.monotonic() - start) * 1000
     log_mcp_event(
@@ -285,7 +333,7 @@ def log_mcp_response(method: str, req_id: Any, start: float, status: str, output
         status=status,
         duration_ms=duration_ms,
         output_tokens=_estimate_tokens("x" * output_size),
-        extra={"req_id": req_id, "output_chars": output_size},
+        extra={"req_id": req_id, "output_chars": output_size, **(extra or {})},
     )
 
 

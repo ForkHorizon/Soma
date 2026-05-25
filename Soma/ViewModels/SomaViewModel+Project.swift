@@ -12,7 +12,8 @@ extension SomaViewModel {
 func selectProjectRoot(_ path: String) {
         guard let normalized = validatedDirectoryPath(path) else { return }
         selectedProjectRoot = normalized
-        recentProjectRoots = deduplicatedRoots([normalized] + recentProjectRoots).prefix(6).map(\.self)
+        recentProjectRoots = deduplicatedRoots([normalized] + recentProjectRoots).prefix(10).map(\.self)
+        recordProjectOpen(normalized)
         persistProjectRoots()
         refreshSomaStatus()
     }
@@ -44,7 +45,7 @@ func hydrateProjectRootsIfNeeded() {
             selectedProjectRoot = restored
         }
         if !selectedProjectRoot.isEmpty {
-            recentProjectRoots = deduplicatedRoots([selectedProjectRoot] + recentProjectRoots).prefix(6).map(\.self)
+            recentProjectRoots = deduplicatedRoots([selectedProjectRoot] + recentProjectRoots).prefix(10).map(\.self)
             refreshSomaStatus()
         }
         persistProjectRoots()
@@ -91,6 +92,141 @@ func deduplicatedRoots(_ roots: [String]) -> [String] {
             seen.insert(root)
             return true
         }
+    }
+
+func removeRecentProjectRoot(_ root: String) {
+        guard let normalized = validatedDirectoryPath(root) ?? (root.isEmpty ? nil : root) else { return }
+        recentProjectRoots.removeAll { $0 == normalized }
+        if selectedProjectRoot == normalized {
+            clearProjectRoot()
+        }
+        persistProjectRoots()
+    }
+
+func recordProjectOpen(_ root: String) {
+        var lastUsed = projectLastUsedMap()
+        lastUsed[root] = ISO8601DateFormatter().string(from: Date())
+        UserDefaults.standard.set(encodeStringMap(lastUsed), forKey: projectLastUsedKey)
+
+        var counts = projectUsageCountMap()
+        counts[root, default: 0] += 1
+        UserDefaults.standard.set(encodeIntMap(counts), forKey: projectUsageCountsKey)
+    }
+
+func projectUsageCount(_ root: String) -> Int {
+        projectUsageCountMap()[root] ?? 0
+    }
+
+func projectLastUsedLabel(_ root: String) -> String {
+        guard let raw = projectLastUsedMap()[root], let date = ISO8601DateFormatter().date(from: raw) else {
+            return "Never"
+        }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+func projectContextSummary(for root: String) -> String {
+        if projectFileExists("SOMA.md", in: root) { return "SOMA.md found" }
+        if projectFileExists(".soma/project.json", in: root) { return "Project profile found" }
+        if projectFileExists("AGENTS.md", in: root) || projectFileExists("GEMINI.md", in: root) { return "Agent context found" }
+        return "Context missing"
+    }
+
+func projectAgentsSummary(for root: String) -> String {
+        var agents: [String] = []
+        if projectFileExists("AGENTS.md", in: root) { agents.append("Codex") }
+        if projectFileExists("GEMINI.md", in: root) { agents.append("Gemini") }
+        return agents.isEmpty ? "Not configured" : agents.joined(separator: "/") + " configured"
+    }
+
+func projectGraphSummary(for root: String) -> String {
+        if projectFileExists("graphify-out/graph.json", in: root) || projectFileExists("graphify-out/GRAPH_REPORT.md", in: root) {
+            return root == selectedProjectRoot ? (graphStale ? "Stale" : "Fresh") : "Found"
+        }
+        return "None"
+    }
+
+func projectHealthWarningCount(for root: String) -> Int {
+        var count = 0
+        if !projectFileExists("SOMA.md", in: root) && !projectFileExists(".soma/project.json", in: root) { count += 1 }
+        if root == selectedProjectRoot && graphAvailable && graphStale { count += 1 }
+        return count
+    }
+
+func approximateProjectFileCountLabel(for root: String) -> String {
+        guard !root.isEmpty else { return "None" }
+        let maxFiles = 20_000
+        let skippedDirectories = Set([".git", ".build", ".swiftpm", "DerivedData", "node_modules", "Library", "graphify-out"])
+        guard let enumerator = FileManager.default.enumerator(
+            at: URL(fileURLWithPath: root),
+            includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return "Unknown"
+        }
+
+        var count = 0
+        for case let url as URL in enumerator {
+            if skippedDirectories.contains(url.lastPathComponent) {
+                enumerator.skipDescendants()
+                continue
+            }
+            guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isDirectoryKey]) else { continue }
+            if values.isDirectory == true { continue }
+            if values.isRegularFile == true {
+                count += 1
+                if count >= maxFiles { return "\(maxFiles.formatted())+" }
+            }
+        }
+        return count.formatted()
+    }
+
+func projectSetupRecommendations(for root: String) -> [String] {
+        var items: [String] = []
+        if !projectFileExists("SOMA.md", in: root) {
+            items.append("Add SOMA.md so project purpose, important paths, and run commands are explicit.")
+        }
+        if !projectFileExists(".soma/project.json", in: root) {
+            items.append("Create .soma/project.json later when the project profile format is finalized.")
+        }
+        if !projectFileExists("AGENTS.md", in: root) && !projectFileExists("GEMINI.md", in: root) {
+            items.append("Detect or add agent instruction files if this project needs client-specific guidance.")
+        }
+        return items
+    }
+
+func projectFileExists(_ relativePath: String, in root: String) -> Bool {
+        guard !root.isEmpty else { return false }
+        return FileManager.default.fileExists(atPath: (root as NSString).appendingPathComponent(relativePath))
+    }
+
+func projectLastUsedMap() -> [String: String] {
+        decodeStringMap(UserDefaults.standard.string(forKey: projectLastUsedKey) ?? "{}")
+    }
+
+func projectUsageCountMap() -> [String: Int] {
+        decodeIntMap(UserDefaults.standard.string(forKey: projectUsageCountsKey) ?? "{}")
+    }
+
+func decodeStringMap(_ json: String) -> [String: String] {
+        guard let data = json.data(using: .utf8), let decoded = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
+        return decoded
+    }
+
+func decodeIntMap(_ json: String) -> [String: Int] {
+        guard let data = json.data(using: .utf8), let decoded = try? JSONDecoder().decode([String: Int].self, from: data) else { return [:] }
+        return decoded
+    }
+
+func encodeStringMap(_ map: [String: String]) -> String {
+        guard let data = try? JSONEncoder().encode(map), let json = String(data: data, encoding: .utf8) else { return "{}" }
+        return json
+    }
+
+func encodeIntMap(_ map: [String: Int]) -> String {
+        guard let data = try? JSONEncoder().encode(map), let json = String(data: data, encoding: .utf8) else { return "{}" }
+        return json
     }
 
 }

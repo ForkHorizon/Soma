@@ -15,9 +15,5 @@ struct SomaApp: App {
         WindowGroup {
             ContentView(viewModel: viewModel)
         }
-        
-        Window("Token Calculator", id: "token-calculator") {
-            TokenCalculatorView(viewModel: viewModel)
-        }
     }
 }

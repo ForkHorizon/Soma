@@ -1,4 +1,3 @@
-import gateway
 import os
 import asyncio
 import json
@@ -11,7 +10,10 @@ from unittest.mock import patch
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "Soma"))
+from soma_test_bootstrap import install_soma_imports
+install_soma_imports()
 
+import gateway
 import scout_pipeline
 import gateway.server
 import gateway.core
@@ -20,6 +22,13 @@ import gateway.tools.query
 import gateway.tools.context
 import gateway.tools.memory
 import gateway.tool_registry
+import gateway.jsonrpc
+import gateway.client_config
+import verify_soma_mcp_clients
+import soma_language_optimizer
+import soma_logger
+import soma_audit
+import soma_project_setup
 
 
 class SomaMCPServerTests(unittest.TestCase):
@@ -93,6 +102,8 @@ class SomaMCPServerTests(unittest.TestCase):
         self.assertLessEqual(payload["estimated_tokens"], scout_pipeline.TOKEN_BUDGETS["micro"])
         self.assertIn("omitted", payload)
         self.assertNotIn("diff --git", payload["packet"])
+        self.assertTrue(any("client='codex'" in item for item in payload["next_calls"]))
+        self.assertTrue(any("soma_code_context" in item for item in payload["next_calls"]))
 
     def test_graph_unavailable_degrades_cleanly(self):
         with patch.object(
@@ -110,6 +121,7 @@ class SomaMCPServerTests(unittest.TestCase):
         codex = gateway.server.build_client_config("codex", "/tmp/project", "/usr/bin/python3")
         gemini = json.loads(gateway.server.build_client_config("gemini", "/tmp/project", "/usr/bin/python3"))
         claude = json.loads(gateway.server.build_client_config("claude", "/tmp/project", "/usr/bin/python3"))
+        hermes = gateway.server.build_client_config("hermes", "/tmp/project", "/usr/bin/python3")
         normalized_root = scout_pipeline.normalize_path("/tmp/project")
 
         self.assertIn("[mcp_servers.soma]", codex)
@@ -117,6 +129,10 @@ class SomaMCPServerTests(unittest.TestCase):
         self.assertNotIn("nexus_unity_bridge", codex)
         self.assertEqual(gemini["mcpServers"]["soma"]["env"]["SOMA_PROJECT_ROOT"], normalized_root)
         self.assertEqual(claude["mcpServers"]["soma"]["command"], "/usr/bin/python3")
+        self.assertIn("mcp_servers:", hermes)
+        self.assertIn("  soma:", hermes)
+        self.assertIn("soma_mcp_server.py", hermes)
+        self.assertIn(f'SOMA_PROJECT_ROOT: "{normalized_root}"', hermes)
 
     def test_verify_codex_config_detects_direct_nexus(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -141,6 +157,26 @@ class SomaMCPServerTests(unittest.TestCase):
         self.assertTrue(payload["soma_installed"])
         self.assertTrue(payload["direct_nexus_exposed"])
         self.assertIn("direct_nexus_exposed", payload["issues"])
+
+    def test_verify_codex_config_detects_wrong_project_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.toml"
+            config.write_text(
+                "\n".join(
+                    [
+                        "[mcp_servers.soma]",
+                        'command = "/usr/bin/python3"',
+                        'args = ["/tmp/soma_mcp_server.py", "--project-root", "/tmp/old"]',
+                        'env = { SOMA_PROJECT_ROOT = "/tmp/old" }',
+                    ]
+                )
+            )
+
+            payload = gateway.server.verify_codex_config(config, "/tmp/new")
+
+        self.assertEqual(payload["status"], "degraded")
+        self.assertFalse(payload["project_matches"])
+        self.assertIn("project_root_mismatch", payload["issues"])
 
     def test_install_codex_config_backs_up_and_removes_direct_nexus(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -229,6 +265,384 @@ class SomaMCPServerTests(unittest.TestCase):
         self.assertIn("missing_backup", payload["issues"])
         self.assertEqual(restored, "current\n")
 
+    def test_install_gemini_config_preserves_settings_and_removes_direct_nexus(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "settings.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "general": {"defaultApprovalMode": "auto_edit"},
+                        "mcpServers": {
+                            "nexus-unity": {"command": "/usr/bin/python3", "args": ["nexus_unity_bridge.py"]},
+                            "other": {"command": "echo", "args": ["ok"]},
+                        },
+                    }
+                )
+            )
+
+            payload = gateway.server.install_gemini_config(config, "/tmp/project", "/usr/bin/python3")
+            updated = json.loads(config.read_text())
+            backup_exists = Path(payload["backup_path"]).exists()
+
+        self.assertEqual(payload["status"], "ok")
+        self.assertTrue(backup_exists)
+        self.assertEqual(updated["general"]["defaultApprovalMode"], "auto_edit")
+        self.assertIn("soma", updated["mcpServers"])
+        self.assertIn("other", updated["mcpServers"])
+        self.assertNotIn("nexus-unity", updated["mcpServers"])
+        self.assertTrue(payload["direct_nexus_removed"])
+        self.assertTrue(payload["project_matches"])
+
+    def test_verify_gemini_config_detects_direct_nexus_and_wrong_project(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "settings.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "mcpServers": {
+                            "soma": {
+                                "command": "/usr/bin/python3",
+                                "args": ["/tmp/soma_mcp_server.py", "--project-root", "/tmp/old"],
+                                "env": {"SOMA_PROJECT_ROOT": "/tmp/old"},
+                            },
+                            "unity": {"command": "unity_mcp"},
+                        }
+                    }
+                )
+            )
+
+            payload = gateway.server.verify_gemini_config(config, "/tmp/new")
+
+        self.assertEqual(payload["status"], "degraded")
+        self.assertTrue(payload["direct_nexus_exposed"])
+        self.assertFalse(payload["project_matches"])
+        self.assertIn("direct_nexus_exposed", payload["issues"])
+        self.assertIn("project_root_mismatch", payload["issues"])
+
+    def test_install_hermes_config_preserves_settings_and_removes_direct_nexus(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.yaml"
+            config.write_text(
+                "\n".join(
+                    [
+                        'default_model: "gpt-5"',
+                        "mcp_servers:",
+                        "  nexus-unity:",
+                        '    command: "/usr/bin/python3"',
+                        '    args: ["/tmp/nexus_unity_bridge.py"]',
+                        "    enabled: true",
+                        "  other:",
+                        '    command: "echo"',
+                        '    args: ["ok"]',
+                        "storage:",
+                        '  base_dir: "/tmp/hermes"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.object(gateway.client_config.shutil, "which", return_value="/usr/local/bin/hermes"):
+                payload = gateway.server.install_hermes_config(config, "/tmp/project", "/usr/bin/python3")
+            updated = config.read_text(encoding="utf-8")
+            backup_exists = Path(payload["backup_path"]).exists()
+
+        self.assertEqual(payload["status"], "ok")
+        self.assertTrue(backup_exists)
+        self.assertIn('default_model: "gpt-5"', updated)
+        self.assertIn("  other:", updated)
+        self.assertIn("storage:", updated)
+        self.assertIn("  soma:", updated)
+        self.assertIn("soma_mcp_server.py", updated)
+        self.assertNotIn("nexus-unity", updated)
+        self.assertNotIn("nexus_unity_bridge", updated)
+        self.assertTrue(payload["direct_nexus_removed"])
+        self.assertTrue(payload["project_matches"])
+
+    def test_verify_hermes_config_detects_disabled_direct_nexus_and_wrong_project(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.yaml"
+            config.write_text(
+                "\n".join(
+                    [
+                        "mcp_servers:",
+                        "  soma:",
+                        '    command: "/usr/bin/python3"',
+                        '    args: ["/tmp/soma_mcp_server.py", "--project-root", "/tmp/old"]',
+                        "    env:",
+                        '      SOMA_PROJECT_ROOT: "/tmp/old"',
+                        "    enabled: false",
+                        "  unity:",
+                        '    command: "unity_mcp"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.object(gateway.client_config.shutil, "which", return_value="/usr/local/bin/hermes"):
+                payload = gateway.server.verify_hermes_config(config, "/tmp/new")
+
+        self.assertEqual(payload["status"], "degraded")
+        self.assertFalse(payload["soma_installed"])
+        self.assertTrue(payload["direct_nexus_exposed"])
+        self.assertFalse(payload["project_matches"])
+        self.assertIn("soma_server_disabled", payload["issues"])
+        self.assertIn("direct_nexus_exposed", payload["issues"])
+        self.assertIn("project_root_mismatch", payload["issues"])
+
+    def test_mcp_smoke_client_statuses_include_hermes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.yaml"
+            config.write_text(gateway.server.build_client_config("hermes", "/tmp/project", "/usr/bin/python3"), encoding="utf-8")
+            args = type(
+                "Args",
+                (),
+                {
+                    "clients": "hermes",
+                    "codex_config_path": None,
+                    "gemini_config_path": None,
+                    "hermes_config_path": str(config),
+                },
+            )()
+
+            with patch.object(gateway.client_config.shutil, "which", return_value="/usr/local/bin/hermes"):
+                statuses = verify_soma_mcp_clients._client_config_statuses(args, scout_pipeline.normalize_path("/tmp/project"))
+
+        self.assertIn("hermes", statuses)
+        self.assertEqual(statuses["hermes"]["status"], "ok")
+
+    def test_verify_hermes_config_degrades_when_cli_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.yaml"
+            config.write_text(gateway.server.build_client_config("hermes", "/tmp/project", "/usr/bin/python3"), encoding="utf-8")
+
+            with patch.object(gateway.client_config.shutil, "which", return_value=None):
+                payload = gateway.server.verify_hermes_config(config, "/tmp/project")
+
+        self.assertEqual(payload["status"], "degraded")
+        self.assertTrue(payload["soma_installed"])
+        self.assertFalse(payload["client_available"])
+        self.assertIn("hermes_cli_missing", payload["issues"])
+
+    def test_rollback_gemini_config_restores_latest_backup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "settings.json"
+            config.write_text('{"mcpServers":{"soma":{}}}\n')
+            older = Path(tmp) / "settings.json.soma-backup-20260101-000000"
+            newer = Path(tmp) / "settings.json.soma-backup-20260102-000000"
+            older.write_text('{"general":{"value":"old"}}\n')
+            newer.write_text('{"general":{"value":"latest"}}\n')
+
+            payload = gateway.server.rollback_gemini_config(config)
+            restored = json.loads(config.read_text())
+
+        self.assertEqual(payload["status"], "ok")
+        self.assertTrue(payload["restored"])
+        self.assertEqual(restored["general"]["value"], "latest")
+
+    def test_project_ai_setup_analyze_detects_project_local_conflicts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "project"
+            root.mkdir()
+            (root / ".gemini").mkdir()
+            project_gemini = root / ".gemini" / "settings.json"
+            project_gemini.write_text(
+                json.dumps(
+                    {
+                        "mcpServers": {
+                            "nexus-unity": {"command": "/usr/bin/python3", "args": ["/tmp/nexus_unity_bridge.py"]},
+                            "soma": {
+                                "command": "/usr/bin/python3",
+                                "args": ["/tmp/soma_mcp_server.py", "--project-root", "/tmp/old"],
+                            },
+                        },
+                        "general": {"defaultApprovalMode": "auto_edit"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (root / "GEMINI.md").write_text("Use raw unity_apply_code_change first.\n", encoding="utf-8")
+            (root / "AGENTS.md").write_text("Read graphify-out before inspecting files.\n", encoding="utf-8")
+            report_dir = Path(tmp) / "reports"
+            with patch.object(soma_project_setup, "REPORT_DIR", report_dir), patch.object(
+                soma_project_setup, "LATEST_REPORT", report_dir / "latest.json"
+            ):
+                report = soma_project_setup.analyze_project_ai_setup(str(root))
+
+        self.assertEqual(report["status"], "degraded")
+        self.assertIn("direct_mcp_server_exposed", report["issues"])
+        self.assertIn("missing_soma_first_block", report["issues"])
+        self.assertIn("graphify_first_instruction", report["issues"])
+        self.assertEqual(report["files_changed"], [])
+
+    def test_project_ai_setup_harden_preserves_settings_and_adds_soma_first_block(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "project"
+            root.mkdir()
+            (root / ".gemini").mkdir()
+            (root / ".codex").mkdir()
+            project_gemini = root / ".gemini" / "settings.json"
+            project_gemini.write_text(
+                json.dumps(
+                    {
+                        "general": {"defaultApprovalMode": "auto_edit"},
+                        "mcpServers": {
+                            "nexus-unity": {"command": "/usr/bin/python3", "args": ["/tmp/nexus_unity_bridge.py"]},
+                            "other": {"command": "echo", "args": ["ok"]},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            prompt = root / "GEMINI.md"
+            prompt.write_text("# Project Rules\n\nUse raw unity tools for scene work.\n", encoding="utf-8")
+            codex_config = root / ".codex" / "config.toml"
+            codex_config.write_text('model = "gpt-5.5"\n', encoding="utf-8")
+            global_gemini = Path(tmp) / "home" / ".gemini" / "settings.json"
+            global_codex = Path(tmp) / "home" / ".codex" / "config.toml"
+            report_dir = Path(tmp) / "reports"
+            with patch.object(soma_project_setup, "REPORT_DIR", report_dir), patch.object(
+                soma_project_setup, "LATEST_REPORT", report_dir / "latest.json"
+            ), patch.object(
+                soma_project_setup, "gemini_config_default_path", return_value=global_gemini
+            ), patch.object(
+                gateway.client_config, "gemini_config_default_path", return_value=global_gemini
+            ), patch.object(
+                gateway.client_config, "codex_config_default_path", return_value=global_codex
+            ), patch.dict(
+                os.environ, {"SOMA_PROJECT_ONBOARDING_USE_LOCAL_AI": "0"}
+            ):
+                report = soma_project_setup.harden_project_ai_setup(str(root), python_executable="/usr/bin/python3")
+                updated_project_gemini = json.loads(project_gemini.read_text(encoding="utf-8"))
+                updated_prompt = prompt.read_text(encoding="utf-8")
+
+        self.assertEqual(report["status"], "ok")
+        self.assertEqual(updated_project_gemini["general"]["defaultApprovalMode"], "auto_edit")
+        self.assertIn("soma", updated_project_gemini["mcpServers"])
+        self.assertIn("other", updated_project_gemini["mcpServers"])
+        self.assertNotIn("nexus-unity", updated_project_gemini["mcpServers"])
+        self.assertIn("Soma First Workflow", updated_prompt)
+        self.assertIn("soma_code_context", updated_prompt)
+        self.assertIn('workflow="live_mcp"', updated_prompt)
+        self.assertIn("Use raw unity tools", updated_prompt)
+        self.assertGreaterEqual(len(report["backups"]), 3)
+        self.assertTrue(any(item["backup_path"] for item in report["backups"]))
+
+    def test_project_ai_setup_rollback_restores_latest_backups(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "project"
+            root.mkdir()
+            (root / ".gemini").mkdir()
+            project_gemini = root / ".gemini" / "settings.json"
+            original_json = json.dumps({"mcpServers": {"nexus-unity": {"command": "nexus_unity_bridge.py"}}}) + "\n"
+            project_gemini.write_text(original_json, encoding="utf-8")
+            prompt = root / "GEMINI.md"
+            original_prompt = "# Project Rules\nUse raw Nexus.\n"
+            prompt.write_text(original_prompt, encoding="utf-8")
+            global_gemini = Path(tmp) / "home" / ".gemini" / "settings.json"
+            global_codex = Path(tmp) / "home" / ".codex" / "config.toml"
+            report_dir = Path(tmp) / "reports"
+            with patch.object(soma_project_setup, "REPORT_DIR", report_dir), patch.object(
+                soma_project_setup, "LATEST_REPORT", report_dir / "latest.json"
+            ), patch.object(
+                soma_project_setup, "gemini_config_default_path", return_value=global_gemini
+            ), patch.object(
+                gateway.client_config, "gemini_config_default_path", return_value=global_gemini
+            ), patch.object(
+                gateway.client_config, "codex_config_default_path", return_value=global_codex
+            ), patch.dict(
+                os.environ, {"SOMA_PROJECT_ONBOARDING_USE_LOCAL_AI": "0"}
+            ):
+                soma_project_setup.harden_project_ai_setup(str(root), python_executable="/usr/bin/python3")
+                rollback = soma_project_setup.rollback_project_ai_setup(str(root))
+                restored_project_gemini = project_gemini.read_text(encoding="utf-8")
+                restored_prompt = prompt.read_text(encoding="utf-8")
+
+        self.assertEqual(rollback["status"], "ok")
+        self.assertEqual(restored_project_gemini, original_json)
+        self.assertEqual(restored_prompt, original_prompt)
+
+    def test_jsonrpc_supports_initialize_and_tools_list(self):
+        init_payload = json.loads(asyncio.run(gateway.jsonrpc._dispatch("initialize", {})))
+        tools_payload = json.loads(asyncio.run(gateway.jsonrpc._dispatch("tools/list", {})))
+
+        self.assertEqual(init_payload["serverInfo"]["name"], "soma-gateway")
+        self.assertEqual(len(tools_payload["tools"]), 12)
+        self.assertTrue(all(tool["name"].startswith("soma_") for tool in tools_payload["tools"]))
+        self.assertIn("inputSchema", tools_payload["tools"][0])
+
+    def test_mcp_smoke_report_marks_plugin_tools_guarded_when_nexus_offline(self):
+        args = type(
+            "Args",
+            (),
+            {
+                "project_root": None,
+                "clients": "",
+                "python": sys.executable,
+                "timeout": 1.0,
+                "codex_config_path": None,
+                "gemini_config_path": None,
+                "hermes_config_path": None,
+            },
+        )()
+        tmp, root = self.make_repo()
+        with tmp, patch.object(verify_soma_mcp_clients, "_client_config_statuses", return_value={}), patch.object(
+            verify_soma_mcp_clients, "CORE_CALLS", {}
+        ), patch.object(gateway.core.nexus, "discover", return_value=gateway.core.NexusState()):
+            args.project_root = str(root)
+            report = verify_soma_mcp_clients.run_smoke(args)
+
+        self.assertIn(report["status"], {"ok", "degraded"})
+        self.assertEqual(report["plugin_status"]["unity_nexus"], "skipped")
+        plugin_results = {item["tool"]: item for item in report["tool_results"] if item["tool"] in {"soma_apply", "soma_execute"}}
+        self.assertEqual(plugin_results["soma_apply"]["status"], "skipped")
+        self.assertIn("plugin_guarded", plugin_results["soma_apply"]["reason"])
+
+    def test_tool_log_records_translation_metadata_without_raw_prompt(self):
+        tmp, root = self.make_repo()
+        russian_prompt = "Проверь quiet hours и верни план."
+
+        def fake_translate(text, model, timeout):
+            return "Check quiet hours and return a plan."
+
+        with tmp, tempfile.TemporaryDirectory() as log_tmp, patch.object(
+            gateway.core.graphify, "query", return_value={"graphs": [], "answers": [], "warnings": []}
+        ), patch.object(soma_language_optimizer, "_local_ollama_translate", side_effect=fake_translate), patch.object(
+            soma_logger, "SOMA_LOG_DIR", Path(log_tmp)
+        ), patch.object(
+            soma_logger, "SOMA_SESSION_STATS_FILE", Path(log_tmp) / "session_stats.json"
+        ), patch.object(
+            soma_audit, "SOMA_AUDIT_DIR", Path(log_tmp) / "audit"
+        ), patch.object(
+            soma_audit, "SOMA_AUDIT_RUNS_DIR", Path(log_tmp) / "audit" / "runs"
+        ), patch.object(
+            soma_audit, "SOMA_AUDIT_RAW_DIR", Path(log_tmp) / "audit" / "raw"
+        ), patch.object(
+            soma_audit, "SOMA_AUDIT_LATEST", Path(log_tmp) / "audit" / "latest.json"
+        ), patch.dict(
+            os.environ,
+            {"SOMA_PROJECT_ROOT": str(root), "SOMA_TRANSLATION_ENABLED": "1", "SOMA_TRANSLATION_PROVIDER": "local"},
+        ):
+            payload = json.loads(
+                asyncio.run(
+                    gateway.tool_registry.call_tool(
+                        "soma_prepare_context",
+                        {"goal": russian_prompt, "budget": "micro", "depth": "deterministic", "run_id": "run_log_translation", "task_id": "translation"},
+                    )
+                )
+            )
+            log_text = "\n".join(path.read_text() for path in Path(log_tmp).glob("soma_*.jsonl"))
+            audit_latest = json.loads(soma_audit.SOMA_AUDIT_LATEST.read_text(encoding="utf-8"))
+
+        self.assertIn(payload["language_optimization"]["status"], {"translated", "failed_fallback"})
+        self.assertEqual(payload["audit"]["run_id"], "run_log_translation")
+        self.assertIn("\"run_id\": \"run_log_translation\"", log_text)
+        self.assertIn("translation_status", log_text)
+        self.assertIn("prompt_saved_tokens", log_text)
+        self.assertNotIn("Проверь", log_text)
+        self.assertTrue(any(call.get("tool") == "soma_prepare_context" for call in audit_latest.get("tool_calls", [])))
+
     def test_graph_status_reports_missing_graph(self):
         tmp = tempfile.TemporaryDirectory()
         with tmp:
@@ -236,7 +650,8 @@ class SomaMCPServerTests(unittest.TestCase):
             status = adapter.status(str(Path(tmp.name) / "project"))
 
         self.assertFalse(status["project_graph_available"])
-        self.assertIn("graphify", status["recommended_action"])
+        self.assertEqual(status["storage_kind"], "missing")
+        self.assertIn("managed graph", status["recommended_action"])
 
     def test_status_payload_reports_tool_catalog_and_graph(self):
         tmp, root = self.make_repo()
@@ -296,6 +711,21 @@ class SomaMCPServerTests(unittest.TestCase):
 
         self.assertEqual(payload["status"], "error")
         self.assertIn("blocked", payload["omitted"])
+
+    def test_soma_execute_compacts_large_output_by_default(self):
+        large = {"items": [{"message": "x" * 1000} for _ in range(20)]}
+        with patch.object(gateway.core.nexus, "available", return_value=True), patch.object(
+            gateway.core.nexus,
+            "batch_execute",
+            return_value={"result": large},
+        ), patch.dict(os.environ, {"SOMA_AUDIT_RAW_CAPTURE": "0"}):
+            payload = json.loads(asyncio.run(gateway.tools.nexus.soma_execute([{"method": "read_logs", "params": {}}])))
+
+        self.assertEqual(payload["status"], "ok")
+        self.assertTrue(payload["omitted"]["output_truncated"])
+        self.assertGreater(payload["omitted"]["omitted_output_tokens"], 0)
+        self.assertIn("raw_output_hash", payload["result"])
+        self.assertNotIn("x" * 1000, json.dumps(payload["result"]))
 
     def test_soma_apply_uses_nexus_macro_shape(self):
         with patch.object(gateway.core.nexus, "available", return_value=True), patch.object(
