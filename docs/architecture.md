@@ -129,6 +129,27 @@ Soma separates token measurement into three levels so the UI does not present th
 
 Graphify is optional. `soma_prepare_context` uses project-only graph lookup by default and records `graphify: skipped` when no graph exists for the selected project. Cross-project graphs must not be injected into packets for universal/non-Unity work.
 
+Soma owns canonical graph storage under `~/.soma/graphs/projects/<project_id>/graphify-out/`, where `project_id` is `sha256(normalized_absolute_project_root)[:16]`. `~/.soma/graphs/index.json` records project root, display name, graph build version, update time, node/edge counts, managed storage path, and legacy graph paths.
+
+The graph source root can differ from the selected project root. For normal projects, Soma scans the project root. For Unity project roots, Soma scans only `<project_root>/Assets` and records `graphScope=unity_assets`; `Library/`, `Packages/`, generated solution files, and cache folders are intentionally excluded from Graphify extraction.
+
+Graph lookup order is:
+
+1. Soma-managed graph for the selected project.
+2. Legacy project-local `graphify-out`.
+3. Known nested package graph inside the selected project.
+
+The adapter must not fall back to hard-coded cross-project graphs. Stale or diagnostics-degraded graphs are skipped for packet ranking. Graphify query and affected output may boost selected files, but raw graph output is not injected into the packet.
+
+Maintenance actions are explicit:
+
+- AST-only refresh: `GRAPHIFY_OUT=<managed_graphify_out> graphify update <graph_source_root>`; Unity `Assets/` refresh uses `--force` so older whole-project graph noise can be removed.
+- Full rebuild: `graphify extract <graph_source_root> --out <managed_project_dir>`.
+- Diagnostics: `graphify diagnose multigraph --json --graph <graph.json>`.
+- Optional reports: `graphify tree` and `graphify export callflow-html`.
+
+Full rebuilds are user-triggered only because semantic extraction over docs/images can spend model/API tokens.
+
 ## Optional Unity/Nexus Plugin
 
 Unity/Nexus is not part of the core readiness gate. Default universal verification skips it.

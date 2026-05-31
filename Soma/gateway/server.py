@@ -115,7 +115,16 @@ def main() -> None:
     parser.add_argument("--print-client-config", choices=["codex", "gemini", "claude", "hermes"], default=None)
     parser.add_argument("--status-json", action="store_true", help="Print compact Soma/Nexus/Graphify status and exit")
     parser.add_argument("--graph-storage-json", action="store_true", help="Print managed Graphify storage info and exit")
+    parser.add_argument("--check-graphify-tool-json", action="store_true", help="Print installed/latest Graphify tool version info")
     parser.add_argument("--migrate-graph", action="store_true", help="Copy a legacy graphify-out into Soma managed graph storage")
+    parser.add_argument("--refresh-managed-graph", action="store_true", help="Refresh the selected project's managed Graphify graph without project-root output")
+    parser.add_argument("--refresh-all-managed-graphs", action="store_true", help="Refresh all real indexed managed Graphify graphs")
+    parser.add_argument("--full-graph-rebuild", action="store_true", help="Use graphify extract instead of AST-only update for graph refresh")
+    parser.add_argument("--force-graph-refresh", action="store_true", help="Pass --force to AST-only graph refresh")
+    parser.add_argument("--diagnose-graph-json", action="store_true", help="Run Graphify multigraph diagnostics for the selected graph")
+    parser.add_argument("--check-graph-semantic-update-json", action="store_true", help="Check whether semantic graph refresh is pending")
+    parser.add_argument("--graph-tree-json", action="store_true", help="Generate managed Graphify tree report and print its path")
+    parser.add_argument("--graph-callflow-json", action="store_true", help="Generate managed Graphify callflow report and print its path")
     parser.add_argument("--install-codex-config", action="store_true", help="Back up and install a Soma-only Codex MCP config")
     parser.add_argument("--rollback-codex-config", action="store_true", help="Restore Codex config from the newest Soma backup")
     parser.add_argument("--install-gemini-config", action="store_true", help="Back up and install a Soma-only Gemini MCP config")
@@ -148,11 +157,47 @@ def main() -> None:
             raise SystemExit(2)
         print(json.dumps(graphify.storage_info(_project_root), indent=2, sort_keys=True))
         raise SystemExit(0)
+    if args.check_graphify_tool_json:
+        print(json.dumps(graphify.storage.tool_version_status(check_latest=True), indent=2, sort_keys=True))
+        raise SystemExit(0)
     if args.migrate_graph:
         if not _project_root:
             print(json.dumps({"status": "error", "summary": "--project-root is required for graph migration"}, indent=2, sort_keys=True))
             raise SystemExit(2)
         print(json.dumps(graphify.migrate_graph(_project_root), indent=2, sort_keys=True))
+        raise SystemExit(0)
+    if args.refresh_managed_graph:
+        if not _project_root:
+            print(json.dumps({"status": "error", "summary": "--project-root is required for graph refresh"}, indent=2, sort_keys=True))
+            raise SystemExit(2)
+        print(json.dumps(graphify.storage.refresh_managed_graph(_project_root, full=args.full_graph_rebuild, force=args.force_graph_refresh), indent=2, sort_keys=True))
+        raise SystemExit(0)
+    if args.refresh_all_managed_graphs:
+        print(json.dumps(graphify.storage.refresh_all_managed_graphs(full=args.full_graph_rebuild), indent=2, sort_keys=True))
+        raise SystemExit(0)
+    if args.diagnose_graph_json:
+        if not _project_root:
+            print(json.dumps({"status": "error", "summary": "--project-root is required for graph diagnostics"}, indent=2, sort_keys=True))
+            raise SystemExit(2)
+        print(json.dumps(graphify.storage.diagnose_graph(_project_root), indent=2, sort_keys=True))
+        raise SystemExit(0)
+    if args.check_graph_semantic_update_json:
+        if not _project_root:
+            print(json.dumps({"status": "error", "summary": "--project-root is required for graph semantic update check"}, indent=2, sort_keys=True))
+            raise SystemExit(2)
+        print(json.dumps(graphify.storage.check_semantic_update(_project_root), indent=2, sort_keys=True))
+        raise SystemExit(0)
+    if args.graph_tree_json:
+        if not _project_root:
+            print(json.dumps({"status": "error", "summary": "--project-root is required for graph tree generation"}, indent=2, sort_keys=True))
+            raise SystemExit(2)
+        print(json.dumps(graphify.storage.generate_tree_report(_project_root), indent=2, sort_keys=True))
+        raise SystemExit(0)
+    if args.graph_callflow_json:
+        if not _project_root:
+            print(json.dumps({"status": "error", "summary": "--project-root is required for graph callflow generation"}, indent=2, sort_keys=True))
+            raise SystemExit(2)
+        print(json.dumps(graphify.storage.generate_callflow_report(_project_root), indent=2, sort_keys=True))
         raise SystemExit(0)
     if args.verify_client_config == "codex":
         print(json.dumps(verify_codex_config(args.config_path, _project_root), indent=2, sort_keys=True))

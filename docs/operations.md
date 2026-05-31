@@ -275,9 +275,62 @@ Hermes regression scenario:
 
 ## Graphify
 
-`graphify-out/` is generated data and ignored by git.
+`graphify-out/` is generated data and ignored by git. Legacy project-local folders remain readable, but new operational work should use Soma-managed storage:
+
+```text
+~/.soma/graphs/projects/<project_id>/graphify-out/
+~/.soma/graphs/index.json
+```
 
 Regenerate graph data when graph-backed answers or architecture work need a fresh index. Soma still works without Graphify; graph absence is `skipped`, not a core failure. `soma_prepare_context` uses project-only graph lookup by default so an unrelated Unity or old project graph is not injected into a packet.
+
+For Unity project roots, managed Graphify refresh scans only `Assets/` and stores the result in Soma-managed storage for the project. This keeps `Library/`, `Packages/`, caches, and generated IDE files out of the graph.
+
+Check the installed tool and latest PyPI version:
+
+```bash
+/opt/homebrew/bin/python3 Soma/soma_mcp_server.py --check-graphify-tool-json
+```
+
+Upgrade the tool manually when needed:
+
+```bash
+uv tool upgrade graphifyy
+graphify --version
+```
+
+Refresh an existing managed graph without writing new output into the project root. Unity projects use `Assets/` as the graph source root automatically:
+
+```bash
+/opt/homebrew/bin/python3 Soma/soma_mcp_server.py \
+  --refresh-managed-graph \
+  --project-root /path/to/project
+```
+
+Refresh all indexed real managed graphs. Temporary and missing roots are skipped:
+
+```bash
+/opt/homebrew/bin/python3 Soma/soma_mcp_server.py --refresh-all-managed-graphs
+```
+
+Run graph quality diagnostics and optional reports:
+
+```bash
+/opt/homebrew/bin/python3 Soma/soma_mcp_server.py --diagnose-graph-json --project-root /path/to/project
+/opt/homebrew/bin/python3 Soma/soma_mcp_server.py --graph-tree-json --project-root /path/to/project
+/opt/homebrew/bin/python3 Soma/soma_mcp_server.py --graph-callflow-json --project-root /path/to/project
+```
+
+Use a full rebuild only as an explicit action:
+
+```bash
+/opt/homebrew/bin/python3 Soma/soma_mcp_server.py \
+  --refresh-managed-graph \
+  --full-graph-rebuild \
+  --project-root /path/to/project
+```
+
+Full rebuilds call `graphify extract` and can spend local or external model tokens for semantic extraction. Prepare Packet never triggers that automatically.
 
 ## Optional Unity/Nexus
 

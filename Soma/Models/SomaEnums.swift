@@ -39,6 +39,8 @@ struct SomaError: LocalizedError {
 
 enum AppRoute: String, Hashable, CaseIterable {
     case relay = "Prepare Packet"
+    case rusToPrompt = "Rus to Prompt"
+    case tests = "Tests"
     case projectSetup = "Project Setup"
     case packets = "Packets"
     case diagnostics = "Diagnostics"
@@ -57,12 +59,12 @@ enum AppRoute: String, Hashable, CaseIterable {
     var title: String { rawValue }
 
     static var visibleRoutes: [AppRoute] {
-        [.relay, .projectSetup, .packets, .diagnostics]
+        [.relay, .rusToPrompt, .tests, .projectSetup, .packets, .diagnostics]
     }
 
     var section: String {
         switch self {
-        case .relay:
+        case .relay, .rusToPrompt, .tests:
             return "Main"
         case .projectSetup, .projects, .projectHealth:
             return "Project"
@@ -81,6 +83,10 @@ enum AppRoute: String, Hashable, CaseIterable {
         switch self {
         case .relay:
             return "Prepare compact evidence for a coding model."
+        case .rusToPrompt:
+            return "Translate Russian prompts to English and polish them without project context."
+        case .tests:
+            return "Run and review Soma test workflows."
         case .projectSetup:
             return "Simple project readiness without runtime noise."
         case .packets:
@@ -114,6 +120,10 @@ enum AppRoute: String, Hashable, CaseIterable {
         switch self {
         case .relay:
             return "doc.text.magnifyingglass"
+        case .rusToPrompt:
+            return "character.bubble"
+        case .tests:
+            return "testtube.2"
         case .projectSetup:
             return "checklist"
         case .packets:

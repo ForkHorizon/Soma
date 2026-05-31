@@ -7,6 +7,8 @@ This stage ranks discovered files for a user goal, prioritizing changed files,
 logs, manifests, configs, and source excerpts according to packet mode.
 """
 import os
+import subprocess
+import sys
 
 import re
 
@@ -655,7 +657,65 @@ def gather_external_evidence(prompt, project_root, terms, discovered=None, repo_
             continue
         category = (categorize_path(path) or 'notes')
         extras.append(evidence_item_from_path(path, category, 'Included because the prompt explicitly referenced this external path.', terms))
+    if _is_graphify_update_review_prompt(prompt, terms):
+        extras.extend(_graphify_command_evidence(terms))
     return extras
+
+
+def _is_graphify_update_review_prompt(prompt, terms):
+    lowered = (prompt or '').lower()
+    term_set = set(terms or [])
+    return (
+        ('graphify' in lowered or 'граффити' in lowered or 'графити' in lowered)
+        and bool(term_set & {'version', 'versions', 'changelog', 'changelogs', 'latest', 'update', 'updates', 'release', 'releases', 'feature', 'features'})
+    )
+
+
+def _command_evidence_item(command, preview, reason):
+    return {
+        'path': f'command: {command}',
+        'kind': 'command',
+        'reason': reason,
+        'preview': preview.strip()[:1800] or '[No output]',
+        'start_line': None,
+        'end_line': None,
+        'symbols': [],
+        'unity_refs': [],
+    }
+
+
+def _run_command(command, timeout=12):
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False)
+    except Exception as exc:
+        return f'Command failed before execution: {exc}'
+    output = '\n'.join(part.strip() for part in (result.stdout, result.stderr) if part and part.strip())
+    if not output:
+        output = f'[exit {result.returncode}, no output]'
+    return output
+
+
+def _graphify_command_evidence(terms):
+    evidence = []
+    version_output = _run_command(['graphify', '--version'], timeout=5)
+    evidence.append(_command_evidence_item(
+        'graphify --version',
+        version_output,
+        'Included because Graphify version/update tasks need command evidence, not fixture guesses.',
+    ))
+    latest_output = _run_command([sys.executable, '-m', 'pip', 'index', 'versions', 'graphifyy'], timeout=12)
+    evidence.append(_command_evidence_item(
+        f'{sys.executable} -m pip index versions graphifyy',
+        '\n'.join(latest_output.splitlines()[:4]),
+        'Included to compare the installed Graphify package with the latest package index version.',
+    ))
+    if {'changelog', 'changelogs', 'release', 'releases', 'feature', 'features'} & set(terms or []):
+        evidence.append(_command_evidence_item(
+            'missing: Graphify changelog/release notes',
+            'No repo-local Graphify changelog is available inside the selected Soma project. Ask for the upstream Graphify changelog/release notes or browse the official repository before making feature-integration claims.',
+            'Included as explicit missing-context guidance for Graphify changelog/release review.',
+        ))
+    return evidence
 
 
 def build_preflight(prompt, project_root, project_type, discovered, repo_index, git_status, git_diff_summary, collection_plan=None):
@@ -757,6 +817,8 @@ def _evidence_satisfies_requirement(item, requirement):
     if requirement == 'graphify_integration':
         return 'graphify' in path and kind in {'source', 'script', 'notes', 'config'}
     if requirement == 'graphify_version':
+        if kind == 'command' and 'graphify' in ((item.get('preview') or '') + ' ' + (item.get('path') or '')).lower():
+            return True
         return name in {'changelog.md', 'readme.md'} and 'graphify' in (item.get('preview') or '').lower()
     if requirement == 'docs':
         return name in {'documentation.md', 'api_reference.md'} or '/docs/' in path

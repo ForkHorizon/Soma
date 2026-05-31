@@ -35,6 +35,14 @@ final class SomaViewModel: ObservableObject {
     @Published var graphStoragePath: String?
     @Published var graphManagedPath: String?
     @Published var graphLegacyPaths: [String] = []
+    @Published var graphToolLatestVersion: String?
+    @Published var graphToolUpToDate: Bool?
+    @Published var graphDegraded = false
+    @Published var graphDegradedReason: String?
+    @Published var graphDiagnosticsPath: String?
+    @Published var graphSemanticRefreshPending: Bool?
+    @Published var graphSourceRoot: String?
+    @Published var graphScope = "project_root"
     @Published var mcpInstallStatus: String?
     @Published var mcpConfigPreview: String?
     @Published var codexConfigStatus: ClientConfigStatus?
@@ -55,6 +63,7 @@ final class SomaViewModel: ObservableObject {
     @Published var showActivityLog = false
 
     @Published var graphifyVersion: String = "Unknown"
+    @Published var graphBuildVersion: String?
     @Published var nexusVersion: String = "Offline"
     @Published var systemBusy = false
     @Published var graphifyBusy = false

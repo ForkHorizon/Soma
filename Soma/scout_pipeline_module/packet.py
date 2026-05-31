@@ -180,8 +180,16 @@ def build_codex_packet(user_prompt, bundle, token_budget=DEFAULT_TOKEN_BUDGET):
         if bundle.get('context_summary'):
             parts.extend(['', 'Summary:', bundle['context_summary']])
         graph_suggestions = [str(item).strip() for item in (bundle.get('graph_suggestions') or []) if str(item).strip()]
-        if graph_suggestions:
-            parts.extend(['', 'Graph suggestions:'])
+        graph_suggested_files = [
+            str(path).strip()
+            for path in ((bundle.get('omitted_context') or {}).get('graph_suggested_files') or [])
+            if str(path).strip()
+        ]
+        if graph_suggestions or graph_suggested_files:
+            parts.extend(['', 'Graph suggested:'])
+            if graph_suggested_files:
+                selected_total = len(evidence_items)
+                parts.append(f"- Files {min(len(graph_suggested_files), selected_total)}/{selected_total}: graph query/affected hints boosted project-local evidence only.")
             parts.extend((f'- {item}' for item in graph_suggestions[:3]))
         assumptions = (bundle.get('assumptions') or [])
         if assumptions:

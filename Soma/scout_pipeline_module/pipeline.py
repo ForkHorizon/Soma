@@ -60,6 +60,7 @@ def _query_graphify_context(goal, project_root, budget=1200):
     return {
         'graphs': [str(graph) for graph in (result.get('graphs') or [])],
         'answers': [answer for answer in (result.get('answers') or []) if isinstance(answer, dict)],
+        'affected': [answer for answer in (result.get('affected') or []) if isinstance(answer, dict)],
         'warnings': [str(warning) for warning in (result.get('warnings') or [])],
         'project_only': result.get('project_only', True),
     }
@@ -68,6 +69,10 @@ def _query_graphify_context(goal, project_root, budget=1200):
 def _graph_context_text(graph_result):
     parts = []
     for answer in (graph_result.get('answers') or []):
+        text = str(answer.get('answer') or '').strip()
+        if text:
+            parts.append(text)
+    for answer in (graph_result.get('affected') or []):
         text = str(answer.get('answer') or '').strip()
         if text:
             parts.append(text)
@@ -88,6 +93,15 @@ def _graph_suggestion_lines(graph_result, limit=3):
             break
         if len(suggestions) >= limit:
             break
+    for answer in (graph_result.get('affected') or []):
+        if len(suggestions) >= limit:
+            break
+        text = str(answer.get('answer') or '').strip()
+        term = str(answer.get('term') or '').strip()
+        if text:
+            first_line = text.splitlines()[0].strip()[:150]
+            prefix = f"Affected hints for {term}: " if term else "Affected hints: "
+            suggestions.append((prefix + first_line)[:180])
     return suggestions[:limit]
 
 
@@ -97,7 +111,7 @@ def _graph_suggested_project_paths(graph_result, project_root, max_paths=3):
     root = os.path.normpath(project_root)
     pattern = re.compile(r'(?<![\w/.-])((?:[\w@+.-]+/)*[\w@+.-]+\.(?:swift|py|ts|tsx|js|jsx|cs|md|json|toml|yaml|yml))(?![\w.-])')
     paths = []
-    for answer in (graph_result.get('answers') or []):
+    for answer in list(graph_result.get('answers') or []) + list(graph_result.get('affected') or []):
         text = str(answer.get('answer') or '')
         for match in pattern.findall(text):
             candidate = match.strip().strip('`"\'.,:;()[]{}')

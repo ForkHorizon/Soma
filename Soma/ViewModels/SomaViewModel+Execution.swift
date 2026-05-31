@@ -141,6 +141,98 @@ func runRelay(ollama: OllamaManager) {
         }.value
     }
 
+    func runRusToPrompt(prompt: String) async throws -> RusToPromptResult {
+        let scriptPath = try scriptURL(named: "soma_language_optimizer").path
+        let pyPath = pythonPath()
+        let env = scriptEnvironment(includeProjectRoot: false)
+
+        return try await Task.detached(priority: .userInitiated) {
+            let output = try await SomaViewModel.executeProcess(
+                path: pyPath,
+                args: [scriptPath, "--rus-to-prompt", prompt],
+                environment: env
+            )
+            return try JSONDecoder().decode(RusToPromptResult.self, from: output)
+        }.value
+    }
+
+    func runRusToPromptTranslate(prompt: String, translatorModel: String) async throws -> RusToPromptTranslationResult {
+        let scriptPath = try scriptURL(named: "soma_language_optimizer").path
+        let pyPath = pythonPath()
+        let env = scriptEnvironment(includeProjectRoot: false)
+
+        return try await Task.detached(priority: .userInitiated) {
+            let output = try await SomaViewModel.executeProcess(
+                path: pyPath,
+                args: [
+                    scriptPath,
+                    "--rus-to-prompt-translate",
+                    "--translator-model", translatorModel,
+                    prompt,
+                ],
+                environment: env
+            )
+            return try JSONDecoder().decode(RusToPromptTranslationResult.self, from: output)
+        }.value
+    }
+
+    func runRusToPromptImprove(prompt: String, analyzerModel: String) async throws -> RusToPromptImproveResult {
+        let scriptPath = try scriptURL(named: "soma_language_optimizer").path
+        let pyPath = pythonPath()
+        let env = scriptEnvironment(includeProjectRoot: false)
+
+        return try await Task.detached(priority: .userInitiated) {
+            let output = try await SomaViewModel.executeProcess(
+                path: pyPath,
+                args: [
+                    scriptPath,
+                    "--rus-to-prompt-improve",
+                    "--improver-model", analyzerModel,
+                    prompt,
+                ],
+                environment: env
+            )
+            return try JSONDecoder().decode(RusToPromptImproveResult.self, from: output)
+        }.value
+    }
+
+    func runRusToPromptConfidence(
+        prompt: String,
+        translation: String,
+        improvedPrompt: String,
+        pipelineStatus: String,
+        warnings: [String],
+        confidenceModel: String,
+        reasoningEffort: String = RusToPromptSettingsStore.defaultConfidenceReasoning
+    ) async throws -> RusToPromptConfidenceResult {
+        let scriptPath = try scriptURL(named: "soma_language_optimizer").path
+        let pyPath = pythonPath()
+        let env = scriptEnvironment(includeProjectRoot: false)
+
+        return try await Task.detached(priority: .userInitiated) {
+            var args = [
+                scriptPath,
+                "--rus-to-prompt-confidence",
+                "--confidence-model", confidenceModel,
+                "--confidence-reasoning-effort", reasoningEffort,
+                "--translation", translation,
+                "--improved-prompt", improvedPrompt,
+                "--pipeline-status", pipelineStatus,
+            ]
+            for warning in warnings where !warning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                args.append("--warning")
+                args.append(warning)
+            }
+            args.append(prompt)
+            let output = try await SomaViewModel.executeProcess(
+                path: pyPath,
+                args: args,
+                environment: env
+            )
+            return try JSONDecoder().decode(RusToPromptConfidenceResult.self, from: output)
+        }.value
+    }
+
 func loadAuditReport() {
         Task {
             let file = FileManager.default.homeDirectoryForCurrentUser
@@ -365,13 +457,15 @@ nonisolated func pythonPath() -> String {
         return "/usr/bin/python3"
     }
 
-func scriptEnvironment(projectRoot: String? = nil) -> [String: String] {
+func scriptEnvironment(projectRoot: String? = nil, includeProjectRoot: Bool = true) -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
         let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
         environment["PATH"] = (environment["PATH"] ?? "") + ":/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:\(homeDir)/.local/bin"
         environment["PYTHONDONTWRITEBYTECODE"] = "1"
         LocalModelSettingsStore.apply(to: &environment)
-        if let projectRoot, !projectRoot.isEmpty {
+        if !includeProjectRoot {
+            environment.removeValue(forKey: "SOMA_PROJECT_ROOT")
+        } else if let projectRoot, !projectRoot.isEmpty {
             environment["SOMA_PROJECT_ROOT"] = projectRoot
         } else if !selectedProjectRoot.isEmpty {
             environment["SOMA_PROJECT_ROOT"] = selectedProjectRoot

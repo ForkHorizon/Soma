@@ -60,4 +60,5 @@ graphify-out/
 ollama_*.txt
 hater_critique_report.md
 Prompt.txt
+.stress/
 .soma/

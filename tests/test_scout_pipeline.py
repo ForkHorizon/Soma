@@ -249,7 +249,7 @@ class ScoutPipelineTests(unittest.TestCase):
 
         self.assertEqual(bundle["omitted_context"]["graphify"], "project_only")
         self.assertEqual(bundle["omitted_context"]["graph_answers"], 1)
-        self.assertIn("Graph suggestions:", bundle["codex_packet"])
+        self.assertIn("Graph suggested:", bundle["codex_packet"])
         self.assertIn("OllamaManager.swift owns the local AI lifecycle", bundle["codex_packet"])
         self.assertNotIn("Graph context (from Graphify):", bundle["codex_packet"])
 
@@ -767,6 +767,26 @@ class ScoutPipelineTests(unittest.TestCase):
             explicit = scout_pipeline.gather_external_evidence(prompt, str(root), ["runtime"], discovered, repo_index)
 
         self.assertTrue(any(item["path"].endswith("Library/PackageCache/com.unity.timeline/RuntimeTrack.cs") for item in explicit))
+
+    def test_graphify_version_prompt_adds_command_evidence(self):
+        tmp, root = self.make_repo()
+
+        def fake_run(cmd, **kwargs):
+            joined = " ".join(cmd)
+            if "graphify --version" in joined:
+                return subprocess.CompletedProcess(cmd, 0, stdout="graphify 0.8.18\n", stderr="")
+            if "pip index versions graphifyy" in joined:
+                return subprocess.CompletedProcess(cmd, 0, stdout="graphifyy (0.8.18)\nAvailable versions: 0.8.18, 0.8.17\n", stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with tmp, patch("scout_pipeline_module.gather.subprocess.run", side_effect=fake_run):
+            bundle = self.run_gather("Review Graphify latest version and changelog features.", root, "balanced", False)
+
+        command_paths = [item["path"] for item in bundle["evidence_items"] if item.get("kind") == "command"]
+        self.assertIn("command: graphify --version", command_paths)
+        self.assertTrue(any("pip index versions graphifyy" in path for path in command_paths))
+        self.assertFalse(any("/fixtures/" in item["path"] for item in bundle["evidence_items"]))
+        self.assertIn("Graphify changelog/release notes", bundle["codex_packet"])
 
     def test_ranker_failure_does_not_block_packet(self):
         tmp, root = self.make_repo()

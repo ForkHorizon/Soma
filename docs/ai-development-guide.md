@@ -46,10 +46,13 @@ Soma Packet Mode is the first production-like AI workflow. Codex-first live help
 - Follow-up live MCP calls should also pass `client="codex"` and `workflow="live_mcp"` when the packet came from Codex usage.
 - Log every local model request as `local_model_call` with model, stage, status, latency, and token estimates; do not log raw prompts or responses.
 - Keep `soma_prepare_context` project-scoped: no cross-project Graphify context in packets.
+- Treat Graphify as optional ranking metadata. Use managed storage first, skip stale/degraded graphs, and never inject raw graph output into normal packets.
+- For Unity project roots, Graphify source scope is `Assets/` only. Do not scan `Library/`, `Packages/`, generated IDE files, or caches into managed graphs.
 - Return `degraded` when evidence selection lacks a strong task match.
 - Keep non-Unity acceptance passing before touching Unity/Nexus behavior.
 - Do not log full request/response bodies by default.
 - Do not commit generated `graphify-out/` data.
+- Do not run full Graphify extraction automatically; it may spend semantic model/API tokens.
 - Prefer small behavior-preserving refactors with tests.
 
 ## Helper Scripts

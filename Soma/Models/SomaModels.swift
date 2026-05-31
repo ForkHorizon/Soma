@@ -580,6 +580,12 @@ struct SomaGraphStatus: Codable, Sendable {
     let managed_path: String?
     let legacy_paths: [String]?
     let graphify_version: String?
+    let tool_version: String?
+    let graph_degraded: Bool?
+    let graph_degraded_reason: String?
+    let diagnostics_path: String?
+    let graph_source_root: String?
+    let graph_scope: String?
     let recommended_action: String?
 }
 
@@ -591,7 +597,40 @@ struct GraphStorageInfo: Codable, Sendable {
     let output_root: String?
     let graph_dir: String?
     let graph_json: String?
+    let graph_source_root: String?
+    let graph_scope: String?
     let legacy_paths: [String]?
+}
+
+struct GraphifyToolStatus: Codable, Sendable {
+    let status: String?
+    let installed_version: String?
+    let latest_version: String?
+    let up_to_date: Bool?
+    let recommended_action: String?
+}
+
+struct GraphMaintenanceResult: Codable, Sendable {
+    let status: String?
+    let summary: String?
+    let mode: String?
+    let refreshed: Int?
+    let skipped: Int?
+    let failed: Int?
+    let warnings: [String]?
+    let graph: SomaGraphStatus?
+}
+
+struct GraphReportResult: Codable, Sendable {
+    let status: String?
+    let summary: String?
+    let output_path: String?
+}
+
+struct GraphSemanticUpdateStatus: Codable, Sendable {
+    let status: String?
+    let summary: String?
+    let pending: Bool?
 }
 
 struct ClientConfigStatus: Codable, Sendable {
