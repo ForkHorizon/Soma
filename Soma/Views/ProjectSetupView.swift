@@ -98,8 +98,20 @@ struct ProjectSetupView: View {
             SomaKeyValueRow(label: "MCP", value: viewModel.somaServerRunning ? "Online" : "Optional", tone: viewModel.somaServerRunning ? .good : .neutral)
             SomaKeyValueRow(label: "Graphify", value: graphLabel, tone: graphTone)
             SomaKeyValueRow(label: "Graph storage", value: graphStorageLabel, tone: graphTone)
+            SomaKeyValueRow(label: "Graph scope", value: graphScopeLabel, tone: .neutral)
+            SomaKeyValueRow(label: "Graphify tool", value: viewModel.graphifyVersion, tone: viewModel.graphToolUpToDate == false ? .warning : .neutral)
+            if let buildVersion = viewModel.graphBuildVersion, !buildVersion.isEmpty {
+                SomaKeyValueRow(label: "Graph built with", value: buildVersion, tone: buildVersion == viewModel.graphifyVersion ? .neutral : .warning)
+            }
             if let nodeCount = viewModel.graphNodeCount, let edgeCount = viewModel.graphEdgeCount {
                 SomaKeyValueRow(label: "Graph size", value: "\(nodeCount) nodes / \(edgeCount) edges", tone: .info)
+            }
+            if viewModel.graphDegraded {
+                StatusBanner(
+                    title: "Graph degraded",
+                    detail: viewModel.graphDegradedReason ?? "Diagnostics found a graph quality issue. Soma will skip graph hints until it is refreshed.",
+                    tone: .warning
+                )
             }
             if viewModel.graphLegacyAvailable {
                 StatusBanner(
@@ -118,9 +130,13 @@ struct ProjectSetupView: View {
                     .buttonStyle(.bordered)
                 }
                 Button {
-                    viewModel.initializeGraphify()
+                    if viewModel.graphManagedAvailable {
+                        viewModel.refreshManagedGraphifyGraph()
+                    } else {
+                        viewModel.initializeGraphify()
+                    }
                 } label: {
-                    Label(viewModel.graphAvailable ? "Update Graph" : "Build Graph", systemImage: "point.3.connected.trianglepath.dotted")
+                    Label(viewModel.graphManagedAvailable ? "Update Graph" : "Build Graph", systemImage: "point.3.connected.trianglepath.dotted")
                 }
                 .buttonStyle(.bordered)
                 if viewModel.graphAvailable {
@@ -185,6 +201,7 @@ struct ProjectSetupView: View {
     }
 
     private var graphLabel: String {
+        if viewModel.graphDegraded { return "Degraded optional" }
         if viewModel.graphAvailable { return viewModel.graphStale ? "Stale optional" : "Ready optional" }
         return "Optional"
     }
@@ -200,7 +217,12 @@ struct ProjectSetupView: View {
         }
     }
 
+    private var graphScopeLabel: String {
+        viewModel.graphScope == "unity_assets" ? "Unity Assets only" : "Project root"
+    }
+
     private var graphTone: SomaStatusTone {
+        if viewModel.graphDegraded { return .warning }
         if viewModel.graphAvailable && !viewModel.graphStale { return .good }
         if viewModel.graphAvailable && viewModel.graphStale { return .warning }
         return .neutral

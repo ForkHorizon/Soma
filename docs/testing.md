@@ -11,7 +11,7 @@ TMPDIR=/tmp \
 /opt/homebrew/bin/python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-Expected current shape: 131 tests pass.
+Expected current shape: 138 tests pass.
 
 ## Python Compile Check
 
@@ -98,6 +98,28 @@ Manual acceptance for the current product loop:
 5. Mark the packet `Useful` or `Not useful`.
 
 Expected behavior: `Packets` shows the run, selected files, usefulness, final outcome, missed files if any, and live Soma tool-call count. The 3-task proof metric only becomes complete after three useful real runs.
+
+## Graphify Managed Storage Checks
+
+Focused unit checks:
+
+```bash
+PYTHONPATH=tests \
+/opt/homebrew/bin/python3 -m unittest tests.test_additional tests.test_scout_pipeline
+```
+
+Manual checks:
+
+```bash
+/opt/homebrew/bin/python3 Soma/soma_mcp_server.py --check-graphify-tool-json
+/opt/homebrew/bin/python3 Soma/soma_mcp_server.py --status-json --project-root /path/to/project
+/opt/homebrew/bin/python3 Soma/soma_mcp_server.py --refresh-managed-graph --project-root /path/to/project
+/opt/homebrew/bin/python3 Soma/soma_mcp_server.py --diagnose-graph-json --project-root /path/to/project
+/opt/homebrew/bin/python3 Soma/soma_mcp_server.py --graph-tree-json --project-root /path/to/project
+/opt/homebrew/bin/python3 Soma/soma_mcp_server.py --graph-callflow-json --project-root /path/to/project
+```
+
+Expected behavior: tool version and graph build version are separate, old graph builds recommend refresh, refresh writes under `~/.soma/graphs/projects/<project_id>/graphify-out/`, Unity projects scan only `Assets/`, diagnostics can mark degraded graphs, and Prepare Packet skips missing/stale/degraded graph hints without failing.
 
 ## Universal Acceptance
 

@@ -264,7 +264,26 @@ xcodebuild -project Soma.xcodeproj -scheme Soma -configuration Debug -destinatio
 
 ## Generated Data
 
-Graphify output is generated runtime data. `graphify-out/` is ignored by git. Regenerate it when graph-backed answers need a fresh project map.
+Graphify output is generated runtime data. Legacy project-local `graphify-out/` folders are still readable and ignored by git, but Soma-managed graphs now live under:
+
+```text
+~/.soma/graphs/projects/<project_id>/graphify-out/
+~/.soma/graphs/index.json
+```
+
+`project_id` is a stable hash of the normalized project root. Soma checks managed storage first, then legacy project-local graphs. For Unity project roots, Graphify scans only `Assets/` while still storing the graph under the project id; this avoids `Library/`, `Packages/`, cache, and generated-project noise. Prepare Packet uses Graphify only as compact ranking hints and skips graph hints when the graph is missing, stale, degraded, or outside the selected project.
+
+Useful Graphify maintenance commands:
+
+```bash
+/opt/homebrew/bin/python3 Soma/soma_mcp_server.py --check-graphify-tool-json
+/opt/homebrew/bin/python3 Soma/soma_mcp_server.py --refresh-managed-graph --project-root /path/to/project
+/opt/homebrew/bin/python3 Soma/soma_mcp_server.py --diagnose-graph-json --project-root /path/to/project
+/opt/homebrew/bin/python3 Soma/soma_mcp_server.py --graph-tree-json --project-root /path/to/project
+/opt/homebrew/bin/python3 Soma/soma_mcp_server.py --graph-callflow-json --project-root /path/to/project
+```
+
+Full graph rebuilds use `graphify extract` and must stay explicit because docs/semantic extraction can spend model/API tokens.
 
 Soma writes runtime reports and logs under the user home directory:
 
@@ -282,6 +301,10 @@ Soma writes runtime reports and logs under the user home directory:
 ~/.soma/audit/runs/audit_YYYYMMDD-HHMMSS_<run_id>.json
 ~/.soma/audit/raw/<run_id>/prompt.txt
 ~/.soma/audit/raw/<run_id>/packet.txt
+~/.soma/graphs/projects/<project_id>/graphify-out/graph.json
+~/.soma/graphs/projects/<project_id>/graphify-out/GRAPH_REPORT.md
+~/.soma/graphs/projects/<project_id>/graphify-out/GRAPH_TREE.html
+~/.soma/graphs/projects/<project_id>/graphify-out/<project>-callflow.html
 ```
 
 ## Documentation

@@ -9,6 +9,8 @@ struct ContentView: View {
     @StateObject private var scoutViewModel = ScoutViewModel()
     @StateObject private var relayViewModel = RelayViewModel()
     @StateObject private var promptCompilerViewModel = PromptCompilerViewModel()
+    @StateObject private var rusToPromptViewModel = RusToPromptViewModel()
+    @StateObject private var rusToPromptQueueManager = RusToPromptQueueManager()
     @State private var selectedRoute: AppRoute? = .relay
     @Environment(\.openWindow) private var openWindow
 
@@ -18,12 +20,20 @@ struct ContentView: View {
                 .navigationTitle("Soma")
         } detail: {
             VStack(spacing: 0) {
-                GlobalSettingsBar(viewModel: viewModel, ollama: ollama, selectedRoute: $selectedRoute)
+                if selectedRoute != .rusToPrompt && selectedRoute != .tests {
+                    GlobalSettingsBar(viewModel: viewModel, ollama: ollama, selectedRoute: $selectedRoute)
+                }
                 
                 if let route = selectedRoute {
                     switch route {
                     case .relay:
                         RelayView(viewModel: relayViewModel, somaViewModel: viewModel, ollama: ollama)
+                            .navigationTitle(route.title)
+                    case .rusToPrompt:
+                        RusToPromptView(viewModel: rusToPromptViewModel, somaViewModel: viewModel, ollama: ollama, queueManager: rusToPromptQueueManager)
+                            .navigationTitle(route.title)
+                    case .tests:
+                        TestsView(ollama: ollama, queueManager: rusToPromptQueueManager)
                             .navigationTitle(route.title)
                     case .projectSetup:
                         ProjectSetupView(viewModel: viewModel, selectedRoute: $selectedRoute)

@@ -54,6 +54,7 @@ Check gateway status:
 - Keep `Prepare Packet` as the primary route.
 - Keep MCP, Graphify, Nexus, Local AI, raw logs, benchmarks, and token utilities in Diagnostics.
 - Treat optional systems as optional, not as scary failures.
+- Keep Graphify managed by Soma under `~/.soma/graphs`; use it as project-only ranking hints, not raw packet context. Unity graphs scan `Assets/` only.
 - Prefer changes that make the app calmer, clearer, and faster to use.
 
 ## Acceptance Notes

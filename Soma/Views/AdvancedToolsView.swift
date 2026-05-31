@@ -150,12 +150,74 @@ struct AdvancedToolsView: View {
                 .controlSize(.small)
             }
         } secondary: {
+            graphMaintenancePanel
             SomaPanel(title: "What belongs here", subtitle: "Diagnostics stay reachable but should not be a first action.", icon: "info.circle", tone: .info) {
                 Text("System Status, MCP smoke tests, raw runtime state, and deep graph diagnostics belong under Advanced. Project Health owns user-facing readiness; Prepare Packet owns the primary workflow.")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    private var graphMaintenancePanel: some View {
+        SomaPanel(title: "Graphify Maintenance", subtitle: "Explicit actions only. Soma never runs semantic rebuilds in the background.", icon: "point.3.connected.trianglepath.dotted", tone: somaViewModel.graphDegraded ? .warning : .neutral) {
+            SomaKeyValueRow(label: "Installed tool", value: somaViewModel.graphifyVersion, tone: somaViewModel.graphToolUpToDate == false ? .warning : .neutral)
+            if let latest = somaViewModel.graphToolLatestVersion {
+                SomaKeyValueRow(label: "Latest PyPI", value: latest, tone: somaViewModel.graphToolUpToDate == false ? .warning : .good)
+            }
+            SomaKeyValueRow(label: "Storage", value: somaViewModel.graphStorageKind.capitalized, tone: somaViewModel.graphManagedAvailable ? .good : .neutral)
+            SomaKeyValueRow(label: "Scope", value: somaViewModel.graphScope == "unity_assets" ? "Unity Assets only" : "Project root", tone: .neutral)
+            if let buildVersion = somaViewModel.graphBuildVersion {
+                SomaKeyValueRow(label: "Graph build", value: buildVersion, tone: buildVersion == somaViewModel.graphifyVersion ? .neutral : .warning)
+            }
+            if somaViewModel.graphDegraded {
+                StatusBanner(title: "Diagnostics degraded", detail: somaViewModel.graphDegradedReason ?? "Graph hints are skipped until refresh.", tone: .warning)
+            }
+            if somaViewModel.graphSemanticRefreshPending == true {
+                StatusBanner(title: "Semantic refresh pending", detail: "Use full rebuild only when docs or semantic extraction quality matters.", tone: .info)
+            }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], spacing: 8) {
+                Button { somaViewModel.checkGraphifyToolVersion() } label: {
+                    Label("Check Version", systemImage: "arrow.triangle.2.circlepath")
+                }
+                Button { somaViewModel.upgradeGraphify() } label: {
+                    Label("Upgrade Tool", systemImage: "arrow.down.circle")
+                }
+                Button { somaViewModel.refreshManagedGraphifyGraph() } label: {
+                    Label("Refresh Graph", systemImage: "bolt")
+                }
+                Button { somaViewModel.refreshAllManagedGraphifyGraphs() } label: {
+                    Label("Refresh All", systemImage: "square.stack.3d.up")
+                }
+                Button { somaViewModel.diagnoseGraphifyGraph() } label: {
+                    Label("Diagnose", systemImage: "stethoscope")
+                }
+                Button { somaViewModel.checkGraphifySemanticUpdate() } label: {
+                    Label("Check Semantic", systemImage: "doc.text.magnifyingglass")
+                }
+                Button { somaViewModel.openGraphifyTreeReport() } label: {
+                    Label("Open Tree", systemImage: "list.tree")
+                }
+                Button { somaViewModel.openGraphifyCallflowReport() } label: {
+                    Label("Open Callflow", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(somaViewModel.systemBusy || somaViewModel.graphifyBusy || somaViewModel.selectedProjectRoot.isEmpty)
+            Button {
+                somaViewModel.refreshManagedGraphifyGraph(fullRebuild: true)
+            } label: {
+                Label("Full Rebuild", systemImage: "exclamationmark.arrow.triangle.2.circlepath")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(somaViewModel.systemBusy || somaViewModel.graphifyBusy || somaViewModel.selectedProjectRoot.isEmpty)
+            Text("Full rebuild can use external/local model tokens for docs and semantic extraction. Keep it manual.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

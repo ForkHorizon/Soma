@@ -1,0 +1,37 @@
+import SwiftUI
+
+enum RusToPromptOutputTab: String, CaseIterable, Identifiable {
+    case improved = "Improved"
+    case translation = "Translation"
+    case confidence = "Confidence"
+    var id: String { rawValue }
+}
+
+struct RusToPromptView: View {
+    @ObservedObject var viewModel: RusToPromptViewModel
+    @ObservedObject var somaViewModel: SomaViewModel
+    @ObservedObject var ollama: OllamaManager
+    @ObservedObject var queueManager: RusToPromptQueueManager
+    @State var selectedOutput: RusToPromptOutputTab = .improved
+    @State var showModels = false
+    @State var copied = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            topBar
+            Divider()
+            HStack(alignment: .top, spacing: 14) {
+                inputPane
+                outputPane
+            }
+            .padding(16)
+            .frame(maxHeight: .infinity)
+        }
+        .background(SomaDesign.pageBackground)
+        .onAppear {
+            ollama.refreshInstalledModels()
+            ollama.checkStatus()
+        }
+    }
+
+}
