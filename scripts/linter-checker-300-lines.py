@@ -78,7 +78,6 @@ DEFAULT_CONFIG = {
     "include_extensions": sorted(LANGUAGE_BY_EXTENSION),
     "ignore": DEFAULT_IGNORE,
     "language_overrides": {},
-    "baseline_violations": [],
 }
 
 CONTROL_WORDS = {
@@ -110,8 +109,6 @@ class Issue:
     line: int
     kind: str
     message: str
-    identifier: str | None = None
-    observed: int = 0
 
 
 @dataclass
@@ -164,7 +161,6 @@ def load_config(path: Path) -> dict:
     config["max_file_lines"] = int(config.get("max_file_lines", 300))
     config["max_function_lines"] = int(config.get("max_function_lines", 50))
     config["ignore"] = list(config.get("ignore", []))
-    config["baseline_violations"] = list(config.get("baseline_violations", []))
     config["include_extensions"] = [
         ext if ext.startswith(".") else f".{ext}"
         for ext in config.get("include_extensions", LANGUAGE_BY_EXTENSION)
@@ -227,7 +223,6 @@ def all_repo_paths(root: Path) -> list[Path]:
 
 def check_paths(root: Path, paths: Iterable[Path], config: dict) -> list[Issue]:
     issues: list[Issue] = []
-    baseline = baseline_by_key(config)
     for path in paths:
         relative = to_relative(root, path)
         language = LANGUAGE_BY_EXTENSION.get(path.suffix)
@@ -245,23 +240,18 @@ def check_paths(root: Path, paths: Iterable[Path], config: dict) -> list[Issue]:
         max_function_lines = limits["max_function_lines"]
 
         if len(lines) > max_file_lines:
-            maybe_append_issue(
-                issues,
-                baseline,
+            issues.append(
                 Issue(
                     path=relative,
                     line=1,
                     kind="file_length",
                     message=f"File has {len(lines)} lines; limit is {max_file_lines}.",
-                    observed=len(lines),
-                ),
+                )
             )
 
         for name, start_line, length in function_lengths(text, language):
             if length > max_function_lines:
-                maybe_append_issue(
-                    issues,
-                    baseline,
+                issues.append(
                     Issue(
                         path=relative,
                         line=start_line,
@@ -270,41 +260,9 @@ def check_paths(root: Path, paths: Iterable[Path], config: dict) -> list[Issue]:
                             f"{name} has {length} lines; function/method limit is "
                             f"{max_function_lines}."
                         ),
-                        identifier=name,
-                        observed=length,
-                    ),
+                    )
                 )
     return issues
-
-
-def baseline_by_key(config: dict) -> dict[tuple[str, str, str], int]:
-    baseline: dict[tuple[str, str, str], int] = {}
-    for entry in config.get("baseline_violations", []):
-        if not isinstance(entry, dict):
-            continue
-        path = str(entry.get("path", ""))
-        kind = str(entry.get("kind", ""))
-        identifier = str(entry.get("identifier") or "")
-        try:
-            observed = int(entry.get("observed", 0))
-        except (TypeError, ValueError):
-            continue
-        if path and kind and observed > 0:
-            key = (path, kind, identifier)
-            baseline[key] = max(observed, baseline.get(key, 0))
-    return baseline
-
-
-def maybe_append_issue(
-    issues: list[Issue],
-    baseline: dict[tuple[str, str, str], int],
-    issue: Issue,
-) -> None:
-    identifier = issue.identifier or ""
-    allowed = baseline.get((issue.path, issue.kind, identifier))
-    if allowed is not None and issue.observed <= allowed:
-        return
-    issues.append(issue)
 
 
 def limits_for_language(config: dict, language: str) -> dict[str, int]:
