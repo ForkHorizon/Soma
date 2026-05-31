@@ -27,7 +27,7 @@ concurrency:
 jobs:
   readability:
     name: Linter Checker 300 lines
-    runs-on: [self-hosted, macOS, ARM64, ci-scope]
+    runs-on: [self-hosted, macOS, ARM64, ci-scope-broker]
 
     steps:
       - name: Checkout
