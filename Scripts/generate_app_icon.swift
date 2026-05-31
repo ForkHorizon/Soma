@@ -11,7 +11,7 @@ private struct IconImage {
     let pixels: Int
 }
 
-private let iconImages: [IconImage] = [
+private let iconImages = [
     IconImage(filename: "AppIcon-16.png", size: "16x16", scale: "1x", pixels: 16),
     IconImage(filename: "AppIcon-16@2x.png", size: "16x16", scale: "2x", pixels: 32),
     IconImage(filename: "AppIcon-32.png", size: "32x32", scale: "1x", pixels: 32),
@@ -25,7 +25,7 @@ private let iconImages: [IconImage] = [
 ]
 
 private extension NSColor {
-    convenience init(hex: UInt32, alpha: CGFloat = 1.0) {
+    convenience init(hex: UInt32, alpha: CGFloat = 1) {
         self.init(
             calibratedRed: CGFloat((hex >> 16) & 0xff) / 255,
             green: CGFloat((hex >> 8) & 0xff) / 255,
@@ -35,23 +35,21 @@ private extension NSColor {
     }
 }
 
-private func scaled(_ value: CGFloat, for size: CGFloat) -> CGFloat {
-    value * size / 1024
+private func scaled(_ value: CGFloat, _ size: CGFloat) -> CGFloat { value * size / 1024 }
+
+private func point(_ x: CGFloat, _ y: CGFloat, _ size: CGFloat) -> NSPoint {
+    NSPoint(x: scaled(x, size), y: scaled(y, size))
 }
 
-private func rect(_ x: CGFloat, _ y: CGFloat, _ width: CGFloat, _ height: CGFloat, size: CGFloat) -> NSRect {
-    NSRect(x: scaled(x, for: size), y: scaled(y, for: size), width: scaled(width, for: size), height: scaled(height, for: size))
+private func rect(_ x: CGFloat, _ y: CGFloat, _ width: CGFloat, _ height: CGFloat, _ size: CGFloat) -> NSRect {
+    NSRect(x: scaled(x, size), y: scaled(y, size), width: scaled(width, size), height: scaled(height, size))
 }
 
-private func point(_ x: CGFloat, _ y: CGFloat, size: CGFloat) -> NSPoint {
-    NSPoint(x: scaled(x, for: size), y: scaled(y, for: size))
-}
-
-private func roundedPath(_ rect: NSRect, radius: CGFloat) -> NSBezierPath {
+private func rounded(_ rect: NSRect, _ radius: CGFloat) -> NSBezierPath {
     NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
 }
 
-private func strokePath(_ path: NSBezierPath, color: NSColor, width: CGFloat) {
+private func stroke(_ path: NSBezierPath, _ color: NSColor, _ width: CGFloat) {
     color.setStroke()
     path.lineWidth = width
     path.lineCapStyle = .round
@@ -59,223 +57,144 @@ private func strokePath(_ path: NSBezierPath, color: NSColor, width: CGFloat) {
     path.stroke()
 }
 
-private func fillRoundedRect(_ rect: NSRect, radius: CGFloat, color: NSColor) {
-    color.setFill()
-    roundedPath(rect, radius: radius).fill()
-}
-
-private func drawLine(from start: NSPoint, to end: NSPoint, color: NSColor, width: CGFloat) {
+private func line(_ start: NSPoint, _ end: NSPoint, _ color: NSColor, _ width: CGFloat) {
     let path = NSBezierPath()
     path.move(to: start)
     path.line(to: end)
-    strokePath(path, color: color, width: width)
+    stroke(path, color, width)
 }
 
-private func drawCircle(center: NSPoint, radius: CGFloat, fill: NSColor, stroke: NSColor, strokeWidth: CGFloat) {
-    let circle = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
+private func circle(_ center: NSPoint, _ radius: CGFloat, fill: NSColor, stroke strokeColor: NSColor, width: CGFloat) {
+    let path = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
     fill.setFill()
-    circle.fill()
-    strokePath(circle, color: stroke, width: strokeWidth)
-}
-
-private func drawSpark(center: NSPoint, radius: CGFloat, color: NSColor) {
-    let path = NSBezierPath()
-    path.move(to: NSPoint(x: center.x, y: center.y + radius))
-    path.curve(
-        to: NSPoint(x: center.x + radius, y: center.y),
-        controlPoint1: NSPoint(x: center.x + radius * 0.18, y: center.y + radius * 0.38),
-        controlPoint2: NSPoint(x: center.x + radius * 0.42, y: center.y + radius * 0.18)
-    )
-    path.curve(
-        to: NSPoint(x: center.x, y: center.y - radius),
-        controlPoint1: NSPoint(x: center.x + radius * 0.42, y: center.y - radius * 0.18),
-        controlPoint2: NSPoint(x: center.x + radius * 0.18, y: center.y - radius * 0.38)
-    )
-    path.curve(
-        to: NSPoint(x: center.x - radius, y: center.y),
-        controlPoint1: NSPoint(x: center.x - radius * 0.18, y: center.y - radius * 0.38),
-        controlPoint2: NSPoint(x: center.x - radius * 0.42, y: center.y - radius * 0.18)
-    )
-    path.curve(
-        to: NSPoint(x: center.x, y: center.y + radius),
-        controlPoint1: NSPoint(x: center.x - radius * 0.42, y: center.y + radius * 0.18),
-        controlPoint2: NSPoint(x: center.x - radius * 0.18, y: center.y + radius * 0.38)
-    )
-    path.close()
-    color.setFill()
     path.fill()
+    stroke(path, strokeColor, width)
 }
 
-private func drawDocumentPath(in documentRect: NSRect, fold: CGFloat) -> NSBezierPath {
+private func documentPath(_ documentRect: NSRect, fold: CGFloat) -> NSBezierPath {
     let path = NSBezierPath()
-    let radius: CGFloat = documentRect.width * 0.105
-    let minX = documentRect.minX
-    let minY = documentRect.minY
-    let maxX = documentRect.maxX
-    let maxY = documentRect.maxY
-    path.move(to: NSPoint(x: minX + radius, y: minY))
-    path.line(to: NSPoint(x: maxX - radius, y: minY))
-    path.curve(to: NSPoint(x: maxX, y: minY + radius), controlPoint1: NSPoint(x: maxX - radius * 0.45, y: minY), controlPoint2: NSPoint(x: maxX, y: minY + radius * 0.45))
-    path.line(to: NSPoint(x: maxX, y: maxY - fold))
-    path.line(to: NSPoint(x: maxX - fold, y: maxY))
-    path.line(to: NSPoint(x: minX + radius, y: maxY))
-    path.curve(to: NSPoint(x: minX, y: maxY - radius), controlPoint1: NSPoint(x: minX + radius * 0.45, y: maxY), controlPoint2: NSPoint(x: minX, y: maxY - radius * 0.45))
-    path.line(to: NSPoint(x: minX, y: minY + radius))
-    path.curve(to: NSPoint(x: minX + radius, y: minY), controlPoint1: NSPoint(x: minX, y: minY + radius * 0.45), controlPoint2: NSPoint(x: minX + radius * 0.45, y: minY))
+    let radius = documentRect.width * 0.105
+    path.move(to: NSPoint(x: documentRect.minX + radius, y: documentRect.minY))
+    path.line(to: NSPoint(x: documentRect.maxX - radius, y: documentRect.minY))
+    path.curve(to: NSPoint(x: documentRect.maxX, y: documentRect.minY + radius), controlPoint1: NSPoint(x: documentRect.maxX - radius * 0.45, y: documentRect.minY), controlPoint2: NSPoint(x: documentRect.maxX, y: documentRect.minY + radius * 0.45))
+    path.line(to: NSPoint(x: documentRect.maxX, y: documentRect.maxY - fold))
+    path.line(to: NSPoint(x: documentRect.maxX - fold, y: documentRect.maxY))
+    path.line(to: NSPoint(x: documentRect.minX + radius, y: documentRect.maxY))
+    path.curve(to: NSPoint(x: documentRect.minX, y: documentRect.maxY - radius), controlPoint1: NSPoint(x: documentRect.minX + radius * 0.45, y: documentRect.maxY), controlPoint2: NSPoint(x: documentRect.minX, y: documentRect.maxY - radius * 0.45))
+    path.line(to: NSPoint(x: documentRect.minX, y: documentRect.minY + radius))
+    path.curve(to: NSPoint(x: documentRect.minX + radius, y: documentRect.minY), controlPoint1: NSPoint(x: documentRect.minX, y: documentRect.minY + radius * 0.45), controlPoint2: NSPoint(x: documentRect.minX + radius * 0.45, y: documentRect.minY))
     path.close()
     return path
 }
 
-private func drawIcon(size: CGFloat) {
-    NSColor.clear.setFill()
-    NSRect(x: 0, y: 0, width: size, height: size).fill()
-
-    let backgroundRect = rect(64, 64, 896, 896, size: size)
-    let backgroundRadius = scaled(208, for: size)
-    let backgroundPath = roundedPath(backgroundRect, radius: backgroundRadius)
-
+private func drawBackground(size: CGFloat) -> NSBezierPath {
+    let backgroundRect = rect(64, 64, 896, 896, size)
+    let backgroundPath = rounded(backgroundRect, scaled(208, size))
     let shadow = NSShadow()
-    shadow.shadowOffset = NSSize(width: 0, height: -scaled(24, for: size))
-    shadow.shadowBlurRadius = scaled(48, for: size)
+    shadow.shadowOffset = NSSize(width: 0, height: -scaled(24, size))
+    shadow.shadowBlurRadius = scaled(48, size)
     shadow.shadowColor = NSColor.black.withAlphaComponent(0.42)
     shadow.set()
-
-    NSGradient(colors: [
-        NSColor(hex: 0x242b36),
-        NSColor(hex: 0x151b24),
-        NSColor(hex: 0x0c1118),
-    ])?.draw(in: backgroundPath, angle: 90)
+    NSGradient(colors: [NSColor(hex: 0x242b36), NSColor(hex: 0x151b24), NSColor(hex: 0x0c1118)])?.draw(in: backgroundPath, angle: 90)
     NSShadow().set()
+    stroke(backgroundPath, NSColor.white.withAlphaComponent(0.10), max(1, scaled(5, size)))
+    return backgroundPath
+}
 
-    strokePath(backgroundPath, color: NSColor.white.withAlphaComponent(0.10), width: max(1, scaled(5, for: size)))
-    let innerPath = roundedPath(backgroundRect.insetBy(dx: scaled(18, for: size), dy: scaled(18, for: size)), radius: backgroundRadius - scaled(18, for: size))
-    strokePath(innerPath, color: NSColor(hex: 0x05070b).withAlphaComponent(0.55), width: max(1, scaled(3, for: size)))
-
-    let center = point(512, 508, size: size)
-    let ringRadius = scaled(330, for: size)
-    let ringWidth = max(1.25, scaled(17, for: size))
-    let ringA = NSBezierPath()
-    ringA.appendArc(withCenter: center, radius: ringRadius, startAngle: 138, endAngle: 338, clockwise: false)
-    strokePath(ringA, color: NSColor(hex: 0x2f87ff).withAlphaComponent(0.92), width: ringWidth)
-    let ringB = NSBezierPath()
-    ringB.appendArc(withCenter: center, radius: ringRadius, startAngle: -24, endAngle: 146, clockwise: false)
-    strokePath(ringB, color: NSColor(hex: 0x38e1db).withAlphaComponent(0.90), width: ringWidth)
-
-    drawLine(from: point(218, 506, size: size), to: point(806, 506, size: size), color: NSColor(hex: 0x2fa2ff).withAlphaComponent(0.50), width: max(1, scaled(8, for: size)))
-    drawLine(from: point(300, 664, size: size), to: point(420, 548, size: size), color: NSColor(hex: 0x4ea0ff).withAlphaComponent(0.58), width: max(1, scaled(8, for: size)))
-    drawLine(from: point(724, 664, size: size), to: point(608, 548, size: size), color: NSColor(hex: 0x40ddd8).withAlphaComponent(0.58), width: max(1, scaled(8, for: size)))
-
-    let shouldDrawDetails = size >= 96
-    let shouldDrawNodeDetails = size >= 192
-    let nodeFill = NSColor(hex: 0x101722)
-    let nodeStrokeBlue = NSColor(hex: 0x5597ff)
-    let nodeStrokeTeal = NSColor(hex: 0x43ded8)
-    let nodeStrokeViolet = NSColor(hex: 0x805cff)
-    let nodeRadius = scaled(76, for: size)
-    let nodeWidth = max(1.2, scaled(10, for: size))
-
-    let topLeft = point(292, 696, size: size)
-    let topRight = point(760, 690, size: size)
-    let bottomLeft = point(292, 326, size: size)
-    let bottomRight = point(760, 326, size: size)
-
-    drawCircle(center: topLeft, radius: nodeRadius, fill: nodeFill, stroke: nodeStrokeBlue, strokeWidth: nodeWidth)
-    drawCircle(center: topRight, radius: nodeRadius, fill: nodeFill, stroke: nodeStrokeTeal, strokeWidth: nodeWidth)
-    drawCircle(center: bottomLeft, radius: nodeRadius, fill: nodeFill, stroke: nodeStrokeViolet, strokeWidth: nodeWidth)
-    drawCircle(center: bottomRight, radius: nodeRadius, fill: nodeFill, stroke: nodeStrokeTeal, strokeWidth: nodeWidth)
-
-    if shouldDrawNodeDetails {
-        let miniWidth = scaled(8, for: size)
-        drawLine(from: point(264, 712, size: size), to: point(338, 712, size: size), color: nodeStrokeBlue, width: miniWidth)
-        drawLine(from: point(264, 684, size: size), to: point(338, 684, size: size), color: nodeStrokeBlue.withAlphaComponent(0.85), width: miniWidth)
-        drawLine(from: point(264, 656, size: size), to: point(316, 656, size: size), color: nodeStrokeBlue.withAlphaComponent(0.72), width: miniWidth)
-
-        drawLine(from: point(724, 698, size: size), to: point(762, 720, size: size), color: nodeStrokeTeal, width: miniWidth)
-        drawLine(from: point(724, 698, size: size), to: point(762, 670, size: size), color: nodeStrokeTeal, width: miniWidth)
-        drawCircle(center: point(724, 698, size: size), radius: scaled(14, for: size), fill: nodeStrokeTeal, stroke: nodeStrokeTeal, strokeWidth: 0)
-        drawCircle(center: point(762, 720, size: size), radius: scaled(14, for: size), fill: nodeStrokeTeal, stroke: nodeStrokeTeal, strokeWidth: 0)
-        drawCircle(center: point(762, 670, size: size), radius: scaled(14, for: size), fill: nodeStrokeTeal, stroke: nodeStrokeTeal, strokeWidth: 0)
-
-        drawLine(from: point(274, 326, size: size), to: point(310, 326, size: size), color: nodeStrokeViolet, width: miniWidth)
-        drawLine(from: point(760, 326, size: size), to: point(796, 326, size: size), color: nodeStrokeTeal, width: miniWidth)
-        drawLine(from: point(735, 352, size: size), to: point(762, 326, size: size), color: nodeStrokeTeal, width: miniWidth)
-        drawLine(from: point(735, 300, size: size), to: point(762, 326, size: size), color: nodeStrokeTeal, width: miniWidth)
+private func drawRings(size: CGFloat) {
+    let center = point(512, 508, size)
+    let ringRadius = scaled(330, size)
+    let ringWidth = max(1.25, scaled(17, size))
+    for arc in [(138.0, 338.0, 0x2f87ff), (-24.0, 146.0, 0x38e1db)] {
+        let path = NSBezierPath()
+        path.appendArc(withCenter: center, radius: ringRadius, startAngle: arc.0, endAngle: arc.1)
+        stroke(path, NSColor(hex: UInt32(arc.2)).withAlphaComponent(0.9), ringWidth)
     }
+    line(point(218, 506, size), point(806, 506, size), NSColor(hex: 0x2fa2ff).withAlphaComponent(0.5), max(1, scaled(8, size)))
+    line(point(300, 664, size), point(420, 548, size), NSColor(hex: 0x4ea0ff).withAlphaComponent(0.58), max(1, scaled(8, size)))
+    line(point(724, 664, size), point(608, 548, size), NSColor(hex: 0x40ddd8).withAlphaComponent(0.58), max(1, scaled(8, size)))
+}
 
-    let documentBack = drawDocumentPath(in: rect(382, 356, 310, 388, size: size), fold: scaled(78, for: size))
+private func drawNodes(size: CGFloat) {
+    let fill = NSColor(hex: 0x101722)
+    let radius = scaled(76, size)
+    let width = max(1.2, scaled(10, size))
+    let nodes = [
+        (292.0, 696.0, 0x5597ff),
+        (760.0, 690.0, 0x43ded8),
+        (292.0, 326.0, 0x805cff),
+        (760.0, 326.0, 0x43ded8),
+    ]
+    for node in nodes {
+        circle(point(node.0, node.1, size), radius, fill: fill, stroke: NSColor(hex: UInt32(node.2)), width: width)
+    }
+}
+
+private func drawDocument(size: CGFloat) {
+    let back = documentPath(rect(382, 356, 310, 388, size), fold: scaled(78, size))
     NSColor(hex: 0x323b49).withAlphaComponent(0.88).setFill()
-    documentBack.fill()
-    strokePath(documentBack, color: NSColor.white.withAlphaComponent(0.18), width: max(1, scaled(5, for: size)))
-
-    let documentRect = rect(336, 350, 338, 404, size: size)
-    let fold = scaled(92, for: size)
-    let documentPath = drawDocumentPath(in: documentRect, fold: fold)
-    let documentShadow = NSShadow()
-    documentShadow.shadowOffset = NSSize(width: 0, height: -scaled(10, for: size))
-    documentShadow.shadowBlurRadius = scaled(28, for: size)
-    documentShadow.shadowColor = NSColor.black.withAlphaComponent(0.38)
-    documentShadow.set()
-    NSGradient(colors: [
-        NSColor(hex: 0x3a4453),
-        NSColor(hex: 0x1f2732),
-    ])?.draw(in: documentPath, angle: 90)
-    NSShadow().set()
-    strokePath(documentPath, color: NSColor.white.withAlphaComponent(0.25), width: max(1, scaled(5, for: size)))
-
+    back.fill()
+    stroke(back, NSColor.white.withAlphaComponent(0.18), max(1, scaled(5, size)))
+    let documentRect = rect(336, 350, 338, 404, size)
+    let fold = scaled(92, size)
+    let document = documentPath(documentRect, fold: fold)
+    NSGradient(colors: [NSColor(hex: 0x3a4453), NSColor(hex: 0x1f2732)])?.draw(in: document, angle: 90)
+    stroke(document, NSColor.white.withAlphaComponent(0.25), max(1, scaled(5, size)))
     let foldPath = NSBezierPath()
     foldPath.move(to: NSPoint(x: documentRect.maxX - fold, y: documentRect.maxY))
     foldPath.line(to: NSPoint(x: documentRect.maxX, y: documentRect.maxY - fold))
     foldPath.line(to: NSPoint(x: documentRect.maxX - fold, y: documentRect.maxY - fold))
     foldPath.close()
-    NSGradient(colors: [
-        NSColor(hex: 0x5ec7ff),
-        NSColor(hex: 0x3268ff),
-    ])?.draw(in: foldPath, angle: -45)
+    NSGradient(colors: [NSColor(hex: 0x5ec7ff), NSColor(hex: 0x3268ff)])?.draw(in: foldPath, angle: -45)
+}
 
-    let pocketRect = rect(300, 246, 424, 300, size: size)
-    let pocketPath = roundedPath(pocketRect, radius: scaled(58, for: size))
-    let pocketShadow = NSShadow()
-    pocketShadow.shadowOffset = NSSize(width: 0, height: -scaled(12, for: size))
-    pocketShadow.shadowBlurRadius = scaled(32, for: size)
-    pocketShadow.shadowColor = NSColor.black.withAlphaComponent(0.38)
-    pocketShadow.set()
-    NSGradient(colors: [
-        NSColor(hex: 0x1a222c),
-        NSColor(hex: 0x121820),
-    ])?.draw(in: pocketPath, angle: 90)
-    NSShadow().set()
-    strokePath(pocketPath, color: NSColor.black.withAlphaComponent(0.42), width: max(1, scaled(4, for: size)))
+private func drawPocket(size: CGFloat) {
+    let pocket = rounded(rect(300, 246, 424, 300, size), scaled(58, size))
+    NSGradient(colors: [NSColor(hex: 0x1a222c), NSColor(hex: 0x121820)])?.draw(in: pocket, angle: 90)
+    stroke(pocket, NSColor.black.withAlphaComponent(0.42), max(1, scaled(4, size)))
+    let lip = NSBezierPath()
+    lip.move(to: point(300, 512, size))
+    lip.curve(to: point(404, 422, size), controlPoint1: point(332, 492, size), controlPoint2: point(354, 454, size))
+    lip.line(to: point(620, 422, size))
+    lip.curve(to: point(724, 512, size), controlPoint1: point(670, 454, size), controlPoint2: point(692, 492, size))
+    stroke(lip, NSColor(hex: 0x42e1de), max(1.2, scaled(12, size)))
+}
 
-    let pocketLip = NSBezierPath()
-    pocketLip.move(to: point(300, 512, size: size))
-    pocketLip.curve(to: point(404, 422, size: size), controlPoint1: point(332, 492, size: size), controlPoint2: point(354, 454, size: size))
-    pocketLip.line(to: point(620, 422, size: size))
-    pocketLip.curve(to: point(724, 512, size: size), controlPoint1: point(670, 454, size: size), controlPoint2: point(692, 492, size: size))
-    strokePath(pocketLip, color: NSColor(hex: 0x42e1de), width: max(1.2, scaled(12, for: size)))
+private func drawSpark(size: CGFloat) {
+    let center = point(512, 324, size)
+    let radius = scaled(size >= 96 ? 54 : 62, size)
+    let path = NSBezierPath()
+    path.move(to: NSPoint(x: center.x, y: center.y + radius))
+    path.curve(to: NSPoint(x: center.x + radius, y: center.y), controlPoint1: NSPoint(x: center.x + radius * 0.18, y: center.y + radius * 0.38), controlPoint2: NSPoint(x: center.x + radius * 0.42, y: center.y + radius * 0.18))
+    path.curve(to: NSPoint(x: center.x, y: center.y - radius), controlPoint1: NSPoint(x: center.x + radius * 0.42, y: center.y - radius * 0.18), controlPoint2: NSPoint(x: center.x + radius * 0.18, y: center.y - radius * 0.38))
+    path.curve(to: NSPoint(x: center.x - radius, y: center.y), controlPoint1: NSPoint(x: center.x - radius * 0.18, y: center.y - radius * 0.38), controlPoint2: NSPoint(x: center.x - radius * 0.42, y: center.y - radius * 0.18))
+    path.curve(to: NSPoint(x: center.x, y: center.y + radius), controlPoint1: NSPoint(x: center.x - radius * 0.42, y: center.y + radius * 0.18), controlPoint2: NSPoint(x: center.x - radius * 0.18, y: center.y + radius * 0.38))
+    path.close()
+    NSColor(hex: 0x705dff).setFill()
+    path.fill()
+}
 
-    if shouldDrawDetails {
-        drawLine(from: point(406, 632, size: size), to: point(578, 632, size: size), color: NSColor(hex: 0x5dbbff), width: max(1, scaled(18, for: size)))
-        drawLine(from: point(406, 570, size: size), to: point(604, 570, size: size), color: NSColor(hex: 0x9ba7b8).withAlphaComponent(0.62), width: max(1, scaled(13, for: size)))
-        drawLine(from: point(406, 526, size: size), to: point(604, 526, size: size), color: NSColor(hex: 0x9ba7b8).withAlphaComponent(0.52), width: max(1, scaled(13, for: size)))
-        drawCircle(center: point(420, 470, size: size), radius: scaled(14, for: size), fill: NSColor(hex: 0x8065ff), stroke: NSColor.white.withAlphaComponent(0.18), strokeWidth: max(0.5, scaled(2, for: size)))
-        drawCircle(center: point(468, 470, size: size), radius: scaled(14, for: size), fill: NSColor(hex: 0x40ddd8), stroke: NSColor.white.withAlphaComponent(0.18), strokeWidth: max(0.5, scaled(2, for: size)))
+private func drawIcon(size: CGFloat) {
+    NSColor.clear.setFill()
+    NSRect(x: 0, y: 0, width: size, height: size).fill()
+    _ = drawBackground(size: size)
+    drawRings(size: size)
+    drawNodes(size: size)
+    drawDocument(size: size)
+    drawPocket(size: size)
+    if size >= 96 {
+        line(point(406, 632, size), point(578, 632, size), NSColor(hex: 0x5dbbff), max(1, scaled(18, size)))
+        line(point(406, 570, size), point(604, 570, size), NSColor(hex: 0x9ba7b8).withAlphaComponent(0.62), max(1, scaled(13, size)))
+        circle(point(444, 470, size), scaled(14, size), fill: NSColor(hex: 0x40ddd8), stroke: NSColor.white.withAlphaComponent(0.18), width: max(0.5, scaled(2, size)))
     }
-
-    drawSpark(center: point(512, 324, size: size), radius: scaled(size >= 96 ? 54 : 62, for: size), color: NSColor(hex: 0x705dff))
-    if shouldDrawDetails {
-        drawLine(from: point(452, 356, size: size), to: point(432, 376, size: size), color: NSColor(hex: 0x5dbbff), width: max(1, scaled(8, for: size)))
-        drawLine(from: point(572, 356, size: size), to: point(592, 376, size: size), color: NSColor(hex: 0x5dbbff), width: max(1, scaled(8, for: size)))
-        drawLine(from: point(452, 292, size: size), to: point(432, 272, size: size), color: NSColor(hex: 0x5dbbff), width: max(1, scaled(8, for: size)))
-        drawLine(from: point(572, 292, size: size), to: point(592, 272, size: size), color: NSColor(hex: 0x5dbbff), width: max(1, scaled(8, for: size)))
-    }
+    drawSpark(size: size)
 }
 
 private func writeIcon(_ icon: IconImage) throws {
-    let pixels = icon.pixels
     guard let rep = NSBitmapImageRep(
         bitmapDataPlanes: nil,
-        pixelsWide: pixels,
-        pixelsHigh: pixels,
+        pixelsWide: icon.pixels,
+        pixelsHigh: icon.pixels,
         bitsPerSample: 8,
         samplesPerPixel: 4,
         hasAlpha: true,
@@ -286,13 +205,12 @@ private func writeIcon(_ icon: IconImage) throws {
     ) else {
         throw NSError(domain: "SomaIcon", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create bitmap rep"])
     }
-    rep.size = NSSize(width: pixels, height: pixels)
+    rep.size = NSSize(width: icon.pixels, height: icon.pixels)
     NSGraphicsContext.saveGraphicsState()
     NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
     NSGraphicsContext.current?.imageInterpolation = .high
-    drawIcon(size: CGFloat(pixels))
+    drawIcon(size: CGFloat(icon.pixels))
     NSGraphicsContext.restoreGraphicsState()
-
     guard let png = rep.representation(using: .png, properties: [:]) else {
         throw NSError(domain: "SomaIcon", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to encode PNG"])
     }
@@ -300,21 +218,8 @@ private func writeIcon(_ icon: IconImage) throws {
 }
 
 private func writeContents() throws {
-    let images = iconImages.map { icon -> [String: String] in
-        [
-            "filename": icon.filename,
-            "idiom": "mac",
-            "scale": icon.scale,
-            "size": icon.size,
-        ]
-    }
-    let payload: [String: Any] = [
-        "images": images,
-        "info": [
-            "author": "xcode",
-            "version": 1,
-        ],
-    ]
+    let images = iconImages.map { ["filename": $0.filename, "idiom": "mac", "scale": $0.scale, "size": $0.size] }
+    let payload: [String: Any] = ["images": images, "info": ["author": "xcode", "version": 1]]
     var data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
     data.append(0x0a)
     try data.write(to: outputDirectory.appendingPathComponent("Contents.json"), options: .atomic)
