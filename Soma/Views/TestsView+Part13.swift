@@ -73,15 +73,15 @@ extension TestsView {
 
 
     func effectiveConfidence(_ confidence: TestRunConfidence?) -> Double {
-        guard confidence?.status != "failed", let value = confidence?.confidence else { return -1 }
+        guard let confidence, !confidence.isFailed, let value = confidence.usableConfidence else { return -1 }
         return value
     }
 
 
     func runLowStageCount(_ row: TestRunResult) -> Int {
         [row.translationConfidence, row.improveConfidence, row.overallConfidence].reduce(0) { count, confidence in
-            if confidence?.status == "failed" { return count + 1 }
-            if let value = confidence?.confidence, value < 0.75 { return count + 1 }
+            if confidence?.isFailed == true { return count + 1 }
+            if let value = confidence?.usableConfidence, value < 0.75 { return count + 1 }
             return count
         }
     }
@@ -89,17 +89,19 @@ extension TestsView {
 
     func runConfidenceHelp(_ confidence: TestRunConfidence?) -> String {
         guard let confidence else { return "No confidence result" }
-        let value = confidence.confidence.map { String(format: "%.2f", $0) } ?? "n/a"
-        let status = confidence.status ?? "unknown"
+        let value = confidence.isFailed ? "failed" : (confidence.usableConfidence.map { String(format: "%.2f", $0) } ?? "n/a")
+        let status = confidence.canonicalStatus
+        let raw = confidence.rawOrConfidence.map { ", raw \(String(format: "%.2f", $0))" } ?? ""
         let reasoning = confidence.reasoningEffort ?? RusToPromptSettingsStore.defaultConfidenceReasoning
-        return "status \(status), confidence \(value), reasoning \(reasoning)"
+        let stageNote = confidence.stage == "overall" ? ", Overall is final prompt safety, not improver quality" : ""
+        return "status \(status), confidence \(value)\(raw), reasoning \(reasoning)\(stageNote)"
     }
 
 
     func runConfidenceSummary(_ confidence: TestRunConfidence?) -> String {
         guard let confidence else { return "n/a" }
-        if confidence.status == "failed" { return "failed" }
-        return "\(formatConfidence(confidence.confidence)) \(confidence.status ?? "unknown")"
+        if confidence.isFailed { return "failed" }
+        return "\(formatConfidence(confidence.usableConfidence)) \(confidence.canonicalStatus)"
     }
 
 

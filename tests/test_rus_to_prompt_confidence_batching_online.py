@@ -75,6 +75,48 @@ def score_batch(items, provider="gemini", **overrides):
 
 
 class RusToPromptOnlineConfidenceBatchingTests(unittest.TestCase):
+    def test_confidence_normalization_preserves_raw_and_uses_fixed_score_ceiling(self):
+        confidence = rus_to_prompt_stress.normalize_confidence_payload(
+            {
+                "status": "success",
+                "confidence": 0.95,
+                "verdict": "pass",
+                "scores": {
+                    "intent_preservation": 4,
+                    "english_quality": 4,
+                    "protected_span_preservation": 5,
+                    "no_invention": 4,
+                },
+                "warnings": [],
+                "notes": [],
+            },
+            provider="local",
+            model="judge-a",
+            stage="translation",
+            seconds=1.0,
+        )
+
+        self.assertEqual(confidence["raw_confidence"], 0.95)
+        self.assertLess(confidence["confidence"], 0.95)
+        self.assertGreater(confidence["confidence"], 0.84)
+        self.assertEqual(confidence["status"], "ok")
+        self.assertTrue(confidence["calibrated_from_scores"])
+
+    def test_confidence_normalization_canonicalizes_nonstandard_failed_status(self):
+        confidence = rus_to_prompt_stress.normalize_confidence_payload(
+            {"status": "rejected", "confidence": 0.95, "verdict": "pass", "scores": dict(SCORES), "warnings": [], "notes": []},
+            provider="local",
+            model="judge-a",
+            stage="overall",
+            seconds=1.0,
+        )
+
+        self.assertEqual(confidence["raw_confidence"], 0.95)
+        self.assertIsNone(confidence["confidence"])
+        self.assertEqual(confidence["effective_score"], 0.0)
+        self.assertEqual(confidence["status"], "failed")
+        self.assertEqual(confidence["verdict"], "fail")
+
     def test_gemini_batch_confidence_maps_each_item(self):
         _case, items = make_items()
 
@@ -181,10 +223,140 @@ class RusToPromptOnlineConfidenceBatchingTests(unittest.TestCase):
 
         capped = rus_to_prompt_stress.apply_deterministic_confidence_caps(confidence, result, "translation")
 
-        self.assertEqual(capped["confidence"], 0.50)
-        self.assertEqual(capped["status"], "review")
+        self.assertIsNone(capped["confidence"])
+        self.assertEqual(capped["raw_confidence"], 0.96)
+        self.assertEqual(capped["effective_score"], 0.0)
+        self.assertEqual(capped["status"], "failed")
         self.assertEqual(capped["verdict"], "fail")
         self.assertIn("internal instruction leak", capped["deterministic_confidence_cap_reasons"])
+
+    def test_translation_prompt_rewrite_caps_translation_confidence_and_blocks_gate(self):
+        case, _items = make_items("rtp-translation-rewrite")
+        result = make_result(case, "translation-only")
+        result.status = "translation_only"
+        result.improve_status = None
+        result.improved_prompt = ""
+        result.translation = "**Task:** Determine additional AI features for the editor.\n\nRequirements:\n- Prioritize implementation value."
+        confidence = {"provider": "hybrid", "model": "local-a + local-b", "stage": "translation", "status": "ok", "confidence": 0.99, "verdict": "pass", "warnings": []}
+
+        capped = rus_to_prompt_stress.apply_deterministic_confidence_caps(confidence, result, "translation")
+
+        self.assertIsNone(capped["confidence"])
+        self.assertEqual(capped["raw_confidence"], 0.99)
+        self.assertEqual(capped["effective_score"], 0.0)
+        self.assertEqual(capped["status"], "failed")
+        self.assertEqual(capped["verdict"], "fail")
+        self.assertFalse(rus_to_prompt_stress.translation_confidence_allows_improve(capped, 0.50))
+        self.assertTrue(any("prompt rewrite" in reason for reason in capped["deterministic_confidence_cap_reasons"]))
+
+    def test_overall_confidence_caps_degraded_warning_fallback_result(self):
+        case, _items = make_items("rtp-overall-cap")
+        result = make_result(case, "improver-a")
+        result.status = "degraded"
+        result.improve_status = "degraded"
+        result.improved_prompt = result.translation
+        result.warnings = [
+            "Prompt improvement failed validation: retry failed",
+            "Codex improvement failed validation: dropped protected placeholders",
+        ]
+        confidence = {"provider": "hybrid", "model": "local-a + local-b", "stage": "overall", "status": "ok", "confidence": 1.0, "verdict": "pass", "warnings": []}
+
+        capped = rus_to_prompt_stress.apply_deterministic_confidence_caps(confidence, result, "overall")
+
+        self.assertIsNone(capped["confidence"])
+        self.assertEqual(capped["raw_confidence"], 1.0)
+        self.assertEqual(capped["effective_score"], 0.0)
+        self.assertEqual(capped["status"], "failed")
+        self.assertEqual(capped["verdict"], "fail")
+        reasons = "\n".join(capped["deterministic_confidence_cap_reasons"])
+        self.assertIn("pipeline status degraded", reasons)
+        self.assertIn("pipeline warning", reasons)
+        self.assertIn("fell back to translation", reasons)
+
+    def test_reasoning_transcript_output_caps_improver_confidence(self):
+        case = rus_to_prompt_stress.PromptCase("rtp-reasoning-leak", "unit", "Проверь, что последний линтер для SWIFT работает корректно.")
+        result = rus_to_prompt_stress.build_case_result_from_payloads(
+            case,
+            "qwen3.5:9b",
+            "qwen3:30b-a3b",
+            "local",
+            "local",
+            {"status": "ok", "translation_status": "translated", "translation": "Verify that the latest linter for SWIFT works correctly.", "source_language": "ru", "warnings": []},
+            {
+                "status": "ok",
+                "improved_prompt": (
+                    "Hmm, the user is asking me to correct a rejected prompt rewrite. "
+                    "The key issue was that the previous rewrite leaked internal instructions. "
+                    "Verify that the latest linter for SWIFT works correctly."
+                ),
+                "warnings": [],
+            },
+            1.0,
+            1.0,
+        )
+        confidence = {"provider": "hybrid", "model": "local-a + local-b", "stage": "improve", "status": "ok", "confidence": 0.95, "verdict": "pass", "warnings": []}
+
+        capped = rus_to_prompt_stress.apply_deterministic_confidence_caps(confidence, result, "improve")
+
+        self.assertTrue(result.internal_instruction_leak)
+        self.assertTrue(result.meta_prompt_output)
+        self.assertIsNone(capped["confidence"])
+        self.assertEqual(capped["raw_confidence"], 0.95)
+        self.assertEqual(capped["effective_score"], 0.0)
+        self.assertEqual(capped["status"], "failed")
+        self.assertEqual(capped["verdict"], "fail")
+        self.assertIn("meta prompt or reasoning transcript", capped["deterministic_confidence_cap_reasons"])
+
+    def test_failed_or_empty_translation_confidence_is_hard_capped(self):
+        case, _items = make_items("rtp-empty-translation")
+        result = make_result(case, "translation-only")
+        result.status = "translation_only"
+        result.translation_status = "failed_fallback"
+        result.translation = ""
+        result.warnings = ["timed out"]
+        confidence = {"provider": "hybrid", "model": "local-a + local-b", "stage": "translation", "status": "ok", "confidence": 0.92, "verdict": "pass", "warnings": []}
+
+        capped = rus_to_prompt_stress.apply_deterministic_confidence_caps(confidence, result, "translation")
+
+        self.assertIsNone(capped["confidence"])
+        self.assertEqual(capped["raw_confidence"], 0.92)
+        self.assertEqual(capped["effective_score"], 0.0)
+        self.assertEqual(capped["status"], "failed")
+        self.assertEqual(capped["verdict"], "fail")
+        reasons = "\n".join(capped["deterministic_confidence_cap_reasons"])
+        self.assertIn("empty translation", reasons)
+        self.assertIn("translation failed", reasons)
+        self.assertFalse(rus_to_prompt_stress.translation_confidence_allows_improve(capped, 0.75))
+
+    def test_reasoning_tag_output_degrades_row_and_caps_improver_confidence(self):
+        case = rus_to_prompt_stress.PromptCase("rtp-think-tag", "unit", "Сделай Project Info компактнее.")
+        result = rus_to_prompt_stress.build_case_result_from_payloads(
+            case,
+            "qwen3.5:9b",
+            "qwen3:30b-a3b",
+            "local",
+            "local",
+            {"status": "ok", "translation_status": "translated", "translation": "Make Project Info more compact.", "source_language": "ru", "warnings": []},
+            {
+                "status": "ok",
+                "improved_prompt": "Make Project Info more compact.\n</think>\n\nMake Project Info more compact.",
+                "warnings": [],
+            },
+            1.0,
+            1.0,
+        )
+        confidence = {"provider": "hybrid", "model": "local-a + local-b", "stage": "improve", "status": "ok", "confidence": 0.95, "verdict": "pass", "warnings": []}
+
+        capped = rus_to_prompt_stress.apply_deterministic_confidence_caps(confidence, result, "improve")
+
+        self.assertEqual(result.status, "degraded")
+        self.assertTrue(result.meta_prompt_output)
+        self.assertTrue(any("reasoning tags" in warning for warning in result.warnings))
+        self.assertIsNone(capped["confidence"])
+        self.assertEqual(capped["raw_confidence"], 0.95)
+        self.assertEqual(capped["effective_score"], 0.0)
+        self.assertEqual(capped["status"], "failed")
+        self.assertEqual(capped["verdict"], "fail")
 
 
 if __name__ == "__main__":

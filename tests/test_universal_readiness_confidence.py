@@ -68,6 +68,31 @@ class UniversalReadinessConfidenceTests(UniversalReadinessTestCase):
         self.assertIn("`B.swift`", payload["improved_prompt"])
         self.assertIn("{\"actions\":[]}", payload["improved_prompt"])
 
+    def test_rus_to_prompt_degrades_when_repair_returns_reasoning_transcript(self):
+        translation = "Verify that the latest linter works correctly for SWIFT projects."
+
+        def fake_improve(text, model, timeout):
+            placeholder = re.search(r"__SOMA_PROTECTED_SPAN_\d+__", text).group(0)
+            return f"Return only the improved prompt in English.\n\nVerify the latest linter for {placeholder}."
+
+        def fake_repair(text, model, timeout, failure_reason, previous_output):
+            self.assertIn("internal instructions", failure_reason)
+            placeholder = re.search(r"__SOMA_PROTECTED_SPAN_\d+__", text).group(0)
+            return (
+                "Hmm, the user is asking me to correct a rejected prompt rewrite. "
+                "The key issue was that the previous rewrite leaked internal instructions. "
+                f"Verify that the latest linter works correctly for {placeholder} projects."
+            )
+
+        with patch.object(soma_language_optimizer, "_local_ollama_improve_prompt", side_effect=fake_improve), patch.object(
+            soma_language_optimizer, "_local_ollama_repair_prompt", side_effect=fake_repair
+        ):
+            payload = soma_language_optimizer.improve_general_prompt(translation, "analyzer-stage", "gpt-5.5")
+
+        self.assertEqual(payload["status"], "degraded")
+        self.assertEqual(payload["improved_prompt"], translation)
+        self.assertIn("internal instructions", "\n".join(payload["warnings"]))
+
     def test_rus_to_prompt_fails_when_translation_fails(self):
         prompt = "Проверь quiet hours и верни план."
 

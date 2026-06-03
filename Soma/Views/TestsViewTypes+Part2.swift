@@ -13,6 +13,7 @@ struct TestModelCombinationSummary: Decodable, Identifiable {
     let translationConfidence: TestConfidenceAggregate
     let improveConfidence: TestConfidenceAggregate
     let overallConfidence: TestConfidenceAggregate
+    let qualityScore: Double?
     let lowConfidenceCount: Int
     let durationSeconds: Double
     let topWarnings: [String]
@@ -29,6 +30,7 @@ struct TestModelCombinationSummary: Decodable, Identifiable {
         case translationConfidence = "translation_confidence"
         case improveConfidence = "improve_confidence"
         case overallConfidence = "overall_confidence"
+        case qualityScore = "quality_score"
         case lowConfidenceCount = "low_confidence_count"
         case durationSeconds = "duration_seconds"
         case topWarnings = "top_warnings"
@@ -55,6 +57,60 @@ struct TestSummaryEnvelope: Decodable {
     }
 }
 
+struct TestConfidenceStateEnvelope: Decodable {
+    let localJudges: [String: TestConfidenceJudgePayload]
+    enum CodingKeys: String, CodingKey {
+        case localJudges = "local_judges"
+    }
+}
+
+struct TestConfidenceJudgePayload: Decodable, Hashable {
+    let stage: String?
+    let status: String?
+    let rawStatus: String?
+    let confidence: Double?
+    let rawConfidence: Double?
+    let effectiveScore: Double?
+    let verdict: String?
+    let provider: String?
+    let model: String?
+    let error: String?
+    let warnings: [String]?
+    let notes: [String]?
+    let seconds: Double?
+    let deterministicCapReasons: [String]?
+    enum CodingKeys: String, CodingKey {
+        case stage
+        case status
+        case rawStatus = "raw_status"
+        case confidence
+        case rawConfidence = "raw_confidence"
+        case effectiveScore = "effective_score"
+        case verdict
+        case provider
+        case model
+        case error
+        case warnings
+        case notes
+        case seconds
+        case deterministicCapReasons = "deterministic_confidence_cap_reasons"
+    }
+    var canonicalStatus: String {
+        testCanonicalConfidenceStatus(status: status, verdict: verdict, confidence: confidence, capReasons: deterministicCapReasons)
+    }
+    var isFailed: Bool { canonicalStatus == "failed" }
+    var usableConfidence: Double? { isFailed ? nil : confidence }
+    var displayScore: Double? { isFailed ? 0 : (effectiveScore ?? confidence) }
+    var rawOrConfidence: Double? { rawConfidence ?? confidence }
+}
+
+struct TestConfidenceJudgeResult: Identifiable, Hashable {
+    let itemID: String
+    let judgeModel: String
+    let payload: TestConfidenceJudgePayload
+    var id: String { "\(itemID)|\(judgeModel)" }
+}
+
 struct TestModelStatsEnvelope: Decodable {
     let generatedAt: String?
     let scannedRuns: Int
@@ -75,6 +131,7 @@ struct TestModelRoleStats: Decodable, Identifiable {
     let provider: String
     let attempts: Int
     let confidenceCount: Int
+    let qualityScore: Double?
     let avgConfidence: Double?
     let medianConfidence: Double?
     let minConfidence: Double?
@@ -82,6 +139,8 @@ struct TestModelRoleStats: Decodable, Identifiable {
     let confidenceFailedCount: Int
     let pipelineFailedCount: Int
     let degradedCount: Int
+    let problemCount: Int?
+    let worstEffectiveScore: Double?
     let avgSeconds: Double?
     let lastTestedAt: String?
     let worstCases: [TestModelStatsCase]
@@ -93,6 +152,7 @@ struct TestModelRoleStats: Decodable, Identifiable {
         case provider
         case attempts
         case confidenceCount = "confidence_count"
+        case qualityScore = "quality_score"
         case avgConfidence = "avg_confidence"
         case medianConfidence = "median_confidence"
         case minConfidence = "min_confidence"
@@ -100,6 +160,8 @@ struct TestModelRoleStats: Decodable, Identifiable {
         case confidenceFailedCount = "confidence_failed_count"
         case pipelineFailedCount = "pipeline_failed_count"
         case degradedCount = "degraded_count"
+        case problemCount = "problem_count"
+        case worstEffectiveScore = "worst_effective_score"
         case avgSeconds = "avg_seconds"
         case lastTestedAt = "last_tested_at"
         case worstCases = "worst_cases"
@@ -113,6 +175,7 @@ struct TestModelStatsCase: Decodable, Identifiable {
     let caseID: String
     let category: String?
     let confidence: Double?
+    let effectiveScore: Double?
     let confidenceFailed: Bool?
     let status: String?
     let relatedModel: String?
@@ -123,6 +186,7 @@ struct TestModelStatsCase: Decodable, Identifiable {
         case caseID = "case_id"
         case category
         case confidence
+        case effectiveScore = "effective_score"
         case confidenceFailed = "confidence_failed"
         case status
         case relatedModel = "related_model"
@@ -140,6 +204,7 @@ struct TestModelStatsRecentRun: Decodable, Identifiable {
     let runDir: String
     let finishedAt: String?
     let attempts: Int
+    let qualityScore: Double?
     let avgConfidence: Double?
     let lowConfidenceCount: Int
     let failedCount: Int
@@ -148,6 +213,7 @@ struct TestModelStatsRecentRun: Decodable, Identifiable {
         case runDir = "run_dir"
         case finishedAt = "finished_at"
         case attempts
+        case qualityScore = "quality_score"
         case avgConfidence = "avg_confidence"
         case lowConfidenceCount = "low_confidence_count"
         case failedCount = "failed_count"

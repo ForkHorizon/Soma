@@ -42,6 +42,40 @@ extension TestsView {
                     .lineLimit(3)
                     .textSelection(.enabled)
             }
+
+            let samples = resultSamples(for: row)
+            if !samples.isEmpty {
+                Divider()
+                Text("Case samples")
+                    .font(.caption.bold())
+                VStack(spacing: 0) {
+                    ForEach(samples) { sample in
+                        Button {
+                            selectedResultsMode = .byCase
+                            selectedRunRowID = sample.id
+                            expandedRunDebugIDs.insert(sample.id)
+                        } label: {
+                            HStack(spacing: 8) {
+                                Text(sample.caseID)
+                                    .font(.caption.monospaced().weight(.semibold))
+                                    .frame(width: 86, alignment: .leading)
+                                Text(runConfidenceSummary(sample.improveConfidence ?? sample.translationConfidence))
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundColor(confidenceTone((sample.improveConfidence ?? sample.translationConfidence)?.usableConfidence, failed: (sample.improveConfidence ?? sample.translationConfidence)?.isFailed == true ? 1 : 0).color)
+                                    .frame(width: 78, alignment: .leading)
+                                Text((sample.improvedPrompt?.isEmpty == false ? sample.improvedPrompt : sample.translation) ?? "")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                            }
+                            .padding(.vertical, 4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
         }
         .padding(10)
         .background(Color(NSColor.textBackgroundColor).opacity(0.45))
@@ -57,6 +91,12 @@ extension TestsView {
             runDetailMetadata(row)
             Divider()
             runStageColumns(row)
+            Divider()
+            if isRunDebugExpanded(row.id) {
+                runConfidenceDebugColumns(row, judgesByItemID: resultConfidenceJudgesByItemID)
+            } else {
+                collapsedRunDebugHint(row)
+            }
             runWarningsView(warnings)
         }
         .padding(10)
@@ -75,6 +115,13 @@ extension TestsView {
             Spacer()
             StatusChip(text: row.status, tone: runStatusTone(row.status))
             StatusChip(text: "low \(runLowStageCount(row))", tone: runLowStageCount(row) > 0 ? .warning : .good)
+            Button {
+                toggleRunDebug(row.id)
+            } label: {
+                Label(isRunDebugExpanded(row.id) ? "Hide Debug" : "Show Debug", systemImage: isRunDebugExpanded(row.id) ? "chevron.up" : "chevron.down")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.mini)
         }
     }
 
@@ -92,12 +139,12 @@ extension TestsView {
     }
 
 
-    func runStageColumns(_ row: TestRunResult) -> some View {
+    func runStageColumns(_ row: TestRunResult, sourcePrompt: String? = nil) -> some View {
         HStack(alignment: .top, spacing: 12) {
             runTextStage(
                 title: "1. Source",
                 subtitle: row.category ?? row.caseID,
-                text: resultPromptByCaseID[row.caseID] ?? "Source prompt not found in prompts.json."
+                text: sourcePrompt ?? resultPromptByCaseID[row.caseID] ?? "Source prompt not found in prompts.json."
             )
             runTextStage(
                 title: "2. Translation",
@@ -145,6 +192,304 @@ extension TestsView {
             .frame(minHeight: 88, maxHeight: 150)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+
+    func resultSamples(for row: TestModelCombinationSummary) -> [TestRunResult] {
+        Array(resultRunRows
+            .filter { $0.translatorModel == row.translatorModel && $0.analyzerModel == row.analyzerModel }
+            .sorted {
+                let lhs = effectiveConfidence($0.overallConfidence ?? $0.improveConfidence ?? $0.translationConfidence)
+                let rhs = effectiveConfidence($1.overallConfidence ?? $1.improveConfidence ?? $1.translationConfidence)
+                if lhs == rhs { return $0.caseID < $1.caseID }
+                return lhs < rhs
+            }
+            .prefix(5))
+    }
+
+
+    func isRunDebugExpanded(_ id: String) -> Bool {
+        expandedRunDebugIDs.contains(id)
+    }
+
+
+    func toggleRunDebug(_ id: String) {
+        if expandedRunDebugIDs.contains(id) {
+            expandedRunDebugIDs.remove(id)
+        } else {
+            expandedRunDebugIDs.insert(id)
+        }
+    }
+
+
+    func collapsedRunDebugHint(_ row: TestRunResult) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "doc.text.magnifyingglass")
+                .foregroundColor(.secondary)
+            Text("Debug hidden for \(row.caseID). Click the row again or use Show Debug to inspect per-judge confidence.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+            Spacer()
+        }
+    }
+
+
+    func runConfidenceDebugColumns(
+        _ row: TestRunResult,
+        judgesByItemID: [String: [TestConfidenceJudgeResult]]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("Confidence Debug")
+                    .font(.caption.bold())
+                StatusChip(text: "\(confidenceJudgeCount(row, judgesByItemID: judgesByItemID)) judge rows", tone: confidenceJudgeCount(row, judgesByItemID: judgesByItemID) > 0 ? .info : .neutral)
+                Spacer()
+                Text("Overall is final prompt safety; Improve is improver quality.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+
+            HStack(alignment: .top, spacing: 12) {
+                runConfidenceDebugStage(
+                    title: "Translation",
+                    stage: "translation",
+                    finalConfidence: row.translationConfidence,
+                    row: row,
+                    judgesByItemID: judgesByItemID
+                )
+                runConfidenceDebugStage(
+                    title: "Improve",
+                    stage: "improve",
+                    finalConfidence: row.improveConfidence,
+                    row: row,
+                    judgesByItemID: judgesByItemID
+                )
+                runConfidenceDebugStage(
+                    title: "Overall",
+                    stage: "overall",
+                    finalConfidence: row.overallConfidence,
+                    row: row,
+                    judgesByItemID: judgesByItemID
+                )
+            }
+        }
+    }
+
+
+    func runConfidenceDebugStage(
+        title: String,
+        stage: String,
+        finalConfidence: TestRunConfidence?,
+        row: TestRunResult,
+        judgesByItemID: [String: [TestConfidenceJudgeResult]]
+    ) -> some View {
+        let judges = confidenceJudges(for: row, stage: stage, confidence: finalConfidence, judgesByItemID: judgesByItemID)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.caption.bold())
+                Spacer()
+                StatusChip(
+                    text: runConfidenceSummary(finalConfidence),
+                    tone: confidenceTone(finalConfidence?.usableConfidence, failed: finalConfidence?.isFailed == true ? 1 : 0)
+                )
+            }
+
+            Text(confidenceMetaText(finalConfidence, fallbackStage: stage))
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .lineLimit(2)
+                .truncationMode(.middle)
+
+            if judges.isEmpty {
+                Text("No per-judge state saved for this stage.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                VStack(spacing: 5) {
+                    ForEach(judges) { judge in
+                        confidenceJudgeRow(judge)
+                    }
+                }
+            }
+
+            let notes = confidenceDetailLines(finalConfidence)
+            if !notes.isEmpty {
+                Text(notes.joined(separator: "\n"))
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .lineLimit(4)
+                    .textSelection(.enabled)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .padding(8)
+        .background(Color(NSColor.textBackgroundColor).opacity(0.30))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.10)))
+    }
+
+
+    func confidenceJudgeRow(_ judge: TestConfidenceJudgeResult) -> some View {
+        let payload = judge.payload
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Text(shortModelName(judge.judgeModel))
+                    .font(.caption2.monospaced().weight(.semibold))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer()
+                StatusChip(
+                    text: judgeConfidenceText(payload),
+                    tone: confidenceTone(payload.usableConfidence, failed: payload.isFailed ? 1 : 0)
+                )
+            }
+            Text(judgeMetaText(payload))
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .lineLimit(2)
+                .truncationMode(.middle)
+            let details = judgeDetailLines(payload)
+            if !details.isEmpty {
+                Text(details.joined(separator: "\n"))
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .lineLimit(3)
+                    .textSelection(.enabled)
+            }
+        }
+        .padding(6)
+        .background(Color.secondary.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+
+    func confidenceJudges(
+        for row: TestRunResult,
+        stage: String,
+        confidence: TestRunConfidence?,
+        judgesByItemID: [String: [TestConfidenceJudgeResult]]
+    ) -> [TestConfidenceJudgeResult] {
+        for itemID in confidenceItemIDs(for: row, stage: stage, confidence: confidence) {
+            if let judges = judgesByItemID[itemID], !judges.isEmpty {
+                return judges
+            }
+        }
+        return (confidence?.localJudges ?? []).enumerated().map { index, payload in
+            let model = payload.model ?? "local judge \(index + 1)"
+            return TestConfidenceJudgeResult(
+                itemID: confidence?.batchItemID ?? confidenceItemIDs(for: row, stage: stage, confidence: confidence).first ?? row.id,
+                judgeModel: model,
+                payload: payload
+            )
+        }
+    }
+
+
+    func confidenceItemIDs(for row: TestRunResult, stage: String, confidence: TestRunConfidence?) -> [String] {
+        var ids: [String] = []
+        if let batchItemID = confidence?.batchItemID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !batchItemID.isEmpty {
+            ids.append(batchItemID)
+        }
+        ids.append([row.caseID, row.translatorModel, row.analyzerModel, stage].joined(separator: "|"))
+        if stage == "translation" && row.analyzerModel != "translation-only" {
+            ids.append([row.caseID, row.translatorModel, "translation-only", stage].joined(separator: "|"))
+        }
+        var seen = Set<String>()
+        return ids.filter { seen.insert($0).inserted }
+    }
+
+
+    func confidenceJudgeCount(_ row: TestRunResult, judgesByItemID: [String: [TestConfidenceJudgeResult]]) -> Int {
+        [
+            ("translation", row.translationConfidence),
+            ("improve", row.improveConfidence),
+            ("overall", row.overallConfidence)
+        ].reduce(0) { count, item in
+            count + confidenceJudges(for: row, stage: item.0, confidence: item.1, judgesByItemID: judgesByItemID).count
+        }
+    }
+
+
+    func confidenceMetaText(_ confidence: TestRunConfidence?, fallbackStage: String) -> String {
+        guard let confidence else { return "No final confidence payload for \(fallbackStage)." }
+        var parts = [
+            confidence.stage ?? fallbackStage,
+            confidence.provider ?? "unknown provider",
+            confidence.model ?? "unknown model",
+            confidence.canonicalStatus
+        ]
+        if let rawStatus = confidence.rawStatus, rawStatus != confidence.canonicalStatus {
+            parts.append("raw \(rawStatus)")
+        }
+        if let rawConfidence = confidence.rawOrConfidence, rawConfidence != confidence.usableConfidence {
+            parts.append("raw score \(String(format: "%.2f", rawConfidence))")
+        }
+        if let seconds = confidence.seconds {
+            parts.append(formatSeconds(seconds))
+        }
+        if confidence.hybridEscalated == true {
+            parts.append("fallback \(confidence.fallbackProvider ?? "") \(confidence.fallbackModel ?? "")".trimmingCharacters(in: .whitespaces))
+        }
+        return parts.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+
+    func confidenceDetailLines(_ confidence: TestRunConfidence?) -> [String] {
+        guard let confidence else { return [] }
+        var lines: [String] = []
+        if let reason = confidence.hybridEscalationReason, !reason.isEmpty {
+            lines.append("Escalation: \(reason)")
+        }
+        lines.append(contentsOf: (confidence.deterministicCapReasons ?? []).map { "Cap: \($0)" })
+        lines.append(contentsOf: (confidence.warnings ?? []).map { "Warning: \($0)" })
+        lines.append(contentsOf: (confidence.notes ?? []).map { "Note: \($0)" })
+        if let error = confidence.error, !error.isEmpty {
+            lines.append("Error: \(error)")
+        }
+        return Array(lines.prefix(6))
+    }
+
+
+    func judgeConfidenceText(_ payload: TestConfidenceJudgePayload) -> String {
+        if payload.isFailed { return "failed" }
+        return formatConfidence(payload.usableConfidence)
+    }
+
+
+    func judgeMetaText(_ payload: TestConfidenceJudgePayload) -> String {
+        var parts = [
+            payload.provider ?? "local",
+            payload.stage ?? "stage",
+            payload.canonicalStatus,
+            payload.verdict ?? ""
+        ]
+        if let rawStatus = payload.rawStatus, rawStatus != payload.canonicalStatus {
+            parts.append("raw \(rawStatus)")
+        }
+        if let rawConfidence = payload.rawOrConfidence, rawConfidence != payload.usableConfidence {
+            parts.append("raw score \(String(format: "%.2f", rawConfidence))")
+        }
+        if let seconds = payload.seconds {
+            parts.append(formatSeconds(seconds))
+        }
+        return parts.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+
+    func judgeDetailLines(_ payload: TestConfidenceJudgePayload) -> [String] {
+        var lines: [String] = []
+        lines.append(contentsOf: (payload.deterministicCapReasons ?? []).map { "Cap: \($0)" })
+        lines.append(contentsOf: (payload.warnings ?? []).map { "Warning: \($0)" })
+        lines.append(contentsOf: (payload.notes ?? []).map { "Note: \($0)" })
+        if let error = payload.error, !error.isEmpty {
+            lines.append("Error: \(error)")
+        }
+        return Array(lines.prefix(5))
     }
 
 

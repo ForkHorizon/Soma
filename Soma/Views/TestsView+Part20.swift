@@ -90,7 +90,7 @@ extension TestsView {
     }
 
 
-    func queueLocalModelRows(selected: [String]) -> [RusToPromptModelPreset] {
+    func queueLocalModelRows(selected: [String], statsByModel: [String: TestModelRoleStats]) -> [RusToPromptModelPreset] {
         let knownLocal = (RusToPromptViewModel.translatorPresets + RusToPromptViewModel.analyzerPresets)
             .filter { !$0.isCodex && !$0.isGemini && RusToPromptQueueManager.isLocalStageModel($0.model) }
         var rows = installedModelPresets(knownPresets: knownLocal)
@@ -108,6 +108,20 @@ extension TestsView {
             seen.insert(model.lowercased())
         }
         return rows.sorted { lhs, rhs in
+            let lhsStats = statsByModel[lhs.model.lowercased()]
+            let rhsStats = statsByModel[rhs.model.lowercased()]
+            let lhsScore = lhsStats?.qualityScore ?? -1
+            let rhsScore = rhsStats?.qualityScore ?? -1
+            if lhsScore != rhsScore { return lhsScore > rhsScore }
+            let lhsClean = lhsStats.flatMap { modelStatsCleanRate($0) } ?? -1
+            let rhsClean = rhsStats.flatMap { modelStatsCleanRate($0) } ?? -1
+            if lhsClean != rhsClean { return lhsClean > rhsClean }
+            let lhsProblems = lhsStats.map { modelStatsProblemCount($0) } ?? Int.max
+            let rhsProblems = rhsStats.map { modelStatsProblemCount($0) } ?? Int.max
+            if lhsProblems != rhsProblems { return lhsProblems < rhsProblems }
+            let lhsAttempts = lhsStats?.attempts ?? -1
+            let rhsAttempts = rhsStats?.attempts ?? -1
+            if lhsAttempts != rhsAttempts { return lhsAttempts > rhsAttempts }
             let lhsSelected = selected.contains { $0.caseInsensitiveCompare(lhs.model) == .orderedSame }
             let rhsSelected = selected.contains { $0.caseInsensitiveCompare(rhs.model) == .orderedSame }
             if lhsSelected != rhsSelected { return lhsSelected }
@@ -127,6 +141,35 @@ extension TestsView {
         case .failed, .blocked, .interrupted:
             return .warning
         }
+    }
+
+
+    func queueItemTone(_ item: RusToPromptQueueItem) -> SomaStatusTone {
+        if item.statusMessage == "Waiting for power adapter" {
+            return .warning
+        }
+        if item.status == .completed && queueItemHasCompletionIssues(item) {
+            return .warning
+        }
+        if item.status == .running && queueManager.isPowerPaused && queueManager.activeItemID == item.id {
+            return .warning
+        }
+        return queueItemTone(item.status)
+    }
+
+
+    func queueItemStatusText(_ item: RusToPromptQueueItem) -> String {
+        if item.status == .completed && queueItemHasCompletionIssues(item) {
+            return "completed with issues"
+        }
+        return item.status.rawValue.replacingOccurrences(of: "_", with: " ")
+    }
+
+
+    func queueItemHasCompletionIssues(_ item: RusToPromptQueueItem) -> Bool {
+        guard item.status == .completed else { return false }
+        let message = item.statusMessage.lowercased()
+        return message.contains("with issues") || message.contains("failed summary") || message.contains("summary missing")
     }
 
 

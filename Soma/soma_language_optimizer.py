@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import subprocess
+import sys as _sys
+
+_sys.dont_write_bytecode = True
 
 from soma_language_optimizer_cli import main
 from soma_language_optimizer_codex import (
@@ -65,4 +68,5 @@ __all__ = [name for name in globals() if not name.startswith("__")]
 
 
 if __name__ == "__main__":
+    _sys.modules.setdefault("soma_language_optimizer", _sys.modules[__name__])
     raise SystemExit(main())

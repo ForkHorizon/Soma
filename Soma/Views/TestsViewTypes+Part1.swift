@@ -90,6 +90,7 @@ struct TestRankedModelPreset: Identifiable {
     var id: String { preset.id }
     var hasStats: Bool { stats != nil }
     var attempts: Int { stats?.attempts ?? 0 }
+    var qualityScore: Double? { stats?.qualityScore }
     var avgConfidence: Double? { stats?.avgConfidence }
     var avgSeconds: Double? { stats?.avgSeconds }
     var pipelineFailedCount: Int { stats?.pipelineFailedCount ?? 0 }
@@ -186,19 +187,90 @@ struct TestLowConfidenceCase: Decodable, Identifiable {
 }
 
 struct TestRunConfidence: Decodable, Hashable {
+    let stage: String?
     let status: String?
+    let rawStatus: String?
     let confidence: Double?
+    let rawConfidence: Double?
+    let effectiveScore: Double?
     let verdict: String?
+    let provider: String?
+    let model: String?
     let error: String?
     let warnings: [String]?
+    let notes: [String]?
+    let seconds: Double?
+    let batchItemID: String?
+    let fallbackProvider: String?
+    let fallbackModel: String?
+    let hybridEscalated: Bool?
+    let hybridEscalationReason: String?
+    let localJudges: [TestConfidenceJudgePayload]?
     let reasoningEffort: String?
+    let deterministicCapReasons: [String]?
     enum CodingKeys: String, CodingKey {
+        case stage
         case status
+        case rawStatus = "raw_status"
         case confidence
+        case rawConfidence = "raw_confidence"
+        case effectiveScore = "effective_score"
         case verdict
+        case provider
+        case model
         case error
         case warnings
+        case notes
+        case seconds
+        case batchItemID = "batch_item_id"
+        case fallbackProvider = "fallback_provider"
+        case fallbackModel = "fallback_model"
+        case hybridEscalated = "hybrid_escalated"
+        case hybridEscalationReason = "hybrid_escalation_reason"
+        case localJudges = "local_judges"
         case reasoningEffort = "reasoning_effort"
+        case deterministicCapReasons = "deterministic_confidence_cap_reasons"
+    }
+    var canonicalStatus: String {
+        testCanonicalConfidenceStatus(status: status, verdict: verdict, confidence: confidence, capReasons: deterministicCapReasons)
+    }
+    var isFailed: Bool { canonicalStatus == "failed" }
+    var usableConfidence: Double? { isFailed ? nil : confidence }
+    var displayScore: Double? { isFailed ? 0 : (effectiveScore ?? confidence) }
+    var rawOrConfidence: Double? { rawConfidence ?? confidence }
+}
+
+func testCanonicalConfidenceStatus(status: String?, verdict: String?, confidence: Double?, capReasons: [String]?) -> String {
+    let raw = (status ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let verdictText = (verdict ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let failedStatuses: Set<String> = ["failed", "fail", "failure", "error", "exception", "rejected", "reject", "timeout", "poor_translation"]
+    let reviewStatuses: Set<String> = ["review", "degraded", "warning", "warn", "uncertain", "low", "poor"]
+    let okStatuses: Set<String> = ["ok", "pass", "passed", "approved", "accepted", "success", "succeeded", "completed", "complete", "evaluated", "translation_only", "translated", "improved"]
+    if testConfidenceHasHardCap(capReasons) || failedStatuses.contains(raw) || failedStatuses.contains(verdictText) {
+        return "failed"
+    }
+    guard let confidence else { return "review" }
+    if confidence < 0.75 { return "review" }
+    if reviewStatuses.contains(raw) || reviewStatuses.contains(verdictText) { return "review" }
+    if okStatuses.contains(raw) || ["pass", "passed", "ok"].contains(verdictText) { return "ok" }
+    return "review"
+}
+
+func testConfidenceHasHardCap(_ reasons: [String]?) -> Bool {
+    guard let reasons else { return false }
+    return reasons.contains { reason in
+        let lowered = reason.lowercased()
+        return lowered.contains("internal placeholder leak")
+            || lowered.contains("internal instruction leak")
+            || lowered.contains("meta prompt")
+            || lowered.contains("reasoning transcript")
+            || lowered.contains("prompt rewrite")
+            || lowered.contains("empty translation")
+            || lowered.contains("translation failed")
+            || lowered.contains("translation pipeline failed")
+            || lowered.contains("missing protected spans")
+            || lowered.contains("improved prompt sanity")
+            || lowered.contains("fell back to translation")
     }
 }
 

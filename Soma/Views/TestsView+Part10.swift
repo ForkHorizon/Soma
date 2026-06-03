@@ -58,6 +58,7 @@ extension TestsView {
     var resultHeaderRow: some View {
         HStack(spacing: 10) {
             Text("Model pair").frame(maxWidth: .infinity, alignment: .leading)
+            Text("Quality").frame(width: 60, alignment: .leading)
             Text("Translation conf").frame(width: 96, alignment: .leading)
             Text("Improve conf").frame(width: 96, alignment: .leading)
             Text("Overall conf").frame(width: 96, alignment: .leading)
@@ -88,6 +89,10 @@ extension TestsView {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
+                Text(formatConfidence(row.qualityScore))
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundColor(confidenceTone(row.qualityScore, failed: row.failed).color)
+                    .frame(width: 60, alignment: .leading)
                 confidenceSummaryCell(row.translationConfidence)
                     .frame(width: 96, alignment: .leading)
                 confidenceSummaryCell(row.improveConfidence)
@@ -117,7 +122,12 @@ extension TestsView {
 
     func caseRunRow(_ row: TestRunResult) -> some View {
         Button {
-            selectedRunRowID = row.id
+            if selectedRunRowID == row.id {
+                toggleRunDebug(row.id)
+            } else {
+                selectedRunRowID = row.id
+                expandedRunDebugIDs.insert(row.id)
+            }
         } label: {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -174,8 +184,8 @@ extension TestsView {
 
 
     func runConfidenceCell(_ confidence: TestRunConfidence?) -> some View {
-        let failed = confidence?.status == "failed"
-        let value = failed ? nil : confidence?.confidence
+        let failed = confidence?.isFailed == true
+        let value = confidence?.usableConfidence
         return HStack(spacing: 4) {
             Text(failed ? "failed" : formatConfidence(value))
                 .font(.caption.monospacedDigit().weight(.semibold))

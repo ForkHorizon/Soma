@@ -92,6 +92,13 @@ struct RusToPromptQueueItem: Identifiable, Codable, Hashable {
 struct RusToPromptQueueDiskState: Codable {
     var settings: RusToPromptQueueSettings
     var items: [RusToPromptQueueItem]
+    var isPaused: Bool?
+    var isPowerPaused: Bool?
+}
+enum RusToPromptQueuePowerSource: String {
+    case externalPower
+    case battery
+    case unknown
 }
 struct QueueProgressEvent: Decodable {
     let event: String?
@@ -101,8 +108,17 @@ struct QueueProgressEvent: Decodable {
     let analyzerModel: String?
     let operationIndex: Int?
     let totalOperations: Int?
+    let batchSize: Int?
+    let batchIndex: Int?
+    let batchTotal: Int?
     let status: String?
     let reason: String?
+    let confidence: Double?
+    let confidenceModel: String?
+    let confidenceJudgeIndex: Int?
+    let confidenceJudgeTotal: Int?
+    let confidenceItemIDs: [String]?
+    let confidenceModelRefs: [QueueProgressModelRef]?
     enum CodingKeys: String, CodingKey {
         case event
         case stage
@@ -111,9 +127,35 @@ struct QueueProgressEvent: Decodable {
         case analyzerModel = "analyzer_model"
         case operationIndex = "operation_index"
         case totalOperations = "total_operations"
+        case batchSize = "batch_size"
+        case batchIndex = "batch_index"
+        case batchTotal = "batch_total"
         case status
         case reason
+        case confidence
+        case confidenceModel = "confidence_model"
+        case confidenceJudgeIndex = "confidence_judge_index"
+        case confidenceJudgeTotal = "confidence_judge_total"
+        case confidenceItemIDs = "confidence_item_ids"
+        case confidenceModelRefs = "confidence_model_refs"
     }
+}
+struct QueueProgressModelRef: Decodable, Hashable {
+    let translatorModel: String?
+    let analyzerModel: String?
+    enum CodingKeys: String, CodingKey {
+        case translatorModel = "translator_model"
+        case analyzerModel = "analyzer_model"
+    }
+}
+struct QueueModelProgressState: Hashable {
+    let itemID: String
+    let role: String
+    let model: String
+    var label: String
+    var detail: String
+    var status: String
+    var updatedAt: Date
 }
 struct QueueOllamaTagsResponse: Decodable {
     let models: [OllamaInstalledModel]
@@ -130,6 +172,9 @@ final class RusToPromptQueueManager: ObservableObject {
     @Published var currentOutputPath: String?
     @Published var recentActivity: [String] = []
     @Published var freeMemoryGB: Double?
+    @Published var powerSource: RusToPromptQueuePowerSource = .unknown
+    @Published var isPowerPaused = false
+    @Published var modelProgress: [String: QueueModelProgressState] = [:]
 
     let progressPrefix = "SOMA_PROGRESS "
 
@@ -149,6 +194,8 @@ final class RusToPromptQueueManager: ObservableObject {
 
     var timer: Timer?
 
+    var batteryStartOverrideItemID: String?
+
 
     init() {
         let sourceURL = URL(fileURLWithPath: #filePath)
@@ -163,8 +210,10 @@ final class RusToPromptQueueManager: ObservableObject {
             .appendingPathComponent("RusToPromptQueue")
         queueFileURL = appSupportURL.appendingPathComponent("queue.json")
         settings = RusToPromptQueueSettings.defaults()
+        powerSource = Self.readPowerSource()
         loadFromDisk()
         recoverRunningItems()
+        applyPowerGate()
         saveToDisk()
         startTimer()
     }

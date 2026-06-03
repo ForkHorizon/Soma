@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from rus_to_prompt_confidence_semantics import calibrated_confidence_from_scores, normalized_score_map
 from rus_to_prompt_stress_models import (
     DEFAULT_CONFIDENCE_REASONING_EFFORT,
     DEFAULT_HYBRID_DISAGREEMENT_THRESHOLD,
@@ -25,7 +26,7 @@ from rus_to_prompt_stress_models import (
     classify_external_error,
     confidence_value,
 )
-from rus_to_prompt_stress_results import apply_deterministic_confidence_caps, failed_confidence_result
+from rus_to_prompt_stress_results import apply_deterministic_confidence_caps, canonicalize_confidence_payload, confidence_local_checks, failed_confidence_result
 
 
 ConfidenceItem = tuple[str, PromptCase, CaseResult]
@@ -44,15 +45,38 @@ def confidence_batch_schema() -> dict[str, Any]:
 
 
 def confidence_payload(case: PromptCase, result: CaseResult, stage: str, item_id: str | None = None) -> dict[str, Any]:
-    return {"id": item_id, "case_id": case.id, "category": case.category, "source_prompt": case.prompt, "stage": stage, "translation": result.translation, "improved_prompt": result.improved_prompt, "status": result.status, "warnings": result.warnings, "protected_span_failures": result.missing_protected_spans, "translator_model": result.translator_model, "analyzer_model": result.analyzer_model}
+    return {
+        "id": item_id,
+        "case_id": case.id,
+        "category": case.category,
+        "source_prompt": case.prompt,
+        "stage": stage,
+        "translation": result.translation,
+        "improved_prompt": result.improved_prompt,
+        "status": result.status,
+        "warnings": result.warnings,
+        "protected_span_failures": result.missing_protected_spans,
+        "translator_model": result.translator_model,
+        "analyzer_model": result.analyzer_model,
+        "local_checks": confidence_local_checks(case.prompt, result),
+    }
 
 
 def confidence_stage_rules(stage: str) -> tuple[str, str]:
     if stage == "translation":
-        return "- confidence is 0..1 for translation fidelity.\n", "- Judge source_prompt -> translation only.\n"
+        return (
+            "- confidence is 0..1 for translation fidelity. Also fill scores with 0..5 numbers for intent_preservation, english_quality, protected_span_preservation, no_invention.\n",
+            "- Judge source_prompt -> translation only. If local_checks.translation_prompt_rewrite is non-null, verdict must be fail.\n",
+        )
     if stage == "improve":
-        return "- confidence is 0..1 for prompt polish.\n", "- Judge translation -> improved_prompt only.\n"
-    return "- confidence is 0..1 for final prompt safety.\n", "- Judge source_prompt -> translation -> improved_prompt.\n"
+        return (
+            "- confidence is 0..1 for prompt polish. Also fill scores with 0..5 numbers for intent_preservation, actionability, concision, no_invention.\n",
+            "- Judge translation -> improved_prompt only. If local_checks.improved_prompt_sanity_error is non-null, verdict must be fail.\n",
+        )
+    return (
+        "- confidence is 0..1 for final prompt safety. Also fill scores with 0..5 numbers for intent_preservation, english_quality, protected_span_preservation, actionability, concision, no_invention.\n",
+        "- Judge source_prompt -> translation -> improved_prompt. If local_checks.improved_prompt_sanity_error is non-null, verdict must be fail.\n",
+    )
 
 
 def build_codex_confidence_prompt(case: PromptCase, result: CaseResult, stage: str = "overall") -> str:
@@ -144,10 +168,19 @@ def score_hybrid_confidence_batch(items: list[ConfidenceItem], **kwargs: Any) ->
 
 
 def normalize_confidence_payload(decoded: dict[str, Any], *, provider: str, model: str, stage: str, seconds: float, reasoning_effort: str | None = None, batch_size: int | None = None, batch_seconds: float | None = None, stats: Any | None = None) -> dict[str, Any]:
-    confidence = _normalized_confidence(decoded.get("confidence"))
-    payload = {"provider": provider, "model": model, "stage": stage, "status": str(decoded.get("status") or "review"), "confidence": confidence, "verdict": str(decoded.get("verdict") or "review"), "scores": decoded.get("scores") if isinstance(decoded.get("scores"), dict) else {}, "warnings": list(decoded.get("warnings") or [])[:6] if isinstance(decoded.get("warnings"), list) else [], "notes": list(decoded.get("notes") or [])[:6] if isinstance(decoded.get("notes"), list) else [], "seconds": seconds}
+    raw_confidence = _normalized_confidence(decoded.get("confidence"))
+    raw_scores = decoded.get("scores") if isinstance(decoded.get("scores"), dict) else {}
+    scores = normalized_score_map(raw_scores, stage)
+    confidence = calibrated_confidence_from_scores(raw_confidence, scores, stage)
+    payload = {"provider": provider, "model": model, "stage": stage, "status": str(decoded.get("status") or "review"), "confidence": confidence, "verdict": str(decoded.get("verdict") or "review"), "scores": scores, "warnings": list(decoded.get("warnings") or [])[:6] if isinstance(decoded.get("warnings"), list) else [], "notes": list(decoded.get("notes") or [])[:6] if isinstance(decoded.get("notes"), list) else [], "seconds": seconds}
+    if raw_confidence is not None:
+        payload["raw_confidence"] = raw_confidence
+    if isinstance(raw_scores, dict) and raw_scores and raw_scores != scores:
+        payload["raw_scores"] = raw_scores
+    if scores:
+        payload["calibrated_from_scores"] = True
     payload.update({k: v for k, v in {"reasoning_effort": reasoning_effort, "batch_size": batch_size, "batch_seconds": batch_seconds, "stats": stats}.items() if v is not None})
-    return payload
+    return canonicalize_confidence_payload(payload)
 
 
 def parse_batch_confidence_response(decoded: dict[str, Any] | None, meta: dict[str, Any], *, provider: str, model: str, stage: str, item_ids: set[str], reasoning_effort: str | None = None) -> dict[str, dict[str, Any]] | None:
@@ -253,7 +286,7 @@ def _attach_or_keep_local(item_id: str, fallback: dict[str, Any] | None, local: 
 
 def _average_scores(confidences: list[dict[str, Any]]) -> dict[str, int]:
     keys = ["intent_preservation", "english_quality", "protected_span_preservation", "actionability", "concision", "no_invention"]
-    return {key: int(round(statistics.mean(values))) for key in keys if (values := [int(c.get("scores", {}).get(key)) for c in confidences if isinstance(c.get("scores"), dict) and isinstance(c.get("scores", {}).get(key), (int, float))])}
+    return {key: round(statistics.mean(values), 2) for key in keys if (values := [float(c.get("scores", {}).get(key)) for c in confidences if isinstance(c.get("scores"), dict) and isinstance(c.get("scores", {}).get(key), (int, float))])}
 
 
 def _normalized_confidence(value: Any) -> float | None:
@@ -263,7 +296,29 @@ def _normalized_confidence(value: Any) -> float | None:
 
 
 def _confidence_item_schema() -> dict[str, Any]:
-    return {"type": "object", "additionalProperties": True, "properties": {"status": {"type": "string"}, "confidence": {"type": ["number", "null"]}, "verdict": {"type": "string"}, "scores": {"type": "object"}, "warnings": _schema_string_list(), "notes": _schema_string_list()}}
+    return {
+        "type": "object",
+        "additionalProperties": True,
+        "properties": {
+            "status": {"type": "string"},
+            "confidence": {"type": ["number", "null"]},
+            "verdict": {"type": "string"},
+            "scores": {
+                "type": "object",
+                "additionalProperties": True,
+                "properties": {
+                    "intent_preservation": {"type": "number"},
+                    "english_quality": {"type": "number"},
+                    "protected_span_preservation": {"type": "number"},
+                    "actionability": {"type": "number"},
+                    "concision": {"type": "number"},
+                    "no_invention": {"type": "number"},
+                },
+            },
+            "warnings": _schema_string_list(),
+            "notes": _schema_string_list(),
+        },
+    }
 
 
 def _run_codex(cmd: list[str], prompt: str, timeout: float) -> subprocess.CompletedProcess[str] | BaseException:

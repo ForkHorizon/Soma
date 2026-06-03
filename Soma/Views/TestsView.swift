@@ -70,6 +70,7 @@ struct TestsView: View {
     @State var resultRows: [TestModelCombinationSummary] = []
     @State var resultRunRows: [TestRunResult] = []
     @State var resultPromptByCaseID: [String: String] = [:]
+    @State var resultConfidenceJudgesByItemID: [String: [TestConfidenceJudgeResult]] = [:]
     @State var selectedResultRowID: String?
     @State var selectedRunRowID: String?
     @State var resultsStatusText = "No results yet"
@@ -80,10 +81,16 @@ struct TestsView: View {
     @State var isLoadingModelStats = false
     @State var selectedTranslationStatsID: String?
     @State var selectedImproverStatsID: String?
+    @State var translationModelStatsSort: TestModelStatsSort?
+    @State var improverModelStatsSort: TestModelStatsSort?
     @State var showTranslatorModels = false
     @State var showImproverModels = false
     @State var showLocalConfidenceModels = false
     @State var showQueueLocalConfidenceModels = false
+    @State var showCompletedQueueItems = false
+    @State var expandedQueueItemIDs: Set<String> = []
+    @State var expandedRunDebugIDs: Set<String> = []
+    @State var expandedQueueModelDebugIDs: Set<String> = []
     @State var translatorModelSort: TestModelSort = .smart
     @State var improverModelSort: TestModelSort = .smart
     @State var customTranslatorModel = ""
@@ -178,9 +185,10 @@ struct TestsView: View {
         }
         .sheet(isPresented: $showQueue) {
             queueSheet
-                .frame(minWidth: 1120, minHeight: 740)
+                .frame(minWidth: 1260, minHeight: 740)
                 .onAppear {
                     queueManager.refreshFreeMemory()
+                    queueManager.refreshPowerSource()
                     queueManager.startNextIfPossible()
                 }
         }

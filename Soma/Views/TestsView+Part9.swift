@@ -13,22 +13,20 @@ extension TestsView {
 
 
     var selectedTranslationStats: TestModelRoleStats? {
-        guard let modelStats else { return nil }
         if let selectedTranslationStatsID,
-           let selected = modelStats.translationModels.first(where: { $0.id == selectedTranslationStatsID }) {
+           let selected = sortedTranslationModelStats.first(where: { $0.id == selectedTranslationStatsID }) {
             return selected
         }
-        return modelStats.translationModels.first
+        return sortedTranslationModelStats.first
     }
 
 
     var selectedImproverStats: TestModelRoleStats? {
-        guard let modelStats else { return nil }
         if let selectedImproverStatsID,
-           let selected = modelStats.improverModels.first(where: { $0.id == selectedImproverStatsID }) {
+           let selected = sortedImproverModelStats.first(where: { $0.id == selectedImproverStatsID }) {
             return selected
         }
-        return modelStats.improverModels.first
+        return sortedImproverModelStats.first
     }
 
 
@@ -36,7 +34,8 @@ extension TestsView {
         title: String,
         subtitle: String,
         rows: [TestModelRoleStats],
-        selectedID: Binding<String?>
+        selectedID: Binding<String?>,
+        sort: Binding<TestModelStatsSort?>
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
@@ -60,7 +59,7 @@ extension TestsView {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
                 VStack(spacing: 0) {
-                    modelStatsHeaderRow
+                    modelStatsHeaderRow(sort: sort)
                     Divider()
                     ForEach(rows) { row in
                         modelStatsRow(row, selectedID: selectedID)
@@ -75,24 +74,50 @@ extension TestsView {
     }
 
 
-    var modelStatsHeaderRow: some View {
+    func modelStatsHeaderRow(sort: Binding<TestModelStatsSort?>) -> some View {
         HStack(spacing: 10) {
-            Text("Model").frame(maxWidth: .infinity, alignment: .leading)
-            Text("Runs").frame(width: 58, alignment: .trailing)
-            Text("Avg").frame(width: 50, alignment: .trailing)
-            Text("Med").frame(width: 50, alignment: .trailing)
-            Text("Min").frame(width: 50, alignment: .trailing)
-            Text("Low").frame(width: 46, alignment: .trailing)
-            Text("Conf fail").frame(width: 68, alignment: .trailing)
-            Text("Pipe fail").frame(width: 68, alignment: .trailing)
-            Text("Deg").frame(width: 42, alignment: .trailing)
-            Text("Runtime").frame(width: 64, alignment: .trailing)
-            Text("Last").frame(width: 136, alignment: .leading)
+            modelStatsHeaderButton("Model", column: .model, sort: sort, alignment: .leading)
+            modelStatsHeaderButton("Runs", column: .attempts, sort: sort, width: 54, alignment: .trailing, help: "Total attempts for this model.")
+            modelStatsHeaderButton("Score", column: .quality, sort: sort, width: 58, alignment: .trailing, help: "Main trust score across all attempts. Failed attempts count as 0.")
+            modelStatsHeaderButton("OK", column: .ok, sort: sort, width: 64, alignment: .trailing, help: "Usable scored attempts out of total attempts.")
+            modelStatsHeaderButton("Problems", column: .problems, sort: sort, width: 72, alignment: .trailing, help: "Attempts with any judge failure, run failure, or degraded warning. Each attempt counts once.")
+            modelStatsHeaderButton("Clean", column: .clean, sort: sort, width: 56, alignment: .trailing, help: "Share of attempts without judge failure, run failure, or degraded warning.")
+            modelStatsHeaderButton("Speed", column: .runtime, sort: sort, width: 60, alignment: .trailing, help: "Average model runtime for this role.")
+            modelStatsHeaderButton("Last", column: .last, sort: sort, width: 136, alignment: .leading)
         }
         .font(.caption2.bold())
         .foregroundColor(.secondary)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
+    }
+
+
+    @ViewBuilder
+    func modelStatsHeaderButton(
+        _ title: String,
+        column: TestModelStatsSortColumn,
+        sort: Binding<TestModelStatsSort?>,
+        width: CGFloat? = nil,
+        alignment: Alignment,
+        help: String? = nil
+    ) -> some View {
+        let active = sort.wrappedValue?.column == column
+        Button {
+            toggleModelStatsSort(column, sort: sort)
+        } label: {
+            HStack(spacing: 3) {
+                Text(title)
+                    .lineLimit(1)
+                Image(systemName: sort.wrappedValue?.ascending == true ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 7, weight: .bold))
+                    .opacity(active ? 1 : 0)
+            }
+            .frame(maxWidth: width == nil ? .infinity : nil, alignment: alignment)
+            .frame(width: width, alignment: alignment)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help.map { "\($0) Sort by \(title)." } ?? "Sort by \(title)")
     }
 
 
@@ -110,15 +135,20 @@ extension TestsView {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                Text("\(row.attempts)").frame(width: 58, alignment: .trailing)
-                Text(formatConfidence(row.avgConfidence)).foregroundColor(confidenceTone(row.avgConfidence).color).frame(width: 50, alignment: .trailing)
-                Text(formatConfidence(row.medianConfidence)).frame(width: 50, alignment: .trailing)
-                Text(formatConfidence(row.minConfidence)).foregroundColor(confidenceTone(row.minConfidence).color).frame(width: 50, alignment: .trailing)
-                Text("\(row.lowConfidenceCount)").foregroundColor(row.lowConfidenceCount > 0 ? .orange : .secondary).frame(width: 46, alignment: .trailing)
-                Text("\(row.confidenceFailedCount)").foregroundColor(row.confidenceFailedCount > 0 ? .orange : .secondary).frame(width: 68, alignment: .trailing)
-                Text("\(row.pipelineFailedCount)").foregroundColor(row.pipelineFailedCount > 0 ? .red : .secondary).frame(width: 68, alignment: .trailing)
-                Text("\(row.degradedCount)").foregroundColor(row.degradedCount > 0 ? .orange : .secondary).frame(width: 42, alignment: .trailing)
-                Text(formatOptionalSeconds(row.avgSeconds)).frame(width: 64, alignment: .trailing)
+                Text("\(row.attempts)").frame(width: 54, alignment: .trailing)
+                Text(formatConfidence(row.qualityScore))
+                    .foregroundColor(confidenceTone(row.qualityScore).color)
+                    .frame(width: 58, alignment: .trailing)
+                Text("\(row.confidenceCount)/\(row.attempts)")
+                    .foregroundColor(row.confidenceCount == row.attempts ? .secondary : .orange)
+                    .frame(width: 64, alignment: .trailing)
+                Text("\(modelStatsProblemCount(row))")
+                    .foregroundColor(modelStatsProblemCount(row) > 0 ? .orange : .secondary)
+                    .frame(width: 72, alignment: .trailing)
+                Text(modelStatsCleanLabel(row))
+                    .foregroundColor(confidenceTone(modelStatsCleanRate(row)).color)
+                    .frame(width: 56, alignment: .trailing)
+                Text(formatOptionalSeconds(row.avgSeconds)).frame(width: 60, alignment: .trailing)
                 Text(shortDateTime(row.lastTestedAt)).frame(width: 136, alignment: .leading)
             }
             .font(.caption.monospacedDigit())
@@ -127,7 +157,7 @@ extension TestsView {
             .background(selectedID.wrappedValue == row.id ? Color.accentColor.opacity(0.12) : Color.clear)
         }
         .buttonStyle(.plain)
-        .help("attempts \(row.attempts), confidence count \(row.confidenceCount)")
+        .help("runs \(row.attempts), score \(formatConfidence(row.qualityScore)), OK \(row.confidenceCount)/\(row.attempts), problems \(modelStatsProblemCount(row)), clean \(modelStatsCleanLabel(row))")
     }
 
 
@@ -140,29 +170,56 @@ extension TestsView {
                     .truncationMode(.middle)
                 StatusChip(text: row.provider, tone: providerTone(row.provider))
                 Spacer()
-                StatusChip(text: "\(row.attempts) attempts", tone: row.attempts > 0 ? .info : .neutral)
-                StatusChip(text: "low \(row.lowConfidenceCount)", tone: row.lowConfidenceCount > 0 ? .warning : .good)
+                StatusChip(text: "score \(formatConfidence(row.qualityScore))", tone: confidenceTone(row.qualityScore))
+                StatusChip(text: "OK \(row.confidenceCount)/\(row.attempts)", tone: row.confidenceCount == row.attempts ? .good : .warning)
+                StatusChip(text: "problems \(modelStatsProblemCount(row))", tone: modelStatsProblemCount(row) > 0 ? .warning : .good)
+                StatusChip(text: "clean \(modelStatsCleanLabel(row))", tone: confidenceTone(modelStatsCleanRate(row)))
+            }
+
+            HStack(alignment: .top, spacing: 12) {
+                modelStatsDetailColumn(
+                    title: "Usable score stats",
+                    lines: [
+                        "Avg OK: \(formatConfidence(row.avgConfidence))",
+                        "Median OK: \(formatConfidence(row.medianConfidence))",
+                        "Min OK: \(formatConfidence(row.minConfidence))",
+                        "Low <75: \(row.lowConfidenceCount)",
+                    ]
+                )
+                modelStatsDetailColumn(
+                    title: "Problem breakdown",
+                    lines: [
+                        "Any problem: \(modelStatsProblemCount(row))",
+                        "Clean: \(modelStatsCleanLabel(row))",
+                        "Worst effective: \(formatConfidence(modelStatsWorstEffectiveScore(row)))",
+                        "Judge failed: \(row.confidenceFailedCount)",
+                        "Run failed: \(row.pipelineFailedCount)",
+                        "Degraded: \(row.degradedCount)",
+                    ]
+                )
+                modelStatsDetailColumn(
+                    title: "Recent runs",
+                    lines: row.recentRuns.prefix(6).map { run in
+                        let name = URL(fileURLWithPath: run.runDir).lastPathComponent
+                        return "\(shortDateTime(run.finishedAt)) · \(name) · \(run.attempts) runs · score \(formatConfidence(run.qualityScore)) · OK avg \(formatConfidence(run.avgConfidence))"
+                    }
+                )
             }
 
             HStack(alignment: .top, spacing: 12) {
                 modelStatsDetailColumn(
                     title: "Worst cases",
                     lines: row.worstCases.prefix(6).map { item in
-                        let confidence = item.confidence.map { String(format: "%.2f", $0) } ?? (item.confidenceFailed == true ? "failed" : "n/a")
+                        let score = item.effectiveScore ?? item.confidence
+                        let confidence = item.confidenceFailed == true ? "effective 0.00" : (score.map { String(format: "%.2f", $0) } ?? "n/a")
                         let related = item.relatedModel.map { " · \($0)" } ?? ""
-                        return "\(item.caseID): \(confidence) · \(item.status ?? "unknown")\(related)"
+                        let warning = item.warnings?.first.map { " · \($0)" } ?? ""
+                        return "\(item.caseID): \(confidence) · \(item.status ?? "unknown")\(related)\(warning)"
                     }
                 )
                 modelStatsDetailColumn(
                     title: "Top warnings",
                     lines: row.topWarnings.prefix(6).map { "\($0.count)x \($0.warning)" }
-                )
-                modelStatsDetailColumn(
-                    title: "Recent runs",
-                    lines: row.recentRuns.prefix(6).map { run in
-                        let name = URL(fileURLWithPath: run.runDir).lastPathComponent
-                        return "\(shortDateTime(run.finishedAt)) · \(name) · \(run.attempts) · avg \(formatConfidence(run.avgConfidence))"
-                    }
                 )
             }
         }

@@ -20,24 +20,33 @@ extension TestsView {
                 saveModelSelection(selection.wrappedValue, key: storageKey)
             }
         )) {
-            HStack(spacing: 8) {
-                Text(preset.model)
-                    .font(.system(.caption, design: .monospaced).weight(.semibold))
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text(preset.model)
+                        .font(.system(.caption, design: .monospaced).weight(.semibold))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer(minLength: 8)
+                    if preset.recommended {
+                        StatusChip(text: "Recommended", tone: .good)
+                    }
+                    if preset.isCodex {
+                        StatusChip(text: "Codex", tone: .info)
+                    }
+                    if preset.isGemini {
+                        StatusChip(text: "Gemini", tone: .info)
+                    }
+                    if let decision = modelScopeDecisionChip(row.stats) {
+                        StatusChip(text: decision.text, tone: decision.tone)
+                    }
+                    StatusChip(text: "Q \(row.quality)", tone: qualityTone(row.quality))
+                    StatusChip(text: "S \(row.speed)", tone: speedTone(row.speed))
+                    StatusChip(text: preset.ram, tone: .neutral)
+                }
+                modelScopeSummary(row.stats)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Spacer(minLength: 8)
-                if preset.recommended {
-                    StatusChip(text: "Recommended", tone: .good)
-                }
-                if preset.isCodex {
-                    StatusChip(text: "Codex", tone: .info)
-                }
-                if preset.isGemini {
-                    StatusChip(text: "Gemini", tone: .info)
-                }
-                StatusChip(text: "Q \(row.quality)", tone: qualityTone(row.quality))
-                StatusChip(text: "S \(row.speed)", tone: speedTone(row.speed))
-                StatusChip(text: preset.ram, tone: .neutral)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .toggleStyle(.checkbox)
@@ -46,7 +55,7 @@ extension TestsView {
         .background(Color(NSColor.textBackgroundColor).opacity(0.64))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.12)))
-        .help(row.detail)
+        .help(modelScopeHelp(preset: preset, stats: row.stats))
     }
 
 
