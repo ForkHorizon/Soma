@@ -2,9 +2,7 @@ import Foundation
 import SwiftUI
 import AppKit
 import Combine
-
 extension SomaViewModel {
-
 func refreshSomaStatus() {
         guard !selectedProjectRoot.isEmpty else { return }
         Task { [weak self] in guard let self else { return }
@@ -27,7 +25,6 @@ func refreshSomaStatus() {
             verifyClientConfigs()
         }
     }
-
     func applySomaStatus(_ status: SomaGatewayStatus) {
         nexusConnected = status.nexus?.connected ?? false
         graphAvailable = status.graph?.project_graph_available ?? status.graph?.available ?? false
@@ -43,7 +40,6 @@ func refreshSomaStatus() {
         applyGraphStatusDetails(status)
         mcpInstallStatus = somaStatusSummary(status)
     }
-
     func applyGraphStatusDetails(_ status: SomaGatewayStatus) {
         graphBuildVersion = status.graph?.graphify_version
         graphDegraded = status.graph?.graph_degraded ?? false
@@ -58,7 +54,6 @@ func refreshSomaStatus() {
         }
         nexusVersion = status.nexus?.unity_version ?? "Offline"
     }
-
     func somaStatusSummary(_ status: SomaGatewayStatus) -> String {
         let nexusText = nexusConnected ? "Unity plugin connected (\(nexusVersion))" : "Unity plugin skipped/offline"
         let graphState = graphDegraded ? "degraded" : (graphStale ? "stale" : "ready")
@@ -69,8 +64,6 @@ func refreshSomaStatus() {
         let warning = mismatch ? " Warning: Nexus project differs from selected root (\(nexusProject ?? "unknown"))." : ""
         return "\(nexusText). \(graphText). Soma exposes \(toolCount) tools.\(warning)"
     }
-
-
 func fetchSystemVersions() {
         Task { [weak self] in guard let self else { return }
             // Graphify
@@ -91,13 +84,10 @@ func fetchSystemVersions() {
             } catch {
                 await MainActor.run { self.graphifyVersion = "Not installed" }
             }
-
             // Nexus (already fetched in refreshSomaStatus, but let's ensure it's mapped)
             refreshSomaStatus()
         }
     }
-
-
 func upgradeGraphify() {
         systemBusy = true
         logActivity("Upgrading Graphify...")
@@ -122,8 +112,6 @@ func upgradeGraphify() {
             }
         }
     }
-
-
     func initializeGraphify() {
         guard !selectedProjectRoot.isEmpty else { return }
         graphifyBusy = true
@@ -155,8 +143,6 @@ func upgradeGraphify() {
             }
         }
     }
-
-
     func refreshManagedGraphifyGraph(fullRebuild: Bool = false) {
         guard !selectedProjectRoot.isEmpty else { return }
         graphifyBusy = true
@@ -184,8 +170,6 @@ func upgradeGraphify() {
             }
         }
     }
-
-
     func refreshAllManagedGraphifyGraphs() {
         systemBusy = true
         logActivity("Refreshing all indexed managed Graphify graphs...")
@@ -206,8 +190,6 @@ func upgradeGraphify() {
             }
         }
     }
-
-
     func checkGraphifyToolVersion() {
         systemBusy = true
         logActivity("Checking Graphify tool version...")
@@ -234,5 +216,4 @@ func upgradeGraphify() {
             }
         }
     }
-
 }

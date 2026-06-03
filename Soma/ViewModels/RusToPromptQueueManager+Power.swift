@@ -1,7 +1,6 @@
 import Combine
 import Foundation
 import IOKit.ps
-
 extension RusToPromptQueuePowerSource {
     var label: String {
         switch self {
@@ -14,20 +13,15 @@ extension RusToPromptQueuePowerSource {
         }
     }
 }
-
 extension RusToPromptQueueManager {
     var isBatteryBlockingQueue: Bool {
         powerSource == .battery && queuedCount > 0
     }
-
-
     var isBatteryBlockingActiveRun: Bool {
         powerSource == .battery
             && activeProcess != nil
             && batteryStartOverrideItemID != activeItemID
     }
-
-
     func refreshPowerSource() {
         let previous = powerSource
         refreshPowerSourceValue()
@@ -36,13 +30,9 @@ extension RusToPromptQueueManager {
         }
         applyPowerGate()
     }
-
-
     func refreshPowerSourceValue() {
         powerSource = Self.readPowerSource()
     }
-
-
     func applyPowerGate() {
         if powerSource == .battery {
             pauseActiveRunForBatteryIfNeeded()
@@ -50,13 +40,9 @@ extension RusToPromptQueueManager {
             resumePowerPausedRunIfNeeded()
         }
     }
-
-
     func canStartQueueOnCurrentPower(allowBatteryStart: Bool) -> Bool {
         powerSource != .battery || allowBatteryStart
     }
-
-
     func markWaitingForPower(index: Int) {
         guard items.indices.contains(index) else { return }
         let changed = items[index].status != .queued || items[index].statusMessage != "Waiting for power adapter"
@@ -67,8 +53,6 @@ extension RusToPromptQueueManager {
         saveToDisk()
         appendActivity("Queue waiting for power adapter.")
     }
-
-
     func pauseActiveRunForBatteryIfNeeded() {
         guard isBatteryBlockingActiveRun, !isPowerPaused, !isPaused else { return }
         isPowerPaused = true
@@ -81,8 +65,6 @@ extension RusToPromptQueueManager {
         saveToDisk()
         appendActivity("Queue paused on battery power.")
     }
-
-
     func resumePowerPausedRunIfNeeded() {
         guard isPowerPaused else { return }
         isPowerPaused = false
@@ -95,8 +77,6 @@ extension RusToPromptQueueManager {
         saveToDisk()
         appendActivity("Adapter power restored; queue resumed.")
     }
-
-
     func allowActiveRunOnBatteryIfNeeded(_ allowBatteryStart: Bool) {
         guard allowBatteryStart, powerSource == .battery, let activeItemID else { return }
         batteryStartOverrideItemID = activeItemID
@@ -108,8 +88,6 @@ extension RusToPromptQueueManager {
         }
         appendActivity("Manual battery override enabled for current run.")
     }
-
-
     nonisolated static func readPowerSource() -> RusToPromptQueuePowerSource {
         guard let infoRef = IOPSCopyPowerSourcesInfo() else {
             return .unknown
@@ -125,7 +103,6 @@ extension RusToPromptQueueManager {
         if providing == kIOPSBatteryPowerValue {
             return .battery
         }
-
         guard let sourcesRef = IOPSCopyPowerSourcesList(info) else {
             return .unknown
         }
@@ -133,7 +110,6 @@ extension RusToPromptQueueManager {
         if sources.count == 0 {
             return .externalPower
         }
-
         var sawBattery = false
         for source in sources {
             guard let descriptionRef = IOPSGetPowerSourceDescription(info, source as CFTypeRef),

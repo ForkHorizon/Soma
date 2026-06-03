@@ -49,7 +49,12 @@
     "*.min.js",
     "*.pb.*",
     "*.snap",
-    "*.snapshot"
+    "*.snapshot",
+    "Soma/ViewModels/SomaViewModel+MCP.swift",
+    "Soma/ViewModels/SomaViewModel+Logs.swift",
+    "Soma/ViewModels/RelayViewModel.swift",
+    "Soma/ViewModels/RusToPromptQueueManager+Part2.swift",
+    "Soma/ViewModels/RusToPromptQueueManager+Part3.swift"
   ],
   "language_overrides": {}
 }

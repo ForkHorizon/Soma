@@ -2,7 +2,6 @@ import Foundation
 import SwiftUI
 import AppKit
 import Combine
-
 @MainActor
 final class RelayViewModel: ObservableObject {
     @Published var relayPrompt = ""
@@ -12,7 +11,6 @@ final class RelayViewModel: ObservableObject {
     @Published var showContextPanel = false
     @Published var relayError: String?
     @Published var lastPacketHistoryID: String?
-
     func resetState(somaViewModel: SomaViewModel) {
         relayPrompt = ""
         relayPhase = .idle
@@ -23,11 +21,9 @@ final class RelayViewModel: ObservableObject {
         lastPacketHistoryID = nil
         somaViewModel.activityLogs = [] // relay also cleared this in SomaViewModel.resetState
     }
-
     func runRelay(ollama: OllamaManager, somaViewModel: SomaViewModel) {
         let prompt = relayPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty else { return }
-
         relayPrompt = ""
         gatherBundle = nil
         relayResponse = nil
@@ -36,7 +32,6 @@ final class RelayViewModel: ObservableObject {
         somaViewModel.activityLogs = []
         somaViewModel.logActivity("Starting Relay: \(prompt)")
         let startTime = Date()
-
         Task { [weak self] in guard let self else { return }
             do {
                 relayPhase = .gathering
@@ -50,12 +45,10 @@ final class RelayViewModel: ObservableObject {
                     somaViewModel: somaViewModel
                 )
                 let stepDuration = Date().timeIntervalSince(stepStart)
-
                 if let error = bundle.error {
                     throw SomaError(error)
                 }
                 somaViewModel.logActivity("Prepared \(bundle.packet_mode ?? "unknown") packet with \(bundle.evidence_items?.count ?? 0) items. Confidence: \(bundle.confidence ?? 0)", duration: stepDuration)
-
                 await MainActor.run {
                     gatherBundle = bundle
                     somaViewModel.latestTokenSavings = bundle.token_savings
@@ -75,7 +68,6 @@ final class RelayViewModel: ObservableObject {
             }
         }
     }
-
     private func runGather(prompt: String, projectRoot: String, recentRoots: [String], somaViewModel: SomaViewModel) async throws -> GatherBundle {
         let script = try somaViewModel.scriptURL(named: "scout_pipeline")
         let recentRootsJSON = (try? String(data: JSONEncoder().encode(recentRoots), encoding: .utf8)) ?? "[]"

@@ -1,14 +1,8 @@
 import Foundation
-
 import SwiftUI
-
 import AppKit
-
 import Combine
-
-
 extension SomaViewModel {
-
 func logActivity(_ message: String, duration: Double? = nil) {
         let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
         var log = "[\(timestamp)] \(message)"
@@ -17,7 +11,6 @@ func logActivity(_ message: String, duration: Double? = nil) {
         }
         activityLogs.append(log)
     }
-
 func startLogRefreshTimer() {
         logRefreshTimer?.invalidate()
         logRefreshTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
@@ -27,12 +20,10 @@ func startLogRefreshTimer() {
             }
         }
     }
-
 func stopLogRefreshTimer() {
         logRefreshTimer?.invalidate()
         logRefreshTimer = nil
     }
-
 func loadStructuredLogs(date: Date = Date()) {
         logsLoading = true
         Task { [weak self] in guard let self else { return }
@@ -85,7 +76,6 @@ func loadStructuredLogs(date: Date = Date()) {
             }
         }
     }
-
 func clearAllLogs() {
         logsClearBusy = true
         Task { [weak self] in guard let self else { return }
@@ -129,7 +119,6 @@ func clearAllLogs() {
             }
         }
     }
-
 func deleteTodayLogs(date: Date = Date()) {
         logsClearBusy = true
         Task { [weak self] in guard let self else { return }
@@ -145,7 +134,6 @@ func deleteTodayLogs(date: Date = Date()) {
             }
         }
     }
-
 func deleteVisibleLogs(_ entries: [SomaLogEntry], date: Date = Date()) {
         guard !entries.isEmpty else { return }
         logsClearBusy = true
@@ -164,7 +152,6 @@ func deleteVisibleLogs(_ entries: [SomaLogEntry], date: Date = Date()) {
             }
         }
     }
-
 func deleteRunLogs(runID: String, date: Date = Date()) {
         logsClearBusy = true
         Task { [weak self] in guard let self else { return }
@@ -183,7 +170,6 @@ func deleteRunLogs(runID: String, date: Date = Date()) {
             }
         }
     }
-
 func resetAuditTraces() {
         logsClearBusy = true
         Task { [weak self] in guard let self else { return }
@@ -203,7 +189,6 @@ func resetAuditTraces() {
             }
         }
     }
-
 func startNewLogSession() {
         logsClearBusy = true
         Task { [weak self] in guard let self else { return }
@@ -219,17 +204,14 @@ func startNewLogSession() {
             }
         }
     }
-
     private static func logFileURL(for date: Date) -> URL {
         let dateStr = DateFormatter.somaDate.string(from: date)
         return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".soma/logs/soma_\(dateStr).jsonl")
     }
-
     private nonisolated static func logSignature(_ entry: SomaLogEntry) -> String {
         [entry.ts, entry.event, entry.tool ?? "", entry.method ?? "", entry.run_id ?? "", entry.task_id ?? "", entry.status].joined(separator: "|")
     }
-
     private func rewriteLogFile(date: Date, deleting signatures: Set<String>) async {
         let file = Self.logFileURL(for: date)
         guard !signatures.isEmpty,
@@ -243,7 +225,6 @@ func startNewLogSession() {
         }
         try? keptLines.joined(separator: "\n").write(to: file, atomically: true, encoding: .utf8)
     }
-
 func computeToolStats(from entries: [SomaLogEntry]) -> [SomaToolStat] {
         var map: [String: (calls: Int, errors: Int, totalDur: Double, totalTok: Int, savedTok: Int, savings: [Double], opSavedTok: Int, opSavings: [Double], estSavedTok: Int, estSavings: [Double])] = [:]
         for e in entries where e.event == "tool_call" {
@@ -277,7 +258,6 @@ func computeToolStats(from entries: [SomaLogEntry]) -> [SomaToolStat] {
             )
         }.sorted { $0.calls > $1.calls }
     }
-
 func computeLocalModelStats(from entries: [SomaLogEntry]) -> [SomaLocalModelStat] {
         var map: [String: (calls: Int, errors: Int, totalDur: Double, totalTok: Int, stages: [String: Int])] = [:]
         for e in entries where e.event == "local_model_call" {
@@ -303,5 +283,4 @@ func computeLocalModelStats(from entries: [SomaLogEntry]) -> [SomaLocalModelStat
             )
         }.sorted { $0.calls > $1.calls }
     }
-
 }

@@ -1,16 +1,13 @@
 import Foundation
-
 extension SomaViewModel {
     func hydratePacketHistoryIfNeeded() {
         guard !hasHydratedPacketHistory else { return }
         hasHydratedPacketHistory = true
         packetHistory = decodePacketHistory()
     }
-
     @discardableResult
     func recordPacketRun(prompt: String, bundle: GatherBundle) -> String {
         hydratePacketHistoryIfNeeded()
-
         let root = bundle.project_root ?? selectedProjectRoot
         let item = PacketHistoryItem(
             id: UUID().uuidString,
@@ -32,7 +29,6 @@ extension SomaViewModel {
             toolCallCount: 0,
             finalOutcome: "unknown"
         )
-
         packetHistory.insert(item, at: 0)
         if packetHistory.count > 80 {
             packetHistory = Array(packetHistory.prefix(80))
@@ -40,7 +36,6 @@ extension SomaViewModel {
         persistPacketHistory()
         return item.id
     }
-
     func markPacketUsefulness(_ id: String, useful: Bool) {
         markPacketFeedback(
             id,
@@ -51,7 +46,6 @@ extension SomaViewModel {
             agentUsedSoma: nil
         )
     }
-
     func markPacketFeedback(
         _ id: String,
         useful: Bool?,
@@ -82,7 +76,6 @@ extension SomaViewModel {
         }
         persistPacketHistory()
     }
-
     func refreshPacketLiveToolCounts() {
         hydratePacketHistoryIfNeeded()
         var changed = false
@@ -100,7 +93,6 @@ extension SomaViewModel {
             persistPacketHistory()
         }
     }
-
     func liveToolCallCount(for packet: PacketHistoryItem) -> Int {
         guard let runID = packet.auditRunID, !runID.isEmpty else {
             return packet.toolCallCount
@@ -112,12 +104,10 @@ extension SomaViewModel {
         }.count
         return max(packet.toolCallCount, count)
     }
-
     func packetsForSelectedProject() -> [PacketHistoryItem] {
         guard !selectedProjectRoot.isEmpty else { return packetHistory }
         return packetHistory.filter { $0.projectRoot == selectedProjectRoot }
     }
-
     func latestPacketFeedbackLabel() -> String {
         guard let latest = packetHistory.first else { return "No packet yet" }
         switch latest.usefulness {
@@ -126,7 +116,6 @@ extension SomaViewModel {
         default: return "Last packet unreviewed"
         }
     }
-
     func latestPacketFeedbackTone() -> SomaStatusTone {
         guard let latest = packetHistory.first else { return .neutral }
         switch latest.usefulness {
@@ -135,7 +124,6 @@ extension SomaViewModel {
         default: return .neutral
         }
     }
-
     private func decodePacketHistory() -> [PacketHistoryItem] {
         let raw = UserDefaults.standard.string(forKey: packetHistoryKey) ?? "[]"
         guard let data = raw.data(using: .utf8),
@@ -144,13 +132,11 @@ extension SomaViewModel {
         }
         return decoded
     }
-
     private func persistPacketHistory() {
         guard let data = try? JSONEncoder().encode(packetHistory),
               let json = String(data: data, encoding: .utf8) else { return }
         UserDefaults.standard.set(json, forKey: packetHistoryKey)
     }
-
     private func parseMissedFiles(_ raw: String) -> [String] {
         let separators = CharacterSet(charactersIn: "\n,;")
         let values = raw.components(separatedBy: separators)
@@ -158,7 +144,6 @@ extension SomaViewModel {
             .filter { !$0.isEmpty }
         return Array(NSOrderedSet(array: values)) as? [String] ?? values
     }
-
     private func packetWarnings(for bundle: GatherBundle) -> [String] {
         var warnings: [String] = []
         if let quality = bundle.audit?.evidence_quality, quality.status == "degraded" {
@@ -174,7 +159,6 @@ extension SomaViewModel {
         }
         return Array(NSOrderedSet(array: warnings.filter { !$0.isEmpty })) as? [String] ?? warnings
     }
-
     private func evidenceSummaries(for bundle: GatherBundle) -> [String] {
         let items = bundle.evidence_items ?? []
         return items.compactMap { item in
@@ -188,7 +172,6 @@ extension SomaViewModel {
         }
     }
 }
-
 private extension GatherBundle {
     var statusLabel: String {
         if let error, !error.isEmpty { return "failed" }

@@ -2,7 +2,6 @@ import Foundation
 import SwiftUI
 import AppKit
 import Combine
-
 @MainActor
 final class PromptCompilerViewModel: ObservableObject {
     @Published var weakPrompt = ""
@@ -10,7 +9,6 @@ final class PromptCompilerViewModel: ObservableObject {
     @Published var gatherBundle: GatherBundle?
     @Published var showEvidence = true
     @Published var errorMessage: String?
-
     func resetState(somaViewModel: SomaViewModel) {
         weakPrompt = ""
         phase = .idle
@@ -19,11 +17,9 @@ final class PromptCompilerViewModel: ObservableObject {
         errorMessage = nil
         somaViewModel.activityLogs = []
     }
-
     func compilePrompt(somaViewModel: SomaViewModel, ollama: OllamaManager) {
         let prompt = weakPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty else { return }
-
         weakPrompt = ""
         gatherBundle = nil
         errorMessage = nil
@@ -31,7 +27,6 @@ final class PromptCompilerViewModel: ObservableObject {
         somaViewModel.activityLogs = []
         somaViewModel.logActivity("Starting Prompt Compiler: \(prompt)")
         let startTime = Date()
-
         Task { [weak self] in guard let self else { return }
             do {
                 phase = .gathering
@@ -45,11 +40,9 @@ final class PromptCompilerViewModel: ObservableObject {
                     somaViewModel: somaViewModel
                 )
                 let stepDuration = Date().timeIntervalSince(stepStart)
-
                 if let error = bundle.error {
                     throw SomaError(friendlyError(error))
                 }
-
                 await MainActor.run {
                     gatherBundle = bundle
                     somaViewModel.latestTokenSavings = bundle.token_savings
@@ -69,7 +62,6 @@ final class PromptCompilerViewModel: ObservableObject {
             }
         }
     }
-
     private func runAnalystGather(prompt: String, projectRoot: String, recentRoots: [String], somaViewModel: SomaViewModel) async throws -> GatherBundle {
         let script = try somaViewModel.scriptURL(named: "scout_pipeline")
         let recentRootsJSON = (try? String(data: JSONEncoder().encode(recentRoots), encoding: .utf8)) ?? "[]"
@@ -89,7 +81,6 @@ final class PromptCompilerViewModel: ObservableObject {
         )
         return try decodeGatherBundle(output)
     }
-
     private func decodeGatherBundle(_ output: Data) throws -> GatherBundle {
         do {
             return try JSONDecoder().decode(GatherBundle.self, from: output)
@@ -98,13 +89,11 @@ final class PromptCompilerViewModel: ObservableObject {
             throw SomaError("Prompt Compiler returned JSON that the app could not decode: \(decodeErrorSummary(error)). Output starts with: \(preview)")
         }
     }
-
     private func decodeErrorSummary(_ error: Error) -> String {
         func path(_ context: DecodingError.Context) -> String {
             let value = context.codingPath.map(\.stringValue).joined(separator: ".")
             return value.isEmpty ? "<root>" : value
         }
-
         switch error {
         case DecodingError.typeMismatch(let type, let context):
             return "type mismatch for \(type) at \(path(context)): \(context.debugDescription)"
@@ -118,7 +107,6 @@ final class PromptCompilerViewModel: ObservableObject {
             return error.localizedDescription
         }
     }
-
     private func friendlyError(_ message: String) -> String {
         if message.contains("Select a project root") || message.contains("project context") {
             return "This prompt needs local project context. Select a project root in the top bar, then compile again."

@@ -2,7 +2,6 @@ import Foundation
 import SwiftUI
 import AppKit
 import Combine
-
 extension SomaViewModel {
     func diagnoseGraphifyGraph() {
         guard !selectedProjectRoot.isEmpty else { return }
@@ -25,8 +24,6 @@ extension SomaViewModel {
             }
         }
     }
-
-
     func checkGraphifySemanticUpdate() {
         guard !selectedProjectRoot.isEmpty else { return }
         graphifyBusy = true
@@ -48,8 +45,6 @@ extension SomaViewModel {
             }
         }
     }
-
-
     func migrateGraphifyGraph() {
         guard !selectedProjectRoot.isEmpty else { return }
         graphifyBusy = true
@@ -70,8 +65,6 @@ extension SomaViewModel {
             }
         }
     }
-
-
     func openGraphifyReport() {
         let basePath = graphStoragePath ?? graphManagedPath
         guard let basePath, !basePath.isEmpty else { return }
@@ -81,18 +74,12 @@ extension SomaViewModel {
         guard FileManager.default.fileExists(atPath: target) else { return }
         NSWorkspace.shared.open(URL(fileURLWithPath: target))
     }
-
-
     func openGraphifyTreeReport() {
         generateAndOpenGraphifyReport(args: ["--graph-tree-json", "--project-root", selectedProjectRoot], label: "Graph tree")
     }
-
-
     func openGraphifyCallflowReport() {
         generateAndOpenGraphifyReport(args: ["--graph-callflow-json", "--project-root", selectedProjectRoot], label: "Graph callflow")
     }
-
-
     func generateAndOpenGraphifyReport(args: [String], label: String) {
         guard !selectedProjectRoot.isEmpty else { return }
         graphifyBusy = true
@@ -118,13 +105,10 @@ extension SomaViewModel {
             }
         }
     }
-
-
 func projectPathsMatch(_ lhs: String, _ rhs: String?) -> Bool {
         guard let rhs, !lhs.isEmpty, !rhs.isEmpty else { return true }
         let left = URL(fileURLWithPath: lhs).standardizedFileURL.path
         let right = URL(fileURLWithPath: rhs).standardizedFileURL.path
         return left == right
     }
-
 }

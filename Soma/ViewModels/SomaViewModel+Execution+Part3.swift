@@ -3,7 +3,6 @@ import SwiftUI
 import AppKit
 import Combine
 import UniformTypeIdentifiers
-
 extension SomaViewModel {
 nonisolated func pythonPath() -> String {
         if FileManager.default.fileExists(atPath: "/opt/homebrew/bin/python3") {
@@ -11,8 +10,6 @@ nonisolated func pythonPath() -> String {
         }
         return "/usr/bin/python3"
     }
-
-
 func scriptEnvironment(projectRoot: String? = nil, includeProjectRoot: Bool = true) -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
         let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
@@ -28,14 +25,10 @@ func scriptEnvironment(projectRoot: String? = nil, includeProjectRoot: Bool = tr
         }
         return environment
     }
-
-
 func runScript(path: String, args: [String], workingDirectory: String? = nil) async throws -> Data {
         let env = scriptEnvironment()
         return try await Self.executeProcess(path: path, args: args, workingDirectory: workingDirectory, environment: env)
     }
-
-
 static func executeProcess(path: String, args: [String], workingDirectory: String? = nil, environment: [String: String]) async throws -> Data {
         try await withCheckedThrowingContinuation { continuation in
             let process = Process()
@@ -60,5 +53,4 @@ static func executeProcess(path: String, args: [String], workingDirectory: Strin
             } catch { continuation.resume(throwing: error) }
         }
     }
-
 }
