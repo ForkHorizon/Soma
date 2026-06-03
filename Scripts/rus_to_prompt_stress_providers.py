@@ -202,9 +202,9 @@ def _translation_failure(decoded: dict[str, Any] | None, translated: str, protec
         return f"{provider.title()} translation returned failed status or empty translation."
     if looks_like_codex_payload_echo(translated):
         return f"{provider.title()} translation echoed the control payload instead of translating the prompt."
-    missing = optimizer.missing_placeholders(translated, len(protected.spans))
-    if missing:
-        return f"{provider.title()} translation dropped protected placeholders: " + ", ".join(missing[:5])
+    invalid = optimizer.invalid_placeholders(translated, len(protected.spans))
+    if invalid:
+        return f"{provider} provider corrupted protected placeholders: " + ", ".join(invalid[:5])
     if optimizer._cyrillic_count(translated) >= max(2, optimizer._cyrillic_count(original) // 2):
         return f"{provider.title()} translation did not sufficiently normalize Cyrillic text."
     return None

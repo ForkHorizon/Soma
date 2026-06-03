@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from token_calculator import estimate_tokens
-from soma_language_optimizer_core import DEFAULT_CODEX_STAGE_REASONING_EFFORT, TARGET_LANGUAGE, _cleanup_restored_span_punctuation, _clip_text, _cyrillic_count, _extract_json_object, _looks_like_codex_payload_echo, _restore_valid_improved_prompt, _schema_string_list, _sha, _string_list, missing_placeholders, protect_spans, restore_spans
+from soma_language_optimizer_core import DEFAULT_CODEX_STAGE_REASONING_EFFORT, TARGET_LANGUAGE, _clip_text, _cyrillic_count, _extract_json_object, _looks_like_codex_payload_echo, _restore_valid_improved_prompt, _schema_string_list, _sha, _string_list, invalid_placeholders, protect_spans, restore_spans
 
 
 def _codex_translate_schema() -> dict[str, Any]:
@@ -93,7 +93,7 @@ def _finish_codex_translation(decoded, warnings, result, original, protected, mo
         warnings.append(validation_error)
         result["protected_spans_count"] = len(protected.spans)
         return result
-    translation = _cleanup_restored_span_punctuation(restore_spans(translated_protected, protected.spans), protected.spans).strip()
+    translation = restore_spans(translated_protected, protected.spans).strip()
     result.update({"status": "ok", "translation_status": "translated", "translation": translation, "protected_spans_count": len(protected.spans), "translation_tokens": estimate_tokens(translation, model_profile)})
     return result
 
@@ -103,10 +103,10 @@ def _codex_translation_error(decoded, translated_protected, protected, original)
         return "Codex translation returned failed status or empty translation."
     if _looks_like_codex_payload_echo(translated_protected):
         return "Codex translation echoed the control payload instead of translating the prompt."
-    missing = missing_placeholders(translated_protected, len(protected.spans))
-    if missing:
-        return "Codex translation dropped protected placeholders: " + ", ".join(missing[:5])
-    translation = _cleanup_restored_span_punctuation(restore_spans(translated_protected, protected.spans), protected.spans).strip()
+    invalid = invalid_placeholders(translated_protected, len(protected.spans))
+    if invalid:
+        return "Codex translation corrupted protected placeholders: " + ", ".join(invalid[:5])
+    translation = restore_spans(translated_protected, protected.spans).strip()
     return "Codex translation did not sufficiently normalize Cyrillic text." if not translation or _cyrillic_count(translation) >= max(2, _cyrillic_count(original) // 2) else None
 
 

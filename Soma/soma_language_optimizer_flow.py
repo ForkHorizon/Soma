@@ -5,7 +5,7 @@ import sys
 from typing import Any
 
 from token_calculator import estimate_tokens
-from soma_language_optimizer_core import TARGET_LANGUAGE, _cleanup_restored_span_punctuation, _compute_metadata, _cyrillic_count, _restore_valid_improved_prompt, _sha, detect_language, is_codex_stage_model, missing_placeholders, protect_spans, restore_spans
+from soma_language_optimizer_core import TARGET_LANGUAGE, _compute_metadata, _cyrillic_count, _restore_valid_improved_prompt, _sha, detect_language, is_codex_stage_model, invalid_placeholders, protect_spans, restore_spans
 
 
 def _api():
@@ -44,7 +44,7 @@ def _translate_protected(text, provider, translator_model, timeout):
 
 
 def _restore_translation(original, protected, translated_protected):
-    normalized = _cleanup_restored_span_punctuation(restore_spans(translated_protected, protected.spans), protected.spans).strip()
+    normalized = restore_spans(translated_protected, protected.spans).strip()
     if not normalized or _cyrillic_count(normalized) >= max(2, _cyrillic_count(original) // 2):
         raise RuntimeError("translation did not sufficiently normalize Cyrillic text")
     return normalized
@@ -83,9 +83,9 @@ def _translate_general_local(original, translator_model, model_profile, result, 
     protected = protect_spans(original)
     try:
         translated_protected = _api()._local_ollama_translate(protected.text, translator_model, _translation_timeout())
-        missing = missing_placeholders(translated_protected, len(protected.spans))
-        if missing:
-            raise RuntimeError("translation dropped protected placeholders: " + ", ".join(missing[:5]))
+        invalid = invalid_placeholders(translated_protected, len(protected.spans))
+        if invalid:
+            raise RuntimeError("translation corrupted protected placeholders: " + ", ".join(invalid[:5]))
         translation = _restore_translation(original, protected, translated_protected)
         result.update({"status": "ok", "translation_status": "translated", "translation_engine": f"local:{translator_model}", "translation": translation, "protected_spans_count": len(protected.spans), "translation_tokens": estimate_tokens(translation, model_profile)})
     except Exception as exc:
