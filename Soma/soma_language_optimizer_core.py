@@ -158,6 +158,7 @@ def _placeholder_leak_error(source, improved):
 def _instruction_leak_error(source_normalized, improved_normalized):
     markers = [
         "rewrite the user's request into a direct",
+        "rewrite the prompt",
         "return the task prompt itself",
         "not a meta-prompt about creating a prompt",
         "preserve placeholders like",
@@ -237,7 +238,7 @@ def _unsafe_injection_error(improved_normalized):
 
 
 def _sarcasm_inversion_error(source_normalized, improved_normalized):
-    if "red error" in improved_normalized and "proper empty state" in source_normalized:
+    if "red error" in improved_normalized and "proper empty state" in improved_normalized:
         if re.search(r"\b(?:display|show|render)\b[^.\n]{0,64}\bred error\b", improved_normalized):
             return "prompt improvement inverted sarcasm about error versus empty state"
     return None
