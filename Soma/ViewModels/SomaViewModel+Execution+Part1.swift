@@ -16,8 +16,7 @@ func runScout(ollama: OllamaManager) {
         logActivity("Starting Scout: \(prompt)")
         let startTime = Date()
 
-        Task { [weak self] in
-            guard let self else { return }
+        Task { [weak self] in guard let self else { return }
             do {
                 logActivity("Calling scout_pipeline.py...")
                 let stepStart = Date()
@@ -56,8 +55,7 @@ func runRelay(ollama: OllamaManager) {
         logActivity("Starting Relay: \(prompt)")
         let startTime = Date()
 
-        Task { [weak self] in
-            guard let self else { return }
+        Task { [weak self] in guard let self else { return }
             do {
                 relayPhase = .gathering
                 let rootLabel = selectedProjectRoot.isEmpty ? "no selected root" : selectedProjectRoot

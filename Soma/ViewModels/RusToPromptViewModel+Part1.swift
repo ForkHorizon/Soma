@@ -70,8 +70,7 @@ extension RusToPromptViewModel {
 
         resetRunState()
         phase = .translating
-        Task { [weak self] in
-            guard let self else { return }
+        Task { [weak self] in guard let self else { return }
             await runTransform(prompt: prompt, somaViewModel: somaViewModel, ollama: ollama, queueManager: queueManager)
         }
     }

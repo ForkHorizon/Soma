@@ -6,8 +6,7 @@ import UniformTypeIdentifiers
 
 extension SomaViewModel {
 func loadAuditReport() {
-        Task { [weak self] in
-            guard let self else { return }
+        Task { [weak self] in guard let self else { return }
             let file = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".soma/audit/latest.json")
             guard FileManager.default.fileExists(atPath: file.path) else { return }
@@ -34,8 +33,7 @@ func markAudit(status: String, notes: String = "") {
         }
         auditMarkBusy = true
         auditError = nil
-        Task { [weak self] in
-            guard let self else { return }
+        Task { [weak self] in guard let self else { return }
             do {
                 let script = try scriptURL(named: "soma_audit")
                 let data = try await runScript(
@@ -78,8 +76,7 @@ func markAudit(status: String, notes: String = "") {
 
 
 func loadTokenBenchmarkReport() {
-        Task { [weak self] in
-            guard let self else { return }
+        Task { [weak self] in guard let self else { return }
             let file = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".soma/token_stats.json")
             guard FileManager.default.fileExists(atPath: file.path) else { return }
@@ -100,8 +97,7 @@ func loadTokenBenchmarkReport() {
 
 
 func loadAgentBenchmarkReport() {
-        Task { [weak self] in
-            guard let self else { return }
+        Task { [weak self] in guard let self else { return }
             let file = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".soma/agent_benchmarks/latest.json")
             guard FileManager.default.fileExists(atPath: file.path) else { return }
@@ -129,8 +125,7 @@ func runTokenBenchmark() {
         tokenBenchmarkBusy = true
         tokenBenchmarkError = nil
         logActivity("Measuring estimated context reduction for \((selectedProjectRoot as NSString).lastPathComponent)...")
-        Task { [weak self] in
-            guard let self else { return }
+        Task { [weak self] in guard let self else { return }
             do {
                 let script = try scriptURL(named: "soma_token_benchmark")
                 let data = try await runScript(
@@ -181,8 +176,7 @@ func runAgentBenchmark(scenarioPath: String) {
         agentBenchmarkBusy = true
         agentBenchmarkError = nil
         logActivity("Running agent A/B benchmark from \((scenarioPath as NSString).lastPathComponent)...")
-        Task { [weak self] in
-            guard let self else { return }
+        Task { [weak self] in guard let self else { return }
             do {
                 let script = try scriptURL(named: "soma_agent_ab_benchmark")
                 let data = try await runScript(

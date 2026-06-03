@@ -27,8 +27,7 @@ final class ScoutViewModel: ObservableObject {
         somaViewModel.logActivity("Starting Scout: \(prompt)")
         let startTime = Date()
 
-        Task { [weak self] in
-            guard let self else { return }
+        Task { [weak self] in guard let self else { return }
             do {
                 somaViewModel.logActivity("Calling scout_pipeline.py...")
                 let stepStart = Date()
