@@ -171,7 +171,9 @@ actor SomaMCPCoordinator {
 
     private func executePythonTool(tool: String, params: [String: AnyCodable]?) async throws -> [String: AnyCodable] {
         try await startPythonBackendIfNeeded()
-        guard let stdin = pythonStdin else { throw MCPError.toolExecutionFailed("Python backend not running") }
+        guard let stdin = pythonStdin else {
+            throw MCPError.toolExecutionFailed("Python backend not running")
+        }
         let requestId = requestCounter
         requestCounter += 1
 
@@ -187,13 +189,17 @@ actor SomaMCPCoordinator {
 
     private func executeWithTimeout(requestId: Int, requestStr: String, stdin: Pipe) async throws -> [String: AnyCodable] {
         return try await withThrowingTaskGroup(of: [String: AnyCodable].self) { group in
-            group.addTask { return try await self.dispatchRequestTask(requestId: requestId, requestStr: requestStr, stdin: stdin) }
+            group.addTask {
+                return try await self.dispatchRequestTask(requestId: requestId, requestStr: requestStr, stdin: stdin)
+            }
             group.addTask {
                 try await Task.sleep(nanoseconds: 300_000_000_000)
                 throw MCPError.toolExecutionFailed("Request timed out after 300 seconds.")
             }
             do {
-                guard let result = try await group.next() else { throw MCPError.toolExecutionFailed("Failed to get result") }
+                guard let result = try await group.next() else {
+                    throw MCPError.toolExecutionFailed("Failed to get result")
+                }
                 group.cancelAll()
                 return result
             } catch {
@@ -217,7 +223,9 @@ actor SomaMCPCoordinator {
                 }
             }
         } onCancel: {
-            Task { await self.cancelContinuation(id: requestId) }
+            Task {
+                await self.cancelContinuation(id: requestId)
+            }
         }
     }
 

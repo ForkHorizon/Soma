@@ -32,13 +32,17 @@ func runScript(path: String, args: [String], workingDirectory: String? = nil) as
 static func executeProcess(path: String, args: [String], workingDirectory: String? = nil, environment: [String: String], timeout: TimeInterval = 300) async throws -> Data {
         return try await withThrowingTaskGroup(of: Data.self) { group in
             let process = Process()
-            group.addTask { return try await Self.runProcessTask(process, path: path, args: args, workingDirectory: workingDirectory, environment: environment) }
+            group.addTask {
+                return try await Self.runProcessTask(process, path: path, args: args, workingDirectory: workingDirectory, environment: environment)
+            }
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
                 throw SomaError("Process execution timed out after \(timeout) seconds.")
             }
             do {
-                guard let result = try await group.next() else { throw SomaError("Failed to get process result") }
+                guard let result = try await group.next() else {
+                    throw SomaError("Failed to get process result")
+                }
                 group.cancelAll()
                 return result
             } catch {
@@ -54,8 +58,11 @@ static func executeProcess(path: String, args: [String], workingDirectory: Strin
                 process.executableURL = URL(fileURLWithPath: path)
                 process.arguments = args
                 process.environment = environment
-                if let wd = workingDirectory { process.currentDirectoryURL = URL(fileURLWithPath: wd) }
-                let stdout = Pipe(), stderr = Pipe()
+                if let wd = workingDirectory {
+                    process.currentDirectoryURL = URL(fileURLWithPath: wd)
+                }
+                let stdout = Pipe()
+                let stderr = Pipe()
                 process.standardOutput = stdout
                 process.standardError = stderr
                 do {
@@ -64,13 +71,21 @@ static func executeProcess(path: String, args: [String], workingDirectory: Strin
                         let outputData = stdout.fileHandleForReading.readDataToEndOfFile()
                         let errorData = stderr.fileHandleForReading.readDataToEndOfFile()
                         process.waitUntilExit()
-                        if process.terminationStatus == 0 { continuation.resume(returning: outputData) }
-                        else { continuation.resume(throwing: SomaError(String(data: errorData, encoding: .utf8) ?? "Unknown error")) }
+                        if process.terminationStatus == 0 {
+                            continuation.resume(returning: outputData)
+                        }
+ else {
+                            continuation.resume(throwing: SomaError(String(data: errorData, encoding: .utf8) ?? "Unknown error"))
+                        }
                     }
-                } catch { continuation.resume(throwing: error) }
+                } catch {
+                    continuation.resume(throwing: error)
+                }
             }
         } onCancel: {
-            if process.isRunning { process.terminate() }
+            if process.isRunning {
+                process.terminate()
+            }
         }
     }
 
