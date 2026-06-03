@@ -84,25 +84,39 @@ final class OllamaManager: ObservableObject {
         guard let url = URL(string: "http://127.0.0.1:11434/api/tags") else { return }
         var request = URLRequest(url: url)
         request.timeoutInterval = 3
-        URLSession.shared.dataTask(with: request) { data, _, error in
-            DispatchQueue.main.async {
-                if let error {
-                    self.tagsError = error.localizedDescription
-                    self.installedModels = []
+        URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
+            Task.detached {
+                let errorMsg = error?.localizedDescription
+
+                if let errorMsg {
+                    await MainActor.run {
+                        self?.tagsError = errorMsg
+                        self?.installedModels = []
+                    }
                     return
                 }
+
                 guard let data else {
-                    self.tagsError = "Ollama returned no model list."
-                    self.installedModels = []
+                    await MainActor.run {
+                        self?.tagsError = "Ollama returned no model list."
+                        self?.installedModels = []
+                    }
                     return
                 }
+
                 do {
                     let decoded = try JSONDecoder().decode(OllamaTagsResponse.self, from: data)
-                    self.installedModels = decoded.models.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-                    self.tagsError = nil
+                    let sorted = decoded.models.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+                    await MainActor.run {
+                        self?.installedModels = sorted
+                        self?.tagsError = nil
+                    }
                 } catch {
-                    self.tagsError = error.localizedDescription
-                    self.installedModels = []
+                    let decodingError = error.localizedDescription
+                    await MainActor.run {
+                        self?.tagsError = decodingError
+                        self?.installedModels = []
+                    }
                 }
             }
         }.resume()
@@ -111,10 +125,12 @@ final class OllamaManager: ObservableObject {
         guard let url = URL(string: "http://127.0.0.1:11434/api/ps") else { return }
         var request = URLRequest(url: url)
         request.timeoutInterval = 2
-        URLSession.shared.dataTask(with: request) { data, _, error in
-            DispatchQueue.main.async {
+        URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
+            Task.detached {
                 if error != nil {
-                    self.updateStatus(isRunning: false, loadedModels: [])
+                    await MainActor.run {
+                        self?.updateStatus(isRunning: false, loadedModels: [])
+                    }
                     return
                 }
                 var loaded: Set<String> = []
@@ -125,7 +141,10 @@ final class OllamaManager: ObservableObject {
                 {
                     loaded = Set(models.compactMap { ($0["name"] as? String)?.lowercased() })
                 }
-                self.updateStatus(isRunning: true, loadedModels: loaded)
+
+                await MainActor.run {
+                    self?.updateStatus(isRunning: true, loadedModels: loaded)
+                }
             }
         }.resume()
     }
@@ -171,22 +190,27 @@ final class OllamaManager: ObservableObject {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: [
-            "model": trimmedModel,
-            "prompt": "",
-            "keep_alive": keepAlive,
-            "stream": false,
-        ])
         isBusy = true
-        URLSession.shared.dataTask(with: request) { _, _, _ in
-            DispatchQueue.main.async {
-                self.isBusy = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                    self.refreshInstalledModels()
-                    self.checkStatus()
+        Task.detached {
+            let body = try? JSONSerialization.data(withJSONObject: [
+                "model": trimmedModel,
+                "prompt": "",
+                "keep_alive": keepAlive,
+                "stream": false,
+            ])
+            var request = request
+            request.httpBody = body
+
+            URLSession.shared.dataTask(with: request) { _, _, _ in
+                DispatchQueue.main.async {
+                    self.isBusy = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                        self.refreshInstalledModels()
+                        self.checkStatus()
+                    }
                 }
-            }
-        }.resume()
+            }.resume()
+        }
     }
     private func persistModelName(_ model: String, for role: LocalModelRole) {
         LocalModelSettingsStore.setModel(model, for: role)

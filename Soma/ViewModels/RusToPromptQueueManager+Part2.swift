@@ -186,50 +186,69 @@ extension RusToPromptQueueManager {
         }
     }
     func handleProcessFinished(status: Int32) {
-        defer {
-            batteryStartOverrideItemID = nil
-            activeProcess = nil
-            activeItemID = nil
-            activeControlFileURL = nil
-            isRunning = false
-            currentStage = "Idle"
-            currentModel = "-"
-            startNextIfPossible()
+        let itemID = activeItemID
+        let outputPath = activeItemID.flatMap { id in items.first(where: { $0.id == id })?.outputPath }
+        let controlURL = activeControlFileURL
+
+        Task {
+            let completionMessage: String?
+            if status == 0 {
+                completionMessage = await queueRunCompletionMessage(outputPath: outputPath)
+            } else {
+                completionMessage = nil
+            }
+
+            let stopped = status != 0 ? await controlFlagFromActiveFileAsync("stop", controlURL: controlURL) : false
+
+            await MainActor.run {
+                defer {
+                    batteryStartOverrideItemID = nil
+                    activeProcess = nil
+                    activeItemID = nil
+                    activeControlFileURL = nil
+                    isRunning = false
+                    currentStage = "Idle"
+                    currentModel = "-"
+                    startNextIfPossible()
+                }
+                guard let itemID = itemID, let index = items.firstIndex(where: { $0.id == itemID }) else { return }
+
+                if status == 0 {
+                    let msg = completionMessage ?? "Completed"
+                    items[index].status = .completed
+                    items[index].statusMessage = msg
+                    completeModelProgress(itemID: itemID)
+                    appendActivity("Queue run \(itemID): \(msg).")
+                } else {
+                    items[index].status = stopped ? .interrupted : .failed
+                    items[index].statusMessage = stopped ? "Interrupted by user" : "Process exited with code \(status)"
+                    markModelProgressTerminal(itemID: itemID, label: items[index].statusMessage, status: stopped ? "interrupted" : "failed")
+                    appendActivity("Queue run \(itemID) ended: \(items[index].statusMessage).")
+                }
+                items[index].finishedAt = Date()
+                items[index].updatedAt = Date()
+                saveToDisk()
+            }
         }
-        guard let itemID = activeItemID, let index = items.firstIndex(where: { $0.id == itemID }) else { return }
-        if status == 0 {
-            let completionMessage = queueRunCompletionMessage(outputPath: items[index].outputPath)
-            items[index].status = .completed
-            items[index].statusMessage = completionMessage
-            completeModelProgress(itemID: itemID)
-            appendActivity("Queue run \(itemID): \(completionMessage).")
-        } else {
-            let stopped = controlFlagFromActiveFile("stop")
-            items[index].status = stopped ? .interrupted : .failed
-            items[index].statusMessage = stopped ? "Interrupted by user" : "Process exited with code \(status)"
-            markModelProgressTerminal(itemID: itemID, label: items[index].statusMessage, status: stopped ? "interrupted" : "failed")
-            appendActivity("Queue run \(itemID) ended: \(items[index].statusMessage).")
-        }
-        items[index].finishedAt = Date()
-        items[index].updatedAt = Date()
-        saveToDisk()
     }
-    func queueRunCompletionMessage(outputPath: String?) -> String {
+    nonisolated func queueRunCompletionMessage(outputPath: String?) async -> String {
         guard let outputPath, !outputPath.isEmpty else { return "Completed; summary missing" }
         let summaryURL = URL(fileURLWithPath: outputPath).appendingPathComponent("summary.json")
-        guard let data = try? Data(contentsOf: summaryURL),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return "Completed; summary missing"
-        }
-        let runStatus = object["run_status"] as? String
-        let success = object["success"] as? Bool
-        if runStatus == "failed" {
-            return queueRunIssueMessage(prefix: "Completed with failed summary", summary: object)
-        }
-        if runStatus == "completed_with_issues" || success == false {
-            return queueRunIssueMessage(prefix: "Completed with issues", summary: object)
-        }
-        return "Completed"
+        return await Task.detached {
+            guard let data = try? Data(contentsOf: summaryURL),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return "Completed; summary missing"
+            }
+            let runStatus = object["run_status"] as? String
+            let success = object["success"] as? Bool
+            if runStatus == "failed" {
+                return self.queueRunIssueMessage(prefix: "Completed with failed summary", summary: object)
+            }
+            if runStatus == "completed_with_issues" || success == false {
+                return self.queueRunIssueMessage(prefix: "Completed with issues", summary: object)
+            }
+            return "Completed"
+        }.value
     }
     func queueRunIssueMessage(prefix: String, summary: [String: Any]) -> String {
         guard let issueCounts = summary["issue_counts"] as? [String: Any] else { return prefix }
@@ -258,26 +277,51 @@ extension RusToPromptQueueManager {
         let parts = processOutputBuffer.components(separatedBy: .newlines)
         guard parts.count > 1 else { return }
         processOutputBuffer = parts.last ?? ""
-        for line in parts.dropLast() {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { continue }
-            if let event = decodeProgressEvent(from: trimmed) {
-                currentStage = displayStage(for: event)
-                if let translator = event.translatorModel, let analyzer = event.analyzerModel {
-                    currentModel = "\(translator) -> \(analyzer)"
-                } else if let translator = event.translatorModel {
-                    currentModel = translator
-                } else if let confidenceModel = event.confidenceModel {
-                    currentModel = confidenceModel
+
+        let linesToProcess = Array(parts.dropLast())
+        let prefix = progressPrefix
+
+        Task.detached {
+            var events: [(QueueProgressEvent?, String)] = []
+            let decoder = JSONDecoder()
+            for line in linesToProcess {
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+
+                if trimmed.hasPrefix(prefix) {
+                    let payload = String(trimmed.dropFirst(prefix.count))
+                    if let data = payload.data(using: .utf8),
+                       let event = try? decoder.decode(QueueProgressEvent.self, from: data) {
+                        events.append((event, trimmed))
+                    } else {
+                        events.append((nil, trimmed))
+                    }
+                } else {
+                    events.append((nil, trimmed))
                 }
-                updateModelProgress(for: event)
-                appendActivity(activityText(for: event))
-            } else {
-                appendActivity(trimmed)
+            }
+
+            await MainActor.run {
+                for (eventOpt, trimmed) in events {
+                    if let event = eventOpt {
+                        self.currentStage = self.displayStage(for: event)
+                        if let translator = event.translatorModel, let analyzer = event.analyzerModel {
+                            self.currentModel = "\(translator) -> \(analyzer)"
+                        } else if let translator = event.translatorModel {
+                            self.currentModel = translator
+                        } else if let confidenceModel = event.confidenceModel {
+                            self.currentModel = confidenceModel
+                        }
+                        self.updateModelProgress(for: event)
+                        self.appendActivity(self.activityText(for: event))
+                    } else {
+                        self.appendActivity(trimmed)
+                    }
+                }
             }
         }
     }
-    func decodeProgressEvent(from line: String) -> QueueProgressEvent? {
+    nonisolated func decodeProgressEvent(from line: String) -> QueueProgressEvent? {
         guard line.hasPrefix(progressPrefix) else { return nil }
         let payload = String(line.dropFirst(progressPrefix.count))
         guard let data = payload.data(using: .utf8) else { return nil }

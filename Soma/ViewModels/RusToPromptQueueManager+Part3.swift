@@ -371,15 +371,22 @@ extension RusToPromptQueueManager {
         }
     }
     func saveToDisk() {
-        do {
-            try FileManager.default.createDirectory(at: appSupportURL, withIntermediateDirectories: true)
-            let state = RusToPromptQueueDiskState(settings: settings, items: items, isPaused: isPaused, isPowerPaused: isPowerPaused)
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(state)
-            try data.write(to: queueFileURL, options: [.atomic])
-        } catch {
-            appendActivity("Queue state could not be saved: \(error.localizedDescription)")
+        let state = RusToPromptQueueDiskState(settings: settings, items: items, isPaused: isPaused, isPowerPaused: isPowerPaused)
+        let queueFileURL = self.queueFileURL
+        let appSupportURL = self.appSupportURL
+
+        Task.detached {
+            do {
+                try FileManager.default.createDirectory(at: appSupportURL, withIntermediateDirectories: true)
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let data = try encoder.encode(state)
+                try data.write(to: queueFileURL, options: [.atomic])
+            } catch {
+                await MainActor.run {
+                    self.appendActivity("Queue state could not be saved: \(error.localizedDescription)")
+                }
+            }
         }
     }
     func recoverRunningItems() {
@@ -415,11 +422,15 @@ extension RusToPromptQueueManager {
     }
     func writeControl(_ payload: [String: Bool]) {
         guard let activeControlFileURL else { return }
-        do {
-            let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
-            try data.write(to: activeControlFileURL, options: [.atomic])
-        } catch {
-            appendActivity("Could not write control file: \(error.localizedDescription)")
+        Task.detached {
+            do {
+                let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+                try data.write(to: activeControlFileURL, options: [.atomic])
+            } catch {
+                await MainActor.run {
+                    self.appendActivity("Could not write control file: \(error.localizedDescription)")
+                }
+            }
         }
     }
     func controlFlagFromActiveFile(_ key: String) -> Bool {
@@ -430,6 +441,16 @@ extension RusToPromptQueueManager {
         }
         return (decoded[key] as? Bool) == true
     }
+    nonisolated func controlFlagFromActiveFileAsync(_ key: String, controlURL: URL?) async -> Bool {
+        guard let url = controlURL else { return false }
+        return await Task.detached {
+            guard let data = try? Data(contentsOf: url),
+                  let decoded = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return false
+            }
+            return (decoded[key] as? Bool) == true
+        }.value
+    }
     func fetchInstalledModels(completion: @escaping (Set<String>, Bool) -> Void) {
         guard let url = URL(string: "http://127.0.0.1:11434/api/tags") else {
             completion([], false)
@@ -438,13 +459,17 @@ extension RusToPromptQueueManager {
         var request = URLRequest(url: url)
         request.timeoutInterval = 3
         URLSession.shared.dataTask(with: request) { data, _, error in
-            DispatchQueue.main.async {
+            Task.detached {
                 guard error == nil, let data else {
-                    completion([], false)
+                    await MainActor.run { completion([], false) }
                     return
                 }
                 let decoded = try? JSONDecoder().decode(QueueOllamaTagsResponse.self, from: data)
-                completion(Set(decoded?.models.map(\.name) ?? []), decoded != nil)
+                let models = Set(decoded?.models.map(\.name) ?? [])
+                let hasDecoded = decoded != nil
+                await MainActor.run {
+                    completion(models, hasDecoded)
+                }
             }
         }.resume()
     }
