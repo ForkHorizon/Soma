@@ -37,7 +37,8 @@ final class RelayViewModel: ObservableObject {
         somaViewModel.logActivity("Starting Relay: \(prompt)")
         let startTime = Date()
 
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 relayPhase = .gathering
                 let rootLabel = somaViewModel.selectedProjectRoot.isEmpty ? "no selected root" : somaViewModel.selectedProjectRoot

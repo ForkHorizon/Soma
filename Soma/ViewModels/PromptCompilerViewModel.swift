@@ -32,7 +32,8 @@ final class PromptCompilerViewModel: ObservableObject {
         somaViewModel.logActivity("Starting Prompt Compiler: \(prompt)")
         let startTime = Date()
 
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 phase = .gathering
                 let rootLabel = somaViewModel.selectedProjectRoot.isEmpty ? "no selected root" : somaViewModel.selectedProjectRoot
