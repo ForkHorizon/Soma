@@ -109,20 +109,31 @@ def _protected_prompt_from_spans(text, spans):
 def restore_spans(text: str, spans: list[str]) -> str:
     restored = text
     for index, value in enumerate(spans):
-        restored = restored.replace(_placeholder(index), value)
+        placeholder = _placeholder(index)
+
+        def replacement(match):
+            dots = match.group(1)
+            if value and not value.endswith("."):
+                # Collapse multiple dots into a single dot if they follow the placeholder
+                if dots and len(dots) >= 2:
+                    return value + "."
+            return value + (dots or "")
+
+        pattern = re.escape(placeholder) + r"(\.*)"
+        restored = re.sub(pattern, replacement, restored)
     return restored
 
 
-def _cleanup_restored_span_punctuation(text: str, spans: list[str]) -> str:
-    cleaned = text
-    for value in spans:
-        if value and not value.endswith("."):
-            cleaned = cleaned.replace(value + "...", value + ".").replace(value + "..", value + ".")
-    return cleaned
-
-
-def missing_placeholders(text: str, count: int) -> list[str]:
-    return [_placeholder(index) for index in range(count) if _placeholder(index) not in (text or "")]
+def invalid_placeholders(text: str, count: int) -> list[str]:
+    invalid = []
+    for index in range(count):
+        placeholder = _placeholder(index)
+        occurrences = (text or "").count(placeholder)
+        if occurrences == 0:
+            invalid.append(f"{placeholder} (missing)")
+        elif occurrences > 1:
+            invalid.append(f"{placeholder} (duplicated {occurrences} times)")
+    return invalid
 
 
 def _cyrillic_count(text: str) -> int:
@@ -244,10 +255,10 @@ def _sarcasm_inversion_error(source_normalized, improved_normalized):
 
 
 def _restore_valid_improved_prompt(source: str, protected: ProtectedPrompt, improved_protected: str) -> tuple[str, str | None]:
-    missing = missing_placeholders(improved_protected, len(protected.spans))
-    if missing:
-        return "", "prompt improvement dropped protected placeholders: " + ", ".join(missing[:5])
-    improved = _cleanup_restored_span_punctuation(restore_spans(improved_protected, protected.spans), protected.spans).strip()
+    invalid = invalid_placeholders(improved_protected, len(protected.spans))
+    if invalid:
+        return "", "prompt improvement corrupted protected placeholders: " + ", ".join(invalid[:5])
+    improved = restore_spans(improved_protected, protected.spans).strip()
     sanity_error = _improved_prompt_sanity_error(source, improved)
     return ("", sanity_error) if sanity_error else (improved, None)
 

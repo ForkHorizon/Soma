@@ -54,7 +54,7 @@ class UniversalReadinessConfidenceTests(UniversalReadinessTestCase):
 
         def fake_repair(text, model, timeout, failure_reason, previous_output):
             placeholders = list(dict.fromkeys(re.findall(r"__SOMA_PROTECTED_SPAN_\d+__", text)))
-            self.assertIn("dropped protected placeholders", failure_reason)
+            self.assertIn("corrupted protected placeholders", failure_reason)
             return "Fix " + ", ".join(placeholders) + " without changing behavior."
 
         with patch.object(soma_language_optimizer, "_local_ollama_improve_prompt", side_effect=fake_improve), patch.object(

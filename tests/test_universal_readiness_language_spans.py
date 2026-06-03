@@ -11,8 +11,8 @@ class UniversalReadinessLanguageSpanTests(UniversalReadinessTestCase):
         self.assertTrue(any(span.startswith("cat /tmp/soma/config.json") for span in protected.spans))
 
     def test_rus_to_prompt_cleans_double_punctuation_after_protected_spans(self):
-        cleaned = soma_language_optimizer._cleanup_restored_span_punctuation(
-            "/Users/me/project/ActionsView.swift.. Check the UI.",
+        cleaned = soma_language_optimizer.restore_spans(
+            "__SOMA_PROTECTED_SPAN_0__.. Check the UI.",
             ["/Users/me/project/ActionsView.swift"],
         )
 

@@ -26,7 +26,6 @@ from soma_language_optimizer_core import (
     PLACEHOLDER_PREFIX,
     TARGET_LANGUAGE,
     ProtectedPrompt,
-    _cleanup_restored_span_punctuation,
     _clip_text,
     _compute_metadata,
     _cyrillic_count,
@@ -43,7 +42,7 @@ from soma_language_optimizer_core import (
     estimate_tokens,
     is_codex_stage_model,
     log_fields,
-    missing_placeholders,
+    invalid_placeholders,
     protect_spans,
     restore_spans,
 )
