@@ -87,7 +87,7 @@ def _run_ollama_text(payload, timeout, stage, model):
     response_text = ""
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            response_text = response.read().decode("utf-8")
+            response_text = _read_with_circuit_breaker(response, timeout, start)
         content = json.loads(response_text).get("message", {}).get("content", "")
         if not isinstance(content, str) or not content.strip():
             raise RuntimeError(_empty_response_error(stage))
@@ -137,9 +137,27 @@ def _free_cloud_translate(text: str, timeout: float) -> str:
         raise RuntimeError("free cloud translation endpoint is not configured")
     payload = json.dumps({"q": text, "source": "auto", "target": "en", "format": "text"}).encode("utf-8")
     request = urllib.request.Request(endpoint, data=payload, headers={"Content-Type": "application/json"})
+    start = time.monotonic()
     with urllib.request.urlopen(request, timeout=timeout) as response:
-        decoded = json.loads(response.read().decode("utf-8"))
+        response_text = _read_with_circuit_breaker(response, timeout, start)
+        decoded = json.loads(response_text)
     translated = decoded.get("translatedText") or decoded.get("translation") or decoded.get("text")
     if not isinstance(translated, str) or not translated.strip():
         raise RuntimeError("empty cloud translation response")
     return translated.strip()
+
+
+def _read_with_circuit_breaker(response, timeout: float, start_time: float, max_bytes: int = 2 * 1024 * 1024) -> str:
+    chunks = []
+    total_bytes = 0
+    while True:
+        if time.monotonic() - start_time > timeout:
+            raise TimeoutError("response stream exceeded absolute timeout")
+        chunk = response.read(8192)
+        if not chunk:
+            break
+        total_bytes += len(chunk)
+        if total_bytes > max_bytes:
+            raise RuntimeError("response exceeded maximum allowed size")
+        chunks.append(chunk)
+    return b"".join(chunks).decode("utf-8")

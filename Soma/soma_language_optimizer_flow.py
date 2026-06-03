@@ -130,25 +130,30 @@ def _improve_general_local(translation, improver_model, model_profile, result, w
     return result
 
 
-def _validated_local_improvement(translation, protected, improver_model, timeout, warnings):
+def _validated_local_improvement(translation, protected, improver_model, timeout, warnings, max_retries=3):
     improved_protected = _api()._local_ollama_improve_prompt(protected.text, improver_model, timeout)
     improved, validation_error = _restore_valid_improved_prompt(translation, protected, improved_protected)
     if not validation_error:
         return improved, False
-    repaired = _repair_improvement(translation, protected, improver_model, timeout, validation_error, improved_protected)
-    warnings.append(f"Prompt improvement retry recovered after: {validation_error}")
-    return repaired, True
 
+    attempts = 0
+    current_error = validation_error
+    current_protected = improved_protected
 
-def _repair_improvement(translation, protected, improver_model, timeout, validation_error, improved_protected):
-    try:
-        repaired_protected = _api()._local_ollama_repair_prompt(protected.text, improver_model, timeout, validation_error, improved_protected)
-        repaired, repair_error = _restore_valid_improved_prompt(translation, protected, repaired_protected)
-        if repair_error:
-            raise RuntimeError(repair_error)
-        return repaired
-    except Exception as retry_exc:
-        raise RuntimeError(f"{validation_error}; retry failed: {retry_exc}") from retry_exc
+    while attempts < max_retries:
+        try:
+            repaired_protected = _api()._local_ollama_repair_prompt(protected.text, improver_model, timeout, current_error, current_protected)
+            repaired, repair_error = _restore_valid_improved_prompt(translation, protected, repaired_protected)
+            if not repair_error:
+                warnings.append(f"Prompt improvement retry recovered after: {current_error}")
+                return repaired, True
+            current_error = repair_error
+            current_protected = repaired_protected
+            attempts += 1
+        except Exception as retry_exc:
+            raise RuntimeError(f"{current_error}; retry failed: {retry_exc}") from retry_exc
+
+    raise RuntimeError(f"Failed to repair prompt after {max_retries} attempts. Last error: {current_error}")
 
 
 def optimize_general_prompt(prompt: str, model_profile: str = "gpt-5.5") -> dict[str, Any]:
