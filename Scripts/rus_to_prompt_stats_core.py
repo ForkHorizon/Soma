@@ -3,6 +3,12 @@ from __future__ import annotations
 import statistics
 from typing import Any
 
+from rus_to_prompt_confidence_semantics import (
+    confidence_cap_reasons,
+    confidence_failed as semantic_confidence_failed,
+    confidence_value as semantic_confidence_value,
+)
+
 
 LOW_CONFIDENCE_THRESHOLD = 0.75
 CODEX_MODELS = {
@@ -19,22 +25,21 @@ CODEX_MODELS = {
 
 
 def confidence_value(confidence: dict[str, Any] | None) -> float | None:
-    if not isinstance(confidence, dict):
-        return None
-    if str(confidence.get("status") or "") == "failed":
-        return None
-    value = confidence.get("confidence")
-    return float(value) if isinstance(value, (int, float)) else None
+    return semantic_confidence_value(confidence)
 
 
 def confidence_failed(confidence: dict[str, Any] | None) -> bool:
-    return isinstance(confidence, dict) and str(confidence.get("status") or "") == "failed"
+    return semantic_confidence_failed(confidence)
 
 
 def confidence_warnings(confidence: dict[str, Any] | None) -> list[str]:
-    if not isinstance(confidence, dict) or not isinstance(confidence.get("warnings"), list):
+    if not isinstance(confidence, dict):
         return []
-    return [str(item) for item in confidence.get("warnings") if str(item or "").strip()]
+    warnings = []
+    if isinstance(confidence.get("warnings"), list):
+        warnings.extend(str(item) for item in confidence.get("warnings") if str(item or "").strip())
+    warnings.extend("Cap: " + reason for reason in confidence_cap_reasons(confidence))
+    return warnings
 
 
 def provider_for_model(model: str, explicit: str | None = None) -> str:
@@ -64,10 +69,12 @@ def sorted_recent_runs(run_items: dict[str, dict[str, Any]]) -> list[dict[str, A
 
 def _recent_run_row(run_dir: str, item: dict[str, Any]) -> dict[str, Any]:
     confidence_values = item.get("confidence_values") or []
+    quality_values = item.get("quality_values") or []
     return {
         "run_dir": run_dir,
         "finished_at": item.get("finished_at"),
         "attempts": int(item.get("attempts") or 0),
+        "quality_score": mean_or_none(quality_values),
         "avg_confidence": mean_or_none(confidence_values),
         "low_confidence_count": int(item.get("low_confidence_count") or 0),
         "failed_count": int(item.get("failed_count") or 0),

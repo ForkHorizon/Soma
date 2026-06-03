@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from rus_to_prompt_confidence_semantics import confidence_value as semantic_confidence_value
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "Soma"))
@@ -192,10 +194,7 @@ def _schema_string_list(max_items: int = 6) -> dict[str, Any]:
 
 
 def confidence_value(confidence: dict[str, Any] | None) -> float | None:
-    if not isinstance(confidence, dict) or confidence.get("status") == "failed":
-        return None
-    value = confidence.get("confidence")
-    return float(value) if isinstance(value, (int, float)) else None
+    return semantic_confidence_value(confidence)
 
 
 def benchmark_operation_count(mode: str, case_count: int, translator_count: int, improver_count: int) -> int:

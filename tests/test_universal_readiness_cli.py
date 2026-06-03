@@ -15,6 +15,22 @@ class TokenAndUniversalCLITests(unittest.TestCase):
         self.assertEqual(payload["estimator"], "chars_per_token")
         self.assertGreater(payload["estimated_tokens"], 0)
 
+    def test_rus_to_prompt_script_entrypoint_resolves_facade_api(self):
+        script = Path(__file__).resolve().parents[1] / "Soma" / "soma_language_optimizer.py"
+        completed = subprocess.run(
+            [sys.executable, str(script), "--rus-to-prompt-translate", "--translator-model", "unused-local-model", "Check this."],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=30,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["translation_status"], "original_english")
+        self.assertEqual(payload["translation"], "Check this.")
+
     def test_token_savings_unavailable_for_failed_packet(self):
         savings = build_token_savings(
             packet="",

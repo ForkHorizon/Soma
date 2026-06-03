@@ -67,6 +67,7 @@ extension TestsView {
                 Label("Real Prompt Queue", systemImage: "tray.full")
                     .font(.title3.weight(.semibold))
                 StatusChip(text: queueManager.statusBadgeText, tone: queueStatusTone)
+                StatusChip(text: queueManager.powerSource.label, tone: queuePowerTone)
                 StatusChip(text: "\(queueManager.completedCount) done", tone: .good)
                 if queueManager.failedCount > 0 {
                     StatusChip(text: "\(queueManager.failedCount) needs attention", tone: .warning)
@@ -84,14 +85,24 @@ extension TestsView {
                     Label("Open Logs", systemImage: "folder.badge.gearshape")
                 }
                 .buttonStyle(.bordered)
+                Button {
+                    showQueue = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.bordered)
+                .keyboardShortcut(.cancelAction)
+                .help("Close queue")
             }
 
             HStack(alignment: .top, spacing: 12) {
                 queueSettingsPanel
-                    .frame(width: 360, alignment: .topLeading)
+                    .frame(width: 330, alignment: .topLeading)
                 queueItemsPanel
+                    .frame(minWidth: 520, maxWidth: .infinity, alignment: .topLeading)
                 queueActivePanel
-                    .frame(width: 340, alignment: .topLeading)
+                    .frame(width: 300, alignment: .topLeading)
             }
         }
         .padding(18)
@@ -110,14 +121,25 @@ extension TestsView {
             ))
             .toggleStyle(.switch)
 
+            HStack {
+                Text("Power")
+                    .foregroundColor(.secondary)
+                Spacer()
+                StatusChip(text: queueManager.powerSource.label, tone: queuePowerTone)
+            }
+            .font(.caption)
+            .help("Automatic queue starts wait for adapter power. Manual Start, Resume, and Run Now can override battery mode for the current run.")
+
             queueCandidatePanel(
                 title: "Translators",
+                role: .translator,
                 selected: queueManager.settings.translatorCandidates,
                 update: queueManager.updateTranslatorCandidates
             )
 
             queueCandidatePanel(
                 title: "Improvers",
+                role: .improver,
                 selected: queueManager.settings.improverCandidates,
                 update: queueManager.updateImproverCandidates
             )

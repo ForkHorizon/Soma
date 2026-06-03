@@ -202,8 +202,9 @@ extension TestsView {
                             modelStatsSection(
                                 title: "Translation Models",
                                 subtitle: "Russian or mixed input -> English translation. Attempts are deduplicated across improvers.",
-                                rows: modelStats.translationModels,
-                                selectedID: $selectedTranslationStatsID
+                                rows: sortedTranslationModelStats,
+                                selectedID: $selectedTranslationStatsID,
+                                sort: $translationModelStatsSort
                             )
                             if let selected = selectedTranslationStats {
                                 modelStatsDetailPanel(title: "Translation details", row: selected)
@@ -212,8 +213,9 @@ extension TestsView {
                             modelStatsSection(
                                 title: "Improver Models",
                                 subtitle: "English translation -> final polished prompt. Attempts are counted per actual improve operation.",
-                                rows: modelStats.improverModels,
-                                selectedID: $selectedImproverStatsID
+                                rows: sortedImproverModelStats,
+                                selectedID: $selectedImproverStatsID,
+                                sort: $improverModelStatsSort
                             )
                             if let selected = selectedImproverStats {
                                 modelStatsDetailPanel(title: "Improver details", row: selected)

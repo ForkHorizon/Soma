@@ -7,6 +7,7 @@ extension TestsView {
         let resultsURL = outDir.appendingPathComponent("results.jsonl")
         do {
             resultPromptByCaseID = loadPromptManifest(from: outDir)
+            resultConfidenceJudgesByItemID = loadConfidenceJudgesMap(from: outDir)
             let text = try String(contentsOf: resultsURL, encoding: .utf8)
             let decoder = JSONDecoder()
             resultRunRows = text
@@ -23,11 +24,14 @@ extension TestsView {
                         return lhs > rhs
                     }
                     return $0.caseID < $1.caseID
-                }
+            }
             selectedRunRowID = resultRunRows.first?.id
+            expandedRunDebugIDs = selectedRunRowID.map { Set([$0]) } ?? []
         } catch {
             resultRunRows = []
             resultPromptByCaseID = [:]
+            resultConfidenceJudgesByItemID = [:]
+            expandedRunDebugIDs = []
         }
     }
 
@@ -39,6 +43,51 @@ extension TestsView {
             return [:]
         }
         return Dictionary(uniqueKeysWithValues: decoded.map { ($0.id, $0.prompt) })
+    }
+
+
+    func loadConfidenceJudgesMap(from outDir: URL) -> [String: [TestConfidenceJudgeResult]] {
+        let stateURL = outDir.appendingPathComponent("confidence_state.json")
+        guard let data = try? Data(contentsOf: stateURL),
+              let decoded = try? JSONDecoder().decode(TestConfidenceStateEnvelope.self, from: data) else {
+            return [:]
+        }
+
+        var grouped: [String: [TestConfidenceJudgeResult]] = [:]
+        for (rawKey, payload) in decoded.localJudges {
+            guard let parsed = parseConfidenceStateKey(rawKey) else { continue }
+            let result = TestConfidenceJudgeResult(
+                itemID: parsed.itemID,
+                judgeModel: parsed.model,
+                payload: payload
+            )
+            grouped[parsed.itemID, default: []].append(result)
+        }
+
+        for key in grouped.keys {
+            grouped[key]?.sort {
+                let lhs = $0.judgeModel.localizedStandardCompare($1.judgeModel)
+                if lhs == .orderedSame {
+                    return ($0.payload.stage ?? "") < ($1.payload.stage ?? "")
+                }
+                return lhs == .orderedAscending
+            }
+        }
+        return grouped
+    }
+
+
+    func parseConfidenceStateKey(_ key: String) -> (itemID: String, model: String)? {
+        guard let data = key.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let array = object as? [Any],
+              array.count == 2 else {
+            return nil
+        }
+        let itemID = String(describing: array[0]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let model = String(describing: array[1]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !itemID.isEmpty, !model.isEmpty else { return nil }
+        return (itemID, model)
     }
 
 

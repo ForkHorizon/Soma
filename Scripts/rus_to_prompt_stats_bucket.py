@@ -18,10 +18,12 @@ class RoleBucket:
     provider: str
     attempts: int = 0
     confidence_values: list[float] = field(default_factory=list)
+    quality_values: list[float] = field(default_factory=list)
     low_confidence_count: int = 0
     confidence_failed_count: int = 0
     pipeline_failed_count: int = 0
     degraded_count: int = 0
+    problem_count: int = 0
     seconds_values: list[float] = field(default_factory=list)
     last_tested_at: str | None = None
     worst_cases: list[dict[str, Any]] = field(default_factory=list)
@@ -68,8 +70,12 @@ class RoleBucket:
             self.low_confidence_count += int(confidence < LOW_CONFIDENCE_THRESHOLD)
         elif confidence_failed_value:
             self.confidence_failed_count += 1
+        quality = self._quality_value(confidence, confidence_failed_value, pipeline_failed)
+        if quality is not None:
+            self.quality_values.append(quality)
         self.pipeline_failed_count += int(pipeline_failed)
         self.degraded_count += int(degraded)
+        self.problem_count += int(confidence_failed_value or pipeline_failed or degraded)
         if isinstance(seconds, (int, float)):
             self.seconds_values.append(float(seconds))
 
@@ -92,6 +98,9 @@ class RoleBucket:
         if confidence is not None:
             run_item["confidence_values"].append(confidence)
             run_item["low_confidence_count"] += int(confidence < LOW_CONFIDENCE_THRESHOLD)
+        quality = self._quality_value(confidence, confidence_failed_value, pipeline_failed)
+        if quality is not None:
+            run_item["quality_values"].append(quality)
         if confidence_failed_value or pipeline_failed:
             run_item["failed_count"] += 1
 
@@ -118,6 +127,7 @@ class RoleBucket:
                 "case_id": case_id,
                 "category": category,
                 "confidence": confidence,
+                "effective_score": self._quality_value(confidence, confidence_failed_value, pipeline_failed),
                 "confidence_failed": confidence_failed_value,
                 "status": status,
                 "related_model": related_model,
@@ -131,6 +141,7 @@ class RoleBucket:
             "provider": self.provider,
             "attempts": self.attempts,
             "confidence_count": len(self.confidence_values),
+            "quality_score": mean_or_none(self.quality_values),
             "avg_confidence": mean_or_none(self.confidence_values),
             "median_confidence": median_or_none(self.confidence_values),
             "min_confidence": min(self.confidence_values) if self.confidence_values else None,
@@ -138,6 +149,8 @@ class RoleBucket:
             "confidence_failed_count": self.confidence_failed_count,
             "pipeline_failed_count": self.pipeline_failed_count,
             "degraded_count": self.degraded_count,
+            "problem_count": self.problem_count,
+            "worst_effective_score": min(self.quality_values) if self.quality_values else None,
             "avg_seconds": mean_or_none(self.seconds_values),
             "last_tested_at": self.last_tested_at,
             "worst_cases": self._sorted_worst_cases(),
@@ -149,10 +162,16 @@ class RoleBucket:
         return sorted(
             self.worst_cases,
             key=lambda item: (
-                item.get("confidence") is not None,
-                item.get("confidence") if item.get("confidence") is not None else -1.0,
+                item.get("effective_score") is not None,
+                item.get("effective_score") if item.get("effective_score") is not None else -1.0,
             ),
         )[:10]
+
+    @staticmethod
+    def _quality_value(confidence: float | None, confidence_failed_value: bool, pipeline_failed: bool) -> float | None:
+        if confidence_failed_value or pipeline_failed:
+            return 0.0
+        return confidence
 
 
 def _empty_run(finished_at: str | None) -> dict[str, Any]:
@@ -160,6 +179,7 @@ def _empty_run(finished_at: str | None) -> dict[str, Any]:
         "finished_at": finished_at,
         "attempts": 0,
         "confidence_values": [],
+        "quality_values": [],
         "low_confidence_count": 0,
         "failed_count": 0,
     }

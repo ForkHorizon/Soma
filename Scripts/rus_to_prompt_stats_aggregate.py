@@ -8,6 +8,7 @@ from typing import Any
 
 from rus_to_prompt_stats_bucket import RoleBucket
 from rus_to_prompt_stats_core import confidence_failed, confidence_value, confidence_warnings, provider_for_model
+from rus_to_prompt_stress_results import improved_prompt_sanity_error, looks_like_reasoning_transcript
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -130,7 +131,7 @@ def _translation_attempt(row: dict[str, Any], model: str, case_id: str) -> dict[
 def _translation_failed(row: dict[str, Any]) -> bool:
     status = str(row.get("status") or "")
     translation_status = str(row.get("translation_status") or "")
-    return status == "translation_failed" or translation_status in {"failed", "exception"}
+    return status == "translation_failed" or translation_status in {"failed", "failed_fallback", "exception", "timeout"} or (translation_status and not str(row.get("translation") or "").strip())
 
 
 def _should_record_improver(row: dict[str, Any]) -> bool:
@@ -145,8 +146,7 @@ def _record_improver_attempt(run: dict[str, Any], row: dict[str, Any], buckets: 
     improver_model = str(row.get("analyzer_model") or "unknown")
     explicit = str(row.get("analyzer_provider") or run["analyzer_providers"].get(improver_model) or "")
     bucket = buckets.setdefault(improver_model, RoleBucket(improver_model, provider_for_model(improver_model, explicit)))
-    confidence = row.get("improve_confidence")
-    confidence_dict = confidence if isinstance(confidence, dict) else None
+    confidence_dict = _effective_improve_confidence(row)
     row_status = str(row.get("status") or "")
     improve_status = str(row.get("improve_status") or row_status)
     bucket.add_attempt(
@@ -177,6 +177,36 @@ def _improver_warnings(
     return warnings
 
 
+def _effective_improve_confidence(row: dict[str, Any]) -> dict[str, Any] | None:
+    confidence = row.get("improve_confidence")
+    confidence_dict = confidence if isinstance(confidence, dict) else None
+    reason = _row_improved_prompt_sanity_error(row)
+    if not reason and not bool(row.get("internal_instruction_leak")) and not bool(row.get("meta_prompt_output")):
+        return confidence_dict
+    capped = dict(confidence_dict or {})
+    raw_value = confidence_value(confidence_dict)
+    if raw_value is not None and "raw_confidence" not in capped:
+        capped["raw_confidence"] = raw_value
+    capped["confidence"] = None
+    capped["status"] = "failed"
+    capped["verdict"] = "fail"
+    capped["effective_score"] = 0.0
+    warnings = confidence_warnings(capped)
+    warning = "Deterministic stats cap: " + (reason or "stored internal instruction leak")
+    if warning not in warnings:
+        warnings.insert(0, warning)
+    capped["warnings"] = warnings[:6]
+    return capped
+
+
+def _row_improved_prompt_sanity_error(row: dict[str, Any]) -> str | None:
+    improved = str(row.get("improved_prompt") or "")
+    if not improved:
+        return None
+    source = str(row.get("translation") or "")
+    return improved_prompt_sanity_error(source, improved) or ("prompt improvement returned assistant reasoning instead of the direct task" if looks_like_reasoning_transcript(improved) else None)
+
+
 def _finalize_translation_attempts(
     run: dict[str, Any],
     attempts: dict[tuple[str, str, str, str], dict[str, Any]],
@@ -193,7 +223,7 @@ def _finalize_translation_attempts(
             case_id=str(attempt["case_id"]),
             category=attempt.get("category"),
             confidence=averaged,
-            confidence_failed_value=bool(attempt["confidence_failed"]) and averaged is None,
+            confidence_failed_value=bool(attempt["confidence_failed"]),
             status="translation_failed" if attempt["translation_failed"] else "ok",
             degraded=bool(attempt["degraded"]),
             pipeline_failed=bool(attempt["translation_failed"]),
@@ -224,9 +254,12 @@ def _sort_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(
         rows,
         key=lambda item: (
-            item["avg_confidence"] if item["avg_confidence"] is not None else -1,
+            item["quality_score"] if item.get("quality_score") is not None else -1,
+            -int(item["problem_count"] or 0),
             -int(item["confidence_failed_count"] or 0),
+            -int(item["pipeline_failed_count"] or 0),
             -int(item["low_confidence_count"] or 0),
+            item["median_confidence"] if item["median_confidence"] is not None else -1,
             int(item["attempts"] or 0),
         ),
         reverse=True,

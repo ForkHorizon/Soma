@@ -21,6 +21,9 @@ extension RusToPromptView {
 
             Button {
                 showModels.toggle()
+                if showModels {
+                    loadRusToPromptModelStatsIfNeeded()
+                }
             } label: {
                 Label("Models", systemImage: "slider.horizontal.3")
             }

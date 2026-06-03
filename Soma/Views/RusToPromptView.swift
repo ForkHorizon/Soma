@@ -15,6 +15,9 @@ struct RusToPromptView: View {
     @State var selectedOutput: RusToPromptOutputTab = .improved
     @State var showModels = false
     @State var copied = false
+    @State var modelStats: TestModelStatsEnvelope?
+    @State var isLoadingModelStats = false
+    @State var modelStatsStatus = "Stats not loaded"
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,6 +34,7 @@ struct RusToPromptView: View {
         .onAppear {
             ollama.refreshInstalledModels()
             ollama.checkStatus()
+            loadRusToPromptModelStatsIfNeeded()
         }
     }
 

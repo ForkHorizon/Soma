@@ -241,6 +241,7 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
         issues.append(f"daemon_error:{exc}")
         initialize = {"tool": "initialize", "status": "error", "summary": str(exc)}
 
+    _append_missing_plugin_records(tool_results, plugin_ready, project_root)
     failed_tools = [item["tool"] for item in tool_results if item.get("status") == "error"]
     config_degraded = [client for client, status in config_statuses.items() if status.get("status") not in {"ok"}]
     status = "ok" if not issues and not failed_tools and not config_degraded else "degraded"
@@ -277,6 +278,18 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
         "log_file": str(Path.home() / ".soma" / "logs" / f"soma_{datetime.now(tz=timezone.utc).strftime('%Y%m%d')}.jsonl"),
     }
     return report
+
+
+def _append_missing_plugin_records(tool_results: list[dict[str, Any]], plugin_ready: bool, project_root: str) -> None:
+    existing = {item.get("tool") for item in tool_results}
+    reason = "plugin_guarded" if plugin_ready else "plugin_guarded: Nexus offline or project mismatch"
+    for tool in TOOL_ORDER:
+        if tool not in PLUGIN_TOOLS or tool in existing:
+            continue
+        started = time.monotonic()
+        record = _safe_tool_record(tool, "skipped", started, reason=reason)
+        tool_results.append(record)
+        _log_tool_record(record, project_root)
 
 
 def save_report(report: dict[str, Any]) -> None:

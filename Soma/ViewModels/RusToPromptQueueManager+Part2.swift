@@ -10,28 +10,62 @@ struct RusToPromptQueueRunContext {
 }
 
 extension RusToPromptQueueManager {
-    func startNextIfPossible() {
+    func startNextIfPossible(allowBatteryStart: Bool = false) {
+        refreshPowerSourceValue()
+        applyPowerGate()
         guard activeProcess == nil, !isPaused else { return }
-        guard let index = items.firstIndex(where: { $0.status == .queued || $0.status == .waitingLocalAI }) else {
+        guard let index = nextStartableQueueIndex() else {
             isRunning = false
             currentStage = "Idle"
             currentModel = "-"
             currentOutputPath = nil
             return
         }
+        let selectedItemID = items[index].id
+        guard canStartQueueOnCurrentPower(allowBatteryStart: allowBatteryStart) else {
+            markWaitingForPower(index: index)
+            return
+        }
         fetchInstalledModels { [weak self] installed, isOnline in
             guard let self else { return }
+            guard let currentIndex = self.items.firstIndex(where: { $0.id == selectedItemID && self.isStartableQueueItem($0) }) else {
+                self.startNextIfPossible(allowBatteryStart: allowBatteryStart)
+                return
+            }
+            guard self.canStartQueueOnCurrentPower(allowBatteryStart: allowBatteryStart) else {
+                self.markWaitingForPower(index: currentIndex)
+                return
+            }
             if !isOnline {
-                self.mark(index: index, status: .waitingLocalAI, message: "Waiting for Ollama")
+                self.mark(index: currentIndex, status: .waitingLocalAI, message: "Waiting for Ollama")
                 self.appendActivity("Ollama offline; queue waiting.")
                 return
             }
-            self.startItem(at: index, installedModels: installed)
+            self.startItem(at: currentIndex, installedModels: installed, allowBatteryStart: allowBatteryStart)
         }
     }
 
 
-    func startItem(at index: Int, installedModels: Set<String>) {
+    func nextStartableQueueIndex() -> Int? {
+        items.indices
+            .filter { isStartableQueueItem(items[$0]) }
+            .min { lhs, rhs in
+                let left = items[lhs]
+                let right = items[rhs]
+                if left.createdAt == right.createdAt {
+                    return left.id < right.id
+                }
+                return left.createdAt < right.createdAt
+            }
+    }
+
+
+    func isStartableQueueItem(_ item: RusToPromptQueueItem) -> Bool {
+        item.status == .queued || item.status == .waitingLocalAI
+    }
+
+
+    func startItem(at index: Int, installedModels: Set<String>, allowBatteryStart: Bool = false) {
         guard activeProcess == nil, items.indices.contains(index) else { return }
         let installedLower = Set(installedModels.map { $0.lowercased() })
         let translators = localCandidates(settings.translatorCandidates, installedLower: installedLower)
@@ -40,6 +74,9 @@ extension RusToPromptQueueManager {
         guard let context = prepareRunContext(index: index, translators: translators, improvers: improvers) else { return }
 
         markRunStarted(index: index, context: context)
+        if powerSource == .battery && allowBatteryStart {
+            batteryStartOverrideItemID = context.item.id
+        }
         let process = makeQueueProcess(context: context, translators: translators, improvers: improvers)
         attachQueueHandlers(to: process)
 
@@ -48,6 +85,7 @@ extension RusToPromptQueueManager {
             activeProcess = process
             appendActivity("Started queue run \(context.item.id): \(translators.count) translators, \(improvers.count) improvers.")
         } catch {
+            batteryStartOverrideItemID = nil
             activeProcess = nil
             activeItemID = nil
             activeControlFileURL = nil
@@ -73,7 +111,8 @@ extension RusToPromptQueueManager {
 
     func prepareRunContext(index: Int, translators: [String], improvers: [String]) -> RusToPromptQueueRunContext? {
         let item = items[index]
-        let runURL = repoRootURL.appendingPathComponent(".stress").appendingPathComponent("queue-runs").appendingPathComponent("\(Self.timestampID())-\(item.id)")
+        let resumedURL = item.recoveredAfterRestart ? item.outputPath.flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) } : nil
+        let runURL = resumedURL ?? repoRootURL.appendingPathComponent(".stress").appendingPathComponent("queue-runs").appendingPathComponent("\(Self.timestampID())-\(item.id)")
         let workspaceURL = appSupportURL.appendingPathComponent(item.id)
         let casesURL = workspaceURL.appendingPathComponent("case.txt")
         let controlURL = workspaceURL.appendingPathComponent("control.json")
@@ -96,10 +135,11 @@ extension RusToPromptQueueManager {
     func markRunStarted(index: Int, context: RusToPromptQueueRunContext) {
         items[index].status = .running
         items[index].statusMessage = "Running staged benchmark"
-        items[index].startedAt = Date()
+        items[index].startedAt = items[index].startedAt ?? Date()
         items[index].updatedAt = Date()
         items[index].outputPath = context.runURL.path
         items[index].runCount += 1
+        items[index].recoveredAfterRestart = false
         items[index].snapshot = context.snapshot
         saveToDisk()
         activeItemID = context.item.id
@@ -107,6 +147,7 @@ extension RusToPromptQueueManager {
         currentOutputPath = context.runURL.path
         currentStage = "Starting"
         currentModel = "-"
+        resetModelProgress(itemID: context.item.id, snapshot: context.snapshot)
         processOutputBuffer = ""
         isRunning = true
     }
@@ -131,6 +172,9 @@ extension RusToPromptQueueManager {
         arguments.append("--analyzer-models")
         arguments.append(contentsOf: improvers)
         arguments.append(contentsOf: queueConfidenceArguments(context: context))
+        if context.item.recoveredAfterRestart {
+            arguments.append("--resume-existing")
+        }
         return arguments
     }
 
@@ -164,6 +208,7 @@ extension RusToPromptQueueManager {
 
     func handleProcessFinished(status: Int32) {
         defer {
+            batteryStartOverrideItemID = nil
             activeProcess = nil
             activeItemID = nil
             activeControlFileURL = nil
@@ -174,18 +219,64 @@ extension RusToPromptQueueManager {
         }
         guard let itemID = activeItemID, let index = items.firstIndex(where: { $0.id == itemID }) else { return }
         if status == 0 {
+            let completionMessage = queueRunCompletionMessage(outputPath: items[index].outputPath)
             items[index].status = .completed
-            items[index].statusMessage = "Completed"
-            appendActivity("Queue run \(itemID) completed.")
+            items[index].statusMessage = completionMessage
+            completeModelProgress(itemID: itemID)
+            appendActivity("Queue run \(itemID): \(completionMessage).")
         } else {
             let stopped = controlFlagFromActiveFile("stop")
             items[index].status = stopped ? .interrupted : .failed
             items[index].statusMessage = stopped ? "Interrupted by user" : "Process exited with code \(status)"
+            markModelProgressTerminal(itemID: itemID, label: items[index].statusMessage, status: stopped ? "interrupted" : "failed")
             appendActivity("Queue run \(itemID) ended: \(items[index].statusMessage).")
         }
         items[index].finishedAt = Date()
         items[index].updatedAt = Date()
         saveToDisk()
+    }
+
+
+    func queueRunCompletionMessage(outputPath: String?) -> String {
+        guard let outputPath, !outputPath.isEmpty else { return "Completed; summary missing" }
+        let summaryURL = URL(fileURLWithPath: outputPath).appendingPathComponent("summary.json")
+        guard let data = try? Data(contentsOf: summaryURL),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return "Completed; summary missing"
+        }
+        let runStatus = object["run_status"] as? String
+        let success = object["success"] as? Bool
+        if runStatus == "failed" {
+            return queueRunIssueMessage(prefix: "Completed with failed summary", summary: object)
+        }
+        if runStatus == "completed_with_issues" || success == false {
+            return queueRunIssueMessage(prefix: "Completed with issues", summary: object)
+        }
+        return "Completed"
+    }
+
+
+    func queueRunIssueMessage(prefix: String, summary: [String: Any]) -> String {
+        guard let issueCounts = summary["issue_counts"] as? [String: Any] else { return prefix }
+        let issues = issueCounts
+            .compactMap { key, value -> (String, Int)? in
+                let count: Int
+                if let intValue = value as? Int {
+                    count = intValue
+                } else if let number = value as? NSNumber {
+                    count = number.intValue
+                } else {
+                    return nil
+                }
+                return count > 0 ? (key.replacingOccurrences(of: "_", with: " "), count) : nil
+            }
+            .sorted { lhs, rhs in
+                if lhs.0 == rhs.0 { return lhs.1 > rhs.1 }
+                return lhs.0 < rhs.0
+            }
+            .prefix(3)
+            .map { "\($0.0) \($0.1)" }
+        return issues.isEmpty ? prefix : "\(prefix): \(issues.joined(separator: ", "))"
     }
 
 
@@ -203,7 +294,10 @@ extension RusToPromptQueueManager {
                     currentModel = "\(translator) -> \(analyzer)"
                 } else if let translator = event.translatorModel {
                     currentModel = translator
+                } else if let confidenceModel = event.confidenceModel {
+                    currentModel = confidenceModel
                 }
+                updateModelProgress(for: event)
                 appendActivity(activityText(for: event))
             } else {
                 appendActivity(trimmed)

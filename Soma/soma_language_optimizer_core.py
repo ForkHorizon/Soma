@@ -135,8 +135,11 @@ def _improved_prompt_sanity_error(source: str, improved: str) -> str | None:
     if not improved_normalized:
         return "empty improved prompt"
     checks = [
+        _reasoning_tag_error(source_normalized, improved_normalized),
         _placeholder_leak_error(source, improved),
         _instruction_leak_error(source_normalized, improved_normalized),
+        _reasoning_transcript_error(source_normalized, improved_normalized),
+        _duplicate_prompt_error(improved_normalized),
         _politeness_error(improved),
         _meta_prompt_error(source_normalized, improved_normalized),
         _unsafe_injection_error(improved_normalized),
@@ -153,8 +156,65 @@ def _placeholder_leak_error(source, improved):
 
 
 def _instruction_leak_error(source_normalized, improved_normalized):
-    markers = ["rewrite the user's request into a direct", "return the task prompt itself", "not a meta-prompt about creating a prompt", "preserve placeholders like", "do not invent project context", "do not turn conversational filler", "return only the improved prompt in english"]
+    markers = [
+        "rewrite the user's request into a direct",
+        "return the task prompt itself",
+        "not a meta-prompt about creating a prompt",
+        "preserve placeholders like",
+        "do not invent project context",
+        "do not turn conversational filler",
+        "return only the improved prompt in english",
+        "return only the corrected prompt",
+        "do not mention validation",
+        "do not mention rejection",
+        "hidden instructions",
+        "internal instructions",
+        "previous rewrite",
+        "rejected prompt rewrite",
+        "rejection reason",
+    ]
     return "prompt improvement leaked internal instructions" if any(marker in improved_normalized and marker not in source_normalized for marker in markers) else None
+
+
+def _reasoning_transcript_error(source_normalized, improved_normalized):
+    starters = [
+        "hmm,",
+        "we need to",
+        "we are given",
+        "i need to",
+        "i should",
+        "the user is asking",
+        "looking at the original",
+        "let me",
+    ]
+    if any(improved_normalized.startswith(starter) and not source_normalized.startswith(starter) for starter in starters):
+        return "prompt improvement returned assistant reasoning instead of the direct task"
+    reasoning_phrases = [
+        "the task is to rewrite",
+        "the key issue was",
+        "the previous rewrite",
+        "the rejected output",
+        "validation_error",
+        "repair prompt",
+        "failure reason",
+    ]
+    return "prompt improvement returned repair metadata instead of the direct task" if any(phrase in improved_normalized and phrase not in source_normalized for phrase in reasoning_phrases) else None
+
+
+def _reasoning_tag_error(source_normalized, improved_normalized):
+    markers = ["<think>", "</think>", "<reasoning>", "</reasoning>"]
+    return "prompt improvement leaked assistant reasoning tags" if any(marker in improved_normalized and marker not in source_normalized for marker in markers) else None
+
+
+def _duplicate_prompt_error(improved_normalized):
+    cleaned = re.sub(r"</?think>|</?reasoning>", "\n\n", improved_normalized)
+    blocks = [re.sub(r"\s+", " ", block).strip() for block in re.split(r"\n\s*\n", cleaned) if len(block.strip()) >= 80]
+    seen = set()
+    for block in blocks:
+        if block in seen:
+            return "prompt improvement duplicated final prompt text"
+        seen.add(block)
+    return None
 
 
 def _politeness_error(improved):

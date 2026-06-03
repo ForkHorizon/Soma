@@ -18,7 +18,9 @@ extension RusToPromptQueueManager {
 
 
     var statusBadgeText: String {
+        if isPowerPaused { return "paused on battery" }
         if isRunning { return "running" }
+        if powerSource == .battery && queuedCount > 0 { return "\(queuedCount) waiting power" }
         if queuedCount > 0 { return "\(queuedCount) queued" }
         if failedCount > 0 { return "\(failedCount) failed" }
         return "idle"
@@ -68,7 +70,7 @@ extension RusToPromptQueueManager {
             recoveredAfterRestart: false,
             snapshot: nil
         )
-        items.insert(item, at: 0)
+        items.append(item)
         appendActivity("Queued real prompt \(item.id).")
         saveToDisk()
         startNextIfPossible()
@@ -126,21 +128,40 @@ extension RusToPromptQueueManager {
 
 
     func pause() {
+        isPowerPaused = false
+        batteryStartOverrideItemID = nil
         isPaused = true
+        if let activeItemID, let index = items.firstIndex(where: { $0.id == activeItemID }) {
+            items[index].statusMessage = "Paused after current stage"
+            items[index].updatedAt = Date()
+        }
         writeControl(["pause": true, "skip_cooldown": false, "stop": false])
+        saveToDisk()
         appendActivity("Queue paused after current stage.")
     }
 
 
-    func resume() {
+    func resume(allowBatteryStart: Bool = true) {
+        allowActiveRunOnBatteryIfNeeded(allowBatteryStart)
+        isPowerPaused = false
         isPaused = false
+        if let activeItemID, let index = items.firstIndex(where: { $0.id == activeItemID }) {
+            items[index].statusMessage = "Running staged benchmark"
+            items[index].updatedAt = Date()
+        }
         writeControl(["pause": false, "skip_cooldown": false, "stop": false])
+        saveToDisk()
         appendActivity("Queue resumed.")
-        startNextIfPossible()
+        startNextIfPossible(allowBatteryStart: allowBatteryStart)
     }
 
 
-    func runNow() {
+    func runNow(allowBatteryStart: Bool = true) {
+        guard activeProcess != nil else {
+            startNextIfPossible(allowBatteryStart: allowBatteryStart)
+            return
+        }
+        allowActiveRunOnBatteryIfNeeded(allowBatteryStart)
         writeControl(["pause": false, "skip_cooldown": true, "run_now": true, "stop": false])
         appendActivity("Cooldown skipped for active run.")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
@@ -163,6 +184,8 @@ extension RusToPromptQueueManager {
         items[index].statusMessage = "Queued for retry"
         items[index].updatedAt = Date()
         items[index].finishedAt = nil
+        items[index].outputPath = nil
+        items[index].recoveredAfterRestart = false
         items[index].snapshot = nil
         appendActivity("Retry queued for \(item.id).")
         saveToDisk()

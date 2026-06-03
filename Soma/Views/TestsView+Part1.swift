@@ -90,10 +90,23 @@ extension TestsView {
 
 
     var queueStatusTone: SomaStatusTone {
+        if queueManager.isPowerPaused || queueManager.isBatteryBlockingQueue { return .warning }
         if queueManager.isRunning { return .info }
         if queueManager.failedCount > 0 { return .warning }
         if queueManager.queuedCount > 0 { return .info }
         return .neutral
+    }
+
+
+    var queuePowerTone: SomaStatusTone {
+        switch queueManager.powerSource {
+        case .externalPower:
+            return .good
+        case .battery:
+            return (queueManager.queuedCount > 0 || queueManager.isRunning) ? .warning : .neutral
+        case .unknown:
+            return .neutral
+        }
     }
 
 }

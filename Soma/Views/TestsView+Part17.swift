@@ -74,10 +74,12 @@ extension TestsView {
             let data = try Data(contentsOf: summaryURL)
             let decoded = try JSONDecoder().decode(TestSummaryEnvelope.self, from: data)
             resultRows = decoded.modelCombinations.sorted { lhs, rhs in
-                if lhs.overallConfidence.avg == rhs.overallConfidence.avg {
+                let lhsQuality = lhs.qualityScore ?? lhs.overallConfidence.avg ?? lhs.translationConfidence.avg ?? -1
+                let rhsQuality = rhs.qualityScore ?? rhs.overallConfidence.avg ?? rhs.translationConfidence.avg ?? -1
+                if lhsQuality == rhsQuality {
                     return lhs.comboID < rhs.comboID
                 }
-                return (lhs.overallConfidence.avg ?? -1) > (rhs.overallConfidence.avg ?? -1)
+                return lhsQuality > rhsQuality
             }
             selectedResultRowID = resultRows.first?.id
             loadResultRuns(from: outDir)
@@ -100,7 +102,7 @@ extension TestsView {
 
     func summaryIssueText(_ summary: TestSummaryEnvelope) -> String {
         var parts: [String] = []
-        if let runStatus = summary.runStatus, runStatus != "completed" {
+        if let runStatus = summary.runStatus, !["completed", "ok"].contains(runStatus) {
             parts.append(runStatus.replacingOccurrences(of: "_", with: " "))
         }
         if let confidenceFailedCount = summary.confidenceFailedCount, confidenceFailedCount > 0 {

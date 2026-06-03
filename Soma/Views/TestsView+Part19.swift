@@ -88,7 +88,7 @@ extension TestsView {
         if attempts > 0 && (pipelineFailRate >= 0.50 || (stats.confidenceCount == 0 && (stats.pipelineFailedCount > 0 || stats.confidenceFailedCount > 0))) {
             return "Broken"
         }
-        guard let confidence = stats.avgConfidence else { return "No data" }
+        guard let confidence = stats.qualityScore ?? stats.avgConfidence else { return "No data" }
         if confidence < 0.80 || pipelineFailRate > 0.15 {
             return "Risk"
         }
@@ -119,7 +119,7 @@ extension TestsView {
         return [
             preset.detail,
             "Benchmark quality: \(quality); speed: \(speed).",
-            "Attempts \(stats.attempts), confidence scores \(stats.confidenceCount), avg \(formatConfidence(stats.avgConfidence)), median \(formatConfidence(stats.medianConfidence)), min \(formatConfidence(stats.minConfidence)).",
+            "Attempts \(stats.attempts), confidence scores \(stats.confidenceCount), quality \(formatConfidence(stats.qualityScore)), avg \(formatConfidence(stats.avgConfidence)), median \(formatConfidence(stats.medianConfidence)), min \(formatConfidence(stats.minConfidence)).",
             "Low \(stats.lowConfidenceCount), confidence failed \(stats.confidenceFailedCount) (\(formatPercent(confidenceFailRate)), pipeline failed \(stats.pipelineFailedCount) (\(formatPercent(pipelineFailRate)), degraded \(stats.degradedCount).",
             "Average runtime \(formatOptionalSeconds(stats.avgSeconds)); last tested \(shortDateTime(stats.lastTestedAt))."
         ]
@@ -190,8 +190,8 @@ extension TestsView {
         if lhs.hasStats != rhs.hasStats { return lhs.hasStats }
         if lhs.isBroken != rhs.isBroken { return !lhs.isBroken }
         if lhs.qualityRank != rhs.qualityRank { return lhs.qualityRank > rhs.qualityRank }
-        let lhsConfidence = lhs.avgConfidence ?? -1
-        let rhsConfidence = rhs.avgConfidence ?? -1
+        let lhsConfidence = lhs.qualityScore ?? lhs.avgConfidence ?? -1
+        let rhsConfidence = rhs.qualityScore ?? rhs.avgConfidence ?? -1
         if lhsConfidence != rhsConfidence { return lhsConfidence > rhsConfidence }
         let lhsFailures = lhs.pipelineFailedCount + lhs.confidenceFailedCount + lhs.lowConfidenceCount
         let rhsFailures = rhs.pipelineFailedCount + rhs.confidenceFailedCount + rhs.lowConfidenceCount
@@ -206,8 +206,8 @@ extension TestsView {
 
     func compareQualityRankedModel(_ lhs: TestRankedModelPreset, _ rhs: TestRankedModelPreset) -> Bool {
         if lhs.qualityRank != rhs.qualityRank { return lhs.qualityRank > rhs.qualityRank }
-        let lhsConfidence = lhs.avgConfidence ?? -1
-        let rhsConfidence = rhs.avgConfidence ?? -1
+        let lhsConfidence = lhs.qualityScore ?? lhs.avgConfidence ?? -1
+        let rhsConfidence = rhs.qualityScore ?? rhs.avgConfidence ?? -1
         if lhsConfidence != rhsConfidence { return lhsConfidence > rhsConfidence }
         return compareRankedModelName(lhs, rhs)
     }
