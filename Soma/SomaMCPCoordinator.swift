@@ -128,6 +128,15 @@ actor SomaMCPCoordinator {
         } catch {
             print("Error reading from python daemon: \(error)")
         }
+
+        let error = MCPError.toolExecutionFailed("Python daemon crashed or stream closed.")
+        for continuation in pendingRequests.values {
+            continuation.resume(throwing: error)
+        }
+        pendingRequests.removeAll()
+        pythonProcess = nil
+        pythonStdin = nil
+        pythonStdout = nil
     }
 
     private func handleRequest(_ request: MCPRequest, outputHandle: FileHandle) async {
@@ -162,29 +171,75 @@ actor SomaMCPCoordinator {
 
     private func executePythonTool(tool: String, params: [String: AnyCodable]?) async throws -> [String: AnyCodable] {
         try await startPythonBackendIfNeeded()
-
         guard let stdin = pythonStdin else {
             throw MCPError.toolExecutionFailed("Python backend not running")
         }
-
         let requestId = requestCounter
         requestCounter += 1
 
         let request = MCPRequest(jsonrpc: "2.0", id: requestId, method: tool, params: params)
-        let requestData = try JSONEncoder().encode(request)
-        guard var requestStr = String(data: requestData, encoding: .utf8) else {
+        guard let requestData = try? JSONEncoder().encode(request),
+              var requestStr = String(data: requestData, encoding: .utf8) else {
             throw MCPError.toolExecutionFailed("Failed to encode request")
         }
         requestStr += "\n"
 
-        return try await withCheckedThrowingContinuation { continuation in
-            pendingRequests[requestId] = continuation
-            do {
-                try stdin.fileHandleForWriting.write(contentsOf: requestStr.data(using: .utf8)!)
-            } catch {
-                pendingRequests.removeValue(forKey: requestId)
-                continuation.resume(throwing: MCPError.toolExecutionFailed("Failed to write to python backend"))
+        return try await executeWithTimeout(requestId: requestId, requestStr: requestStr, stdin: stdin)
+    }
+
+    private func executeWithTimeout(requestId: Int, requestStr: String, stdin: Pipe) async throws -> [String: AnyCodable] {
+        return try await withThrowingTaskGroup(of: [String: AnyCodable].self) { group in
+            group.addTask {
+                return try await self.dispatchRequestTask(requestId: requestId, requestStr: requestStr, stdin: stdin)
             }
+            group.addTask {
+                try await Task.sleep(nanoseconds: 300_000_000_000)
+                throw MCPError.toolExecutionFailed("Request timed out after 300 seconds.")
+            }
+            do {
+                guard let result = try await group.next() else {
+                    throw MCPError.toolExecutionFailed("Failed to get result")
+                }
+                group.cancelAll()
+                return result
+            } catch {
+                group.cancelAll()
+                throw error
+            }
+        }
+    }
+
+    private func dispatchRequestTask(requestId: Int, requestStr: String, stdin: Pipe) async throws -> [String: AnyCodable] {
+        return try await withTaskCancellationHandler {
+            return try await withCheckedThrowingContinuation { continuation in
+                Task {
+                    await self.storeContinuation(id: requestId, continuation: continuation)
+                    do {
+                        try stdin.fileHandleForWriting.write(contentsOf: requestStr.data(using: .utf8)!)
+                    } catch {
+                        await self.removeContinuation(id: requestId)
+                        continuation.resume(throwing: MCPError.toolExecutionFailed("Failed to write to python backend"))
+                    }
+                }
+            }
+        } onCancel: {
+            Task {
+                await self.cancelContinuation(id: requestId)
+            }
+        }
+    }
+
+    private func storeContinuation(id: Int, continuation: CheckedContinuation<[String: AnyCodable], Error>) {
+        pendingRequests[id] = continuation
+    }
+
+    private func removeContinuation(id: Int) {
+        pendingRequests.removeValue(forKey: id)
+    }
+
+    private func cancelContinuation(id: Int) {
+        if let continuation = pendingRequests.removeValue(forKey: id) {
+            continuation.resume(throwing: CancellationError())
         }
     }
 
