@@ -2,7 +2,6 @@ import Foundation
 import SwiftUI
 import AppKit
 import Combine
-
 @MainActor
 final class SomaViewModel: ObservableObject {
     let lastProjectRootKey = "relay.lastProjectRoot"
@@ -15,11 +14,9 @@ final class SomaViewModel: ObservableObject {
     var somaServerProcess: Process?
     var somaServerInput: Pipe?
     var logRefreshTimer: Timer?
-
     @Published var selectedProjectRoot = ""
     @Published var recentProjectRoots: [String] = []
     @Published var analysisDepth: AnalysisDepth = .deterministic
-
     @Published var somaServerRunning = false
     @Published var somaServerPID: Int32?
     @Published var somaServerPort: Int?
@@ -58,28 +55,23 @@ final class SomaViewModel: ObservableObject {
     @Published var hermesSetupError: String?
     @Published var hermesLaunchCommand: String?
     @Published var hermesStarterPrompt: String?
-
     @Published var activityLogs: [String] = []
     @Published var showActivityLog = false
-
     @Published var graphifyVersion: String = "Unknown"
     @Published var graphBuildVersion: String?
     @Published var nexusVersion: String = "Offline"
     @Published var systemBusy = false
     @Published var graphifyBusy = false
-
     @Published var scoutPrompt = ""
     @Published var scoutTranscript = ""
     @Published var scoutHistory: [[String: AnyCodable]] = []
     @Published var scoutLoading = false
-
     @Published var relayPrompt = ""
     @Published var relayPhase: RelayPhase = .idle
     @Published var gatherBundle: GatherBundle?
     @Published var relayResponse: RelayResponse?
     @Published var showContextPanel = false
     @Published var relayError: String?
-
     @Published var logEntries: [SomaLogEntry] = []
     @Published var toolStats: [SomaToolStat] = []
     @Published var localModelStats: [SomaLocalModelStat] = []
@@ -97,11 +89,8 @@ final class SomaViewModel: ObservableObject {
     @Published var auditRawCaptureNextRun = false
     @Published var auditMarkBusy = false
     @Published var packetHistory: [PacketHistoryItem] = []
-
     init() {}
-
     func resetState() {
         activityLogs = []
     }
-
 }

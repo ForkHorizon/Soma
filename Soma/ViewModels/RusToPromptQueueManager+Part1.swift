@@ -1,22 +1,15 @@
 import Combine
 import Foundation
-
 extension RusToPromptQueueManager {
     var queuedCount: Int {
         items.filter { $0.status == .queued || $0.status == .waitingLocalAI }.count
     }
-
-
     var failedCount: Int {
         items.filter { $0.status == .failed || $0.status == .blocked || $0.status == .interrupted }.count
     }
-
-
     var completedCount: Int {
         items.filter { $0.status == .completed }.count
     }
-
-
     var statusBadgeText: String {
         if isPowerPaused { return "paused on battery" }
         if isRunning { return "running" }
@@ -25,13 +18,9 @@ extension RusToPromptQueueManager {
         if failedCount > 0 { return "\(failedCount) failed" }
         return "idle"
     }
-
-
     var queueDirectoryPath: String {
         appSupportURL.path
     }
-
-
     static func isLocalStageModel(_ model: String) -> Bool {
         let normalized = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if normalized.isEmpty { return false }
@@ -40,8 +29,6 @@ extension RusToPromptQueueManager {
         if normalized.hasPrefix("gemini-") || normalized.hasPrefix("auto-gemini") || normalized.hasPrefix("gemma-4-") { return false }
         return true
     }
-
-
     func enqueueRealPrompt(_ prompt: String, source: String = "Rus to Prompt") {
         guard settings.autoEnqueueEnabled else { return }
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -52,7 +39,6 @@ extension RusToPromptQueueManager {
             appendActivity("Skipped duplicate real prompt.")
             return
         }
-
         let now = Date()
         let item = RusToPromptQueueItem(
             id: "rpq-\(Self.timestampID())-\(UUID().uuidString.prefix(6))",
@@ -75,28 +61,20 @@ extension RusToPromptQueueManager {
         saveToDisk()
         startNextIfPossible()
     }
-
-
     func setAutoEnqueueEnabled(_ enabled: Bool) {
         settings.autoEnqueueEnabled = enabled
         saveToDisk()
     }
-
-
     func updateTranslatorCandidates(_ models: [String]) {
         settings.translatorCandidates = cleanLocalModels(models)
         saveToDisk()
         startNextIfPossible()
     }
-
-
     func updateImproverCandidates(_ models: [String]) {
         settings.improverCandidates = cleanLocalModels(models)
         saveToDisk()
         startNextIfPossible()
     }
-
-
     func updateConfidence(
         referee: String,
         model: String,
@@ -113,20 +91,14 @@ extension RusToPromptQueueManager {
         settings.confidenceBatchSize = [1, 5, 10, 20].contains(batchSize) ? batchSize : 10
         saveToDisk()
     }
-
-
     func updateCooldown(seconds: Double) {
         settings.cooldownSeconds = max(0, seconds)
         saveToDisk()
     }
-
-
     func updateRAMWarning(gb: Double) {
         settings.ramWarningGB = max(0, gb)
         saveToDisk()
     }
-
-
     func pause() {
         isPowerPaused = false
         batteryStartOverrideItemID = nil
@@ -139,8 +111,6 @@ extension RusToPromptQueueManager {
         saveToDisk()
         appendActivity("Queue paused after current stage.")
     }
-
-
     func resume(allowBatteryStart: Bool = true) {
         allowActiveRunOnBatteryIfNeeded(allowBatteryStart)
         isPowerPaused = false
@@ -154,8 +124,6 @@ extension RusToPromptQueueManager {
         appendActivity("Queue resumed.")
         startNextIfPossible(allowBatteryStart: allowBatteryStart)
     }
-
-
     func runNow(allowBatteryStart: Bool = true) {
         guard activeProcess != nil else {
             startNextIfPossible(allowBatteryStart: allowBatteryStart)
@@ -168,16 +136,12 @@ extension RusToPromptQueueManager {
             self?.writeControl(["pause": false, "skip_cooldown": false, "run_now": false, "stop": false])
         }
     }
-
-
     func stopCurrent() {
         guard let process = activeProcess else { return }
         writeControl(["stop": true])
         process.terminate()
         appendActivity("Stop requested for current run.")
     }
-
-
     func retry(_ item: RusToPromptQueueItem) {
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
         items[index].status = .queued
@@ -191,8 +155,6 @@ extension RusToPromptQueueManager {
         saveToDisk()
         startNextIfPossible()
     }
-
-
     func remove(_ item: RusToPromptQueueItem) {
         if activeItemID == item.id {
             stopCurrent()
@@ -201,8 +163,6 @@ extension RusToPromptQueueManager {
         appendActivity("Removed \(item.id).")
         saveToDisk()
     }
-
-
     func refreshFreeMemory() {
         DispatchQueue.global(qos: .utility).async {
             let value = Self.readFreeMemoryGB()
@@ -211,5 +171,4 @@ extension RusToPromptQueueManager {
             }
         }
     }
-
 }

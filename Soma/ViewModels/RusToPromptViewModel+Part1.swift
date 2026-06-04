@@ -1,6 +1,5 @@
 import Combine
 import Foundation
-
 extension RusToPromptViewModel {
     static let translatorPresets: [RusToPromptModelPreset] = [
         RusToPromptModelPreset(model: "qwen3.5:9b", quality: "High", speed: "Balanced", ram: "6.6 GB", detail: "Recommended translator: strong Russian-English quality with moderate memory use.", recommended: true),
@@ -10,8 +9,6 @@ extension RusToPromptViewModel {
         RusToPromptModelPreset(model: "qwen3:4b", quality: "Basic", speed: "Fastest", ram: "2.5 GB", detail: "Use when RAM matters more than translation nuance.", recommended: false),
         RusToPromptModelPreset(model: "gemma4:e4b", quality: "Good", speed: "Balanced", ram: "9.6 GB", detail: "Useful fallback if Qwen models are not available; higher memory for this role.", recommended: false),
     ]
-
-
     static let analyzerPresets: [RusToPromptModelPreset] = [
         RusToPromptModelPreset(model: "qwen3-coder:30b-a3b-q4_K_M", quality: "Best", speed: "Slow", ram: "18.6 GB", detail: "Recommended analyzer: highest prompt-polish quality, but heavy memory use.", recommended: true),
         RusToPromptModelPreset(model: "gpt-5.4-mini", quality: "Best", speed: "Medium", ram: "0 GB", detail: "Codex improver via subscription: strong prompt-polish quality, good instruction fidelity, and no local RAM use.", recommended: false, isCodex: true),
@@ -20,8 +17,6 @@ extension RusToPromptViewModel {
         RusToPromptModelPreset(model: "qwen3:14b", quality: "High", speed: "Medium", ram: "9.3 GB", detail: "Balanced analyzer when the 30B models are too heavy.", recommended: false),
         RusToPromptModelPreset(model: "qwen3.5:9b", quality: "Good", speed: "Balanced", ram: "6.6 GB", detail: "Lower-memory analyzer with good general prompt quality.", recommended: false),
     ]
-
-
     static let confidencePresets: [RusToPromptModelPreset] = [
         RusToPromptModelPreset(model: "gpt-5.4-mini", quality: "Best", speed: "Medium", ram: "0 GB", detail: "Recommended confidence judge via Codex CLI. Strong at detecting invented requirements, meta-prompts, and lost technical spans.", recommended: true),
         RusToPromptModelPreset(model: "gpt-5.5", quality: "Best", speed: "Slow", ram: "0 GB", detail: "Heavier Codex referee if available in your account; useful for stricter review.", recommended: false),
@@ -31,26 +26,18 @@ extension RusToPromptViewModel {
         RusToPromptModelPreset(model: "gemini-3.1-flash-lite-preview", quality: "Good", speed: "Fast", ram: "0 GB", detail: "High-volume Gemini referee. Use for broad test sweeps when you want cheaper/faster checks and can tolerate a less strict judge.", recommended: false, provider: "gemini"),
         RusToPromptModelPreset(model: "gemini-2.5-flash", quality: "Good", speed: "Medium", ram: "0 GB", detail: "Stable Gemini fallback if the Gemini 3 preview models are unavailable or rate-limited.", recommended: false, provider: "gemini"),
     ]
-
-
     var isBusy: Bool {
         phase == .translating || phase == .analyzing || phase == .checkingConfidence
     }
-
-
     var finalPromptForCopy: String {
         let improved = improvedPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         if !improved.isEmpty { return improved }
         return translation.trimmingCharacters(in: .whitespacesAndNewlines)
     }
-
-
     func resetState() {
         inputPrompt = ""
         resetRunState()
     }
-
-
     func resetRunState() {
         phase = .idle
         translationResult = nil
@@ -62,19 +49,15 @@ extension RusToPromptViewModel {
         warningMessage = nil
         confidenceWarning = nil
     }
-
-
     func transform(somaViewModel: SomaViewModel, ollama: OllamaManager, queueManager: RusToPromptQueueManager? = nil) {
         let prompt = inputPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty else { return }
-
         resetRunState()
         phase = .translating
-        Task {
+        Task { [weak self] in guard let self else { return }
             await runTransform(prompt: prompt, somaViewModel: somaViewModel, ollama: ollama, queueManager: queueManager)
         }
     }
-
     func runTransform(prompt: String, somaViewModel: SomaViewModel, ollama: OllamaManager, queueManager: RusToPromptQueueManager?) async {
         do {
             let translated = try await somaViewModel.runRusToPromptTranslate(prompt: prompt, translatorModel: translatorModel)
@@ -92,7 +75,6 @@ extension RusToPromptViewModel {
             }
         }
     }
-
     func applyTranslationResult(_ translated: RusToPromptTranslationResult, translatedText: String, ollama: OllamaManager) async -> Bool {
         await MainActor.run {
             translationResult = translated
@@ -108,7 +90,6 @@ extension RusToPromptViewModel {
         }
         return true
     }
-
     func applyImprovementResult(_ improved: RusToPromptImproveResult, sourcePrompt: String, ollama: OllamaManager, queueManager: RusToPromptQueueManager?) async {
         await MainActor.run {
             improveResult = improved
@@ -121,7 +102,6 @@ extension RusToPromptViewModel {
             }
         }
     }
-
     func maybeCheckConfidence(prompt: String, translationText: String, improved: RusToPromptImproveResult, somaViewModel: SomaViewModel) async {
         guard confidenceEnabled, !finalPromptForCopy.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         await MainActor.run { phase = .checkingConfidence }
@@ -139,8 +119,6 @@ extension RusToPromptViewModel {
             }
         }
     }
-
-
     func friendlyError(_ message: String) -> String {
         if message.localizedCaseInsensitiveContains("connection refused") || message.localizedCaseInsensitiveContains("offline") {
             return "Ollama is offline. Launch Local AI, then run Rus to Prompt again."

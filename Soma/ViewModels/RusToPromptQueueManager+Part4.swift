@@ -1,6 +1,5 @@
 import Combine
 import Foundation
-
 extension RusToPromptQueueManager {
     nonisolated static func readFreeMemoryGB() -> Double? {
         let process = Process()

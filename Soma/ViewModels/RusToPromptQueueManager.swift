@@ -1,6 +1,5 @@
 import Combine
 import Foundation
-
 enum RusToPromptQueueItemStatus: String, Codable, CaseIterable {
     case queued
     case waitingLocalAI = "waiting_local_ai"
@@ -161,7 +160,6 @@ struct QueueOllamaTagsResponse: Decodable {
     let models: [OllamaInstalledModel]
 }
 @MainActor
-
 final class RusToPromptQueueManager: ObservableObject {
     @Published var items: [RusToPromptQueueItem] = []
     @Published var settings: RusToPromptQueueSettings
@@ -175,28 +173,16 @@ final class RusToPromptQueueManager: ObservableObject {
     @Published var powerSource: RusToPromptQueuePowerSource = .unknown
     @Published var isPowerPaused = false
     @Published var modelProgress: [String: QueueModelProgressState] = [:]
-
     let progressPrefix = "SOMA_PROGRESS "
-
     let repoRootURL: URL
-
     let appSupportURL: URL
-
     let queueFileURL: URL
-
     var activeProcess: Process?
-
     var activeItemID: String?
-
     var activeControlFileURL: URL?
-
     var processOutputBuffer = ""
-
     var timer: Timer?
-
     var batteryStartOverrideItemID: String?
-
-
     init() {
         let sourceURL = URL(fileURLWithPath: #filePath)
         repoRootURL = sourceURL
@@ -217,10 +203,7 @@ final class RusToPromptQueueManager: ObservableObject {
         saveToDisk()
         startTimer()
     }
-
-
     deinit {
         timer?.invalidate()
     }
-
 }

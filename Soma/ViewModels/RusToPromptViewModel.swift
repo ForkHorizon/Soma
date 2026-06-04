@@ -1,6 +1,5 @@
 import Combine
 import Foundation
-
 struct RusToPromptResult: Codable, Sendable, Hashable {
     let status: String?
     let source_language: String?
@@ -142,7 +141,6 @@ enum RusToPromptSettingsStore {
     }
 }
 @MainActor
-
 final class RusToPromptViewModel: ObservableObject {
     @Published var inputPrompt = ""
     @Published var phase: RusToPromptPhase = .idle
@@ -166,12 +164,10 @@ final class RusToPromptViewModel: ObservableObject {
     @Published var confidenceEnabled: Bool {
         didSet { RusToPromptSettingsStore.setConfidenceEnabled(confidenceEnabled) }
     }
-
     init() {
         translatorModel = RusToPromptSettingsStore.translatorModel()
         analyzerModel = RusToPromptSettingsStore.analyzerModel()
         confidenceModel = RusToPromptSettingsStore.confidenceModel()
         confidenceEnabled = RusToPromptSettingsStore.confidenceEnabled()
     }
-
 }

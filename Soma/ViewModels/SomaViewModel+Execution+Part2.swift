@@ -3,10 +3,9 @@ import SwiftUI
 import AppKit
 import Combine
 import UniformTypeIdentifiers
-
 extension SomaViewModel {
 func loadAuditReport() {
-        Task {
+        Task { [weak self] in guard let self else { return }
             let file = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".soma/audit/latest.json")
             guard FileManager.default.fileExists(atPath: file.path) else { return }
@@ -24,8 +23,6 @@ func loadAuditReport() {
             }
         }
     }
-
-
 func markAudit(status: String, notes: String = "") {
         guard let runID = auditReport?.run_id else {
             auditError = "No audit run selected."
@@ -33,7 +30,7 @@ func markAudit(status: String, notes: String = "") {
         }
         auditMarkBusy = true
         auditError = nil
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 let script = try scriptURL(named: "soma_audit")
                 let data = try await runScript(
@@ -60,23 +57,18 @@ func markAudit(status: String, notes: String = "") {
             }
         }
     }
-
-
     func runRelayScript(bundle: GatherBundle) async throws -> RelayResponse {
         let scriptPath = try scriptURL(named: "relay").path
         let pyPath = pythonPath()
         let env = scriptEnvironment()
-
         return try await Task.detached(priority: .userInitiated) {
             let bundleJSON = (try? String(data: JSONEncoder().encode(bundle), encoding: .utf8)) ?? "{}"
             let output = try await SomaViewModel.executeProcess(path: pyPath, args: [scriptPath, bundleJSON], environment: env)
             return try JSONDecoder().decode(RelayResponse.self, from: output)
         }.value
     }
-
-
 func loadTokenBenchmarkReport() {
-        Task {
+        Task { [weak self] in guard let self else { return }
             let file = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".soma/token_stats.json")
             guard FileManager.default.fileExists(atPath: file.path) else { return }
@@ -94,10 +86,8 @@ func loadTokenBenchmarkReport() {
             }
         }
     }
-
-
 func loadAgentBenchmarkReport() {
-        Task {
+        Task { [weak self] in guard let self else { return }
             let file = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".soma/agent_benchmarks/latest.json")
             guard FileManager.default.fileExists(atPath: file.path) else { return }
@@ -115,8 +105,6 @@ func loadAgentBenchmarkReport() {
             }
         }
     }
-
-
 func runTokenBenchmark() {
         guard !selectedProjectRoot.isEmpty else {
             tokenBenchmarkError = "Select a project root before measuring context reduction."
@@ -125,7 +113,7 @@ func runTokenBenchmark() {
         tokenBenchmarkBusy = true
         tokenBenchmarkError = nil
         logActivity("Measuring estimated context reduction for \((selectedProjectRoot as NSString).lastPathComponent)...")
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 let script = try scriptURL(named: "soma_token_benchmark")
                 let data = try await runScript(
@@ -153,8 +141,6 @@ func runTokenBenchmark() {
             }
         }
     }
-
-
 func chooseAndRunAgentBenchmark() {
         guard !selectedProjectRoot.isEmpty else {
             agentBenchmarkError = "Select a project root before running an A/B benchmark."
@@ -170,13 +156,11 @@ func chooseAndRunAgentBenchmark() {
             runAgentBenchmark(scenarioPath: url.path)
         }
     }
-
-
 func runAgentBenchmark(scenarioPath: String) {
         agentBenchmarkBusy = true
         agentBenchmarkError = nil
         logActivity("Running agent A/B benchmark from \((scenarioPath as NSString).lastPathComponent)...")
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 let script = try scriptURL(named: "soma_agent_ab_benchmark")
                 let data = try await runScript(
@@ -205,14 +189,10 @@ func runAgentBenchmark(scenarioPath: String) {
             }
         }
     }
-
-
 func runSomaHelper(args: [String]) async throws -> Data {
         let scriptPath = try scriptURL(named: "soma_mcp_server").path
         return try await runScript(path: pythonPath(), args: [scriptPath] + args)
     }
-
-
 nonisolated func scriptURL(named name: String) throws -> URL {
         // Prefer source directory — gateway/ package must be co-located with soma_mcp_server.py.
         // #filePath resolves to: …/Soma/Soma/ViewModels/SomaViewModel+Execution.swift
@@ -230,5 +210,4 @@ nonisolated func scriptURL(named name: String) throws -> URL {
         }
         throw SomaError("\(name).py not found in source or bundle")
     }
-
 }

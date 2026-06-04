@@ -1,7 +1,6 @@
 import Combine
 import Foundation
 import SwiftUI
-
 final class OllamaManager: ObservableObject {
     @Published var isModelLoaded = false
     @Published var isOllamaRunning = false
@@ -9,7 +8,6 @@ final class OllamaManager: ObservableObject {
     @Published var installedModels: [OllamaInstalledModel] = []
     @Published var loadedModelNames: Set<String> = []
     @Published var tagsError: String?
-
     @Published var modelName: String {
         didSet { persistModelName(modelName, for: .scout) }
     }
@@ -22,9 +20,7 @@ final class OllamaManager: ObservableObject {
     @Published var translatorModelName: String {
         didSet { persistModelName(translatorModelName, for: .translator) }
     }
-
     private var timer: Timer?
-
     init() {
         modelName = LocalModelSettingsStore.model(for: .scout)
         rankerModelName = LocalModelSettingsStore.model(for: .ranker)
@@ -32,11 +28,9 @@ final class OllamaManager: ObservableObject {
         translatorModelName = LocalModelSettingsStore.model(for: .translator)
         startPolling()
     }
-
     deinit {
         timer?.invalidate()
     }
-
     func startPolling() {
         timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
             self?.checkStatus()
@@ -44,7 +38,6 @@ final class OllamaManager: ObservableObject {
         refreshInstalledModels()
         checkStatus()
     }
-
     func modelName(for role: LocalModelRole) -> String {
         switch role {
         case .scout: return modelName
@@ -53,7 +46,6 @@ final class OllamaManager: ObservableObject {
         case .translator: return translatorModelName
         }
     }
-
     func updateModel(_ model: String, for role: LocalModelRole) {
         let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
         switch role {
@@ -68,7 +60,6 @@ final class OllamaManager: ObservableObject {
             translatorModelName = trimmed
         }
     }
-
     func configuredRole(for model: String, stage: String? = nil) -> LocalModelRole? {
         let normalized = model.lowercased()
         if !modelName.isEmpty && normalized == modelName.lowercased() { return .scout }
@@ -80,23 +71,19 @@ final class OllamaManager: ObservableObject {
         }
         return nil
     }
-
     func isConfiguredModelInstalled(_ role: LocalModelRole) -> Bool {
         let model = modelName(for: role)
         guard !model.isEmpty else { return true }
         return installedModels.contains { $0.name.lowercased() == model.lowercased() }
     }
-
     func isLoaded(_ model: String) -> Bool {
         guard !model.isEmpty else { return false }
         return loadedModelNames.contains { $0.lowercased().hasPrefix(model.lowercased()) }
     }
-
     func refreshInstalledModels() {
         guard let url = URL(string: "http://127.0.0.1:11434/api/tags") else { return }
         var request = URLRequest(url: url)
         request.timeoutInterval = 3
-
         URLSession.shared.dataTask(with: request) { data, _, error in
             DispatchQueue.main.async {
                 if let error {
@@ -120,19 +107,16 @@ final class OllamaManager: ObservableObject {
             }
         }.resume()
     }
-
     func checkStatus() {
         guard let url = URL(string: "http://127.0.0.1:11434/api/ps") else { return }
         var request = URLRequest(url: url)
         request.timeoutInterval = 2
-
         URLSession.shared.dataTask(with: request) { data, _, error in
             DispatchQueue.main.async {
                 if error != nil {
                     self.updateStatus(isRunning: false, loadedModels: [])
                     return
                 }
-
                 var loaded: Set<String> = []
                 if
                     let data,
@@ -145,7 +129,6 @@ final class OllamaManager: ObservableObject {
             }
         }.resume()
     }
-
     private func updateStatus(isRunning: Bool, loadedModels: Set<String>) {
         if isOllamaRunning != isRunning {
             isOllamaRunning = isRunning
@@ -158,7 +141,6 @@ final class OllamaManager: ObservableObject {
             isModelLoaded = scoutLoaded
         }
     }
-
     func launchOllama() {
         isBusy = true
         DispatchQueue.global(qos: .userInitiated).async {
@@ -174,18 +156,14 @@ final class OllamaManager: ObservableObject {
             }
         }
     }
-
     func startModel() { sendKeepAlive(-1, model: modelName) }
     func stopModel() { sendKeepAlive(0, model: modelName) }
-
     func loadModel(_ model: String) {
         sendKeepAlive(-1, model: model)
     }
-
     func unloadModel(_ model: String) {
         sendKeepAlive(0, model: model)
     }
-
     private func sendKeepAlive(_ keepAlive: Int, model: String) {
         let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedModel.isEmpty else { return }
@@ -200,7 +178,6 @@ final class OllamaManager: ObservableObject {
             "stream": false,
         ])
         isBusy = true
-
         URLSession.shared.dataTask(with: request) { _, _, _ in
             DispatchQueue.main.async {
                 self.isBusy = false
@@ -211,12 +188,10 @@ final class OllamaManager: ObservableObject {
             }
         }.resume()
     }
-
     private func persistModelName(_ model: String, for role: LocalModelRole) {
         LocalModelSettingsStore.setModel(model, for: role)
     }
 }
-
 private struct OllamaTagsResponse: Decodable {
     let models: [OllamaInstalledModel]
 }

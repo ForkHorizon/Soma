@@ -98,7 +98,7 @@ func drainProcessPipe(_ pipe: Pipe) {
     }
 
 func logServerStop(pid: Int32) {
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 let logger = try scriptURL(named: "soma_logger")
                 _ = try await runScript(path: pythonPath(), args: [logger.path, "--server-stop-pid", "\(pid)", "--reason", "swift_stop"])
@@ -115,7 +115,7 @@ func copyMCPConfig(client: String) {
             mcpInstallStatus = "Select a project root before copying MCP config."
             return
         }
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--print-client-config", client, "--project-root", selectedProjectRoot])
                 guard let config = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !config.isEmpty else {
@@ -153,7 +153,7 @@ func verifyCodexConfig() {
     }
 
 func verifyCodexConfig(updateStatusText: Bool) {
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 var args = ["--verify-client-config", "codex"]
                 if !selectedProjectRoot.isEmpty {
@@ -184,7 +184,7 @@ func verifyGeminiConfig() {
     }
 
 func verifyGeminiConfig(updateStatusText: Bool) {
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 var args = ["--verify-client-config", "gemini"]
                 if !selectedProjectRoot.isEmpty {
@@ -215,7 +215,7 @@ func verifyHermesConfig() {
     }
 
 func verifyHermesConfig(updateStatusText: Bool) {
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 var args = ["--verify-client-config", "hermes"]
                 if !selectedProjectRoot.isEmpty {
@@ -246,7 +246,7 @@ func installCodexConfig() {
             mcpInstallStatus = "Select a project root before installing Codex config."
             return
         }
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--install-codex-config", "--project-root", selectedProjectRoot])
                 let status = try JSONDecoder().decode(ClientConfigInstallStatus.self, from: data)
@@ -280,7 +280,7 @@ func installGeminiConfig() {
             mcpInstallStatus = "Select a project root before installing Gemini config."
             return
         }
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--install-gemini-config", "--project-root", selectedProjectRoot])
                 let status = try JSONDecoder().decode(ClientConfigInstallStatus.self, from: data)
@@ -314,7 +314,7 @@ func installHermesConfig() {
             mcpInstallStatus = "Select a project root before installing Hermes config."
             return
         }
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--install-hermes-config", "--project-root", selectedProjectRoot])
                 let status = try JSONDecoder().decode(ClientConfigInstallStatus.self, from: data)
@@ -354,7 +354,7 @@ func useSelectedProjectWithHermes() {
         mcpInstallStatus = "Hermes project setup started."
         logActivity("Setting up Hermes for \((selectedProjectRoot as NSString).lastPathComponent)...")
 
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 let installData = try await runSomaHelper(args: ["--install-hermes-config", "--project-root", selectedProjectRoot])
                 let install = try JSONDecoder().decode(ClientConfigInstallStatus.self, from: installData)
@@ -484,7 +484,7 @@ func shellQuoted(_ value: String) -> String {
     }
 
 func rollbackCodexConfig() {
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--rollback-codex-config"])
                 let status = try JSONDecoder().decode(ClientConfigRollbackStatus.self, from: data)
@@ -503,7 +503,7 @@ func rollbackCodexConfig() {
     }
 
 func rollbackGeminiConfig() {
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--rollback-gemini-config"])
                 let status = try JSONDecoder().decode(ClientConfigRollbackStatus.self, from: data)
@@ -528,7 +528,7 @@ func analyzeProjectAISetup() {
         }
         projectSetupBusy = true
         projectSetupError = nil
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--analyze-project-ai-setup", "--project-root", selectedProjectRoot])
                 let report = try JSONDecoder().decode(ProjectAISetupReport.self, from: data)
@@ -558,7 +558,7 @@ func hardenProjectAISetup() {
         }
         projectSetupBusy = true
         projectSetupError = nil
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--harden-project-ai-setup", "--project-root", selectedProjectRoot])
                 let report = try JSONDecoder().decode(ProjectAISetupReport.self, from: data)
@@ -592,7 +592,7 @@ func rollbackProjectAISetup() {
         }
         projectSetupBusy = true
         projectSetupError = nil
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--rollback-project-ai-setup", "--project-root", selectedProjectRoot])
                 let report = try JSONDecoder().decode(ProjectAISetupReport.self, from: data)
@@ -626,7 +626,7 @@ func runSomaFirstSetup() {
         projectSetupBusy = true
         projectSetupError = nil
         mcpInstallStatus = "Soma First setup started."
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 let analysisData = try await runSomaHelper(args: ["--analyze-project-ai-setup", "--project-root", selectedProjectRoot])
                 let setupReport = try JSONDecoder().decode(ProjectAISetupReport.self, from: analysisData)
@@ -719,7 +719,7 @@ func runSomaFirstSetup() {
     }
 
 func loadMCPSmokeReport() {
-        Task {
+        Task { [weak self] in guard let self else { return }
             let file = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".soma/mcp_smoke/latest.json")
             guard FileManager.default.fileExists(atPath: file.path) else { return }
@@ -749,7 +749,7 @@ func runMCPSmoke() {
         mcpSmokeBusy = true
         mcpSmokeError = nil
         logActivity("Running guarded MCP smoke for \((selectedProjectRoot as NSString).lastPathComponent)...")
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 let script = try scriptURL(named: "verify_soma_mcp_clients")
                 let data = try await runScript(
@@ -791,7 +791,7 @@ func runLiveVerify() {
             mcpInstallStatus = "Select a project root before running live verification."
             return
         }
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 let script = try scriptURL(named: "verify_soma_live_workflow")
                 let data = try await runScript(

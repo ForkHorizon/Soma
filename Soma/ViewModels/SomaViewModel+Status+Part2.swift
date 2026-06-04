@@ -2,13 +2,12 @@ import Foundation
 import SwiftUI
 import AppKit
 import Combine
-
 extension SomaViewModel {
     func diagnoseGraphifyGraph() {
         guard !selectedProjectRoot.isEmpty else { return }
         graphifyBusy = true
         logActivity("Running Graphify diagnostics...")
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--diagnose-graph-json", "--project-root", selectedProjectRoot])
                 let result = try JSONDecoder().decode(GraphMaintenanceResult.self, from: data)
@@ -25,13 +24,11 @@ extension SomaViewModel {
             }
         }
     }
-
-
     func checkGraphifySemanticUpdate() {
         guard !selectedProjectRoot.isEmpty else { return }
         graphifyBusy = true
         logActivity("Checking Graphify semantic refresh state...")
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--check-graph-semantic-update-json", "--project-root", selectedProjectRoot])
                 let result = try JSONDecoder().decode(GraphSemanticUpdateStatus.self, from: data)
@@ -48,13 +45,11 @@ extension SomaViewModel {
             }
         }
     }
-
-
     func migrateGraphifyGraph() {
         guard !selectedProjectRoot.isEmpty else { return }
         graphifyBusy = true
         logActivity("Moving legacy Graphify graph into Soma storage...")
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 _ = try await runSomaHelper(args: ["--migrate-graph", "--project-root", selectedProjectRoot])
                 await MainActor.run {
@@ -70,8 +65,6 @@ extension SomaViewModel {
             }
         }
     }
-
-
     func openGraphifyReport() {
         let basePath = graphStoragePath ?? graphManagedPath
         guard let basePath, !basePath.isEmpty else { return }
@@ -81,23 +74,17 @@ extension SomaViewModel {
         guard FileManager.default.fileExists(atPath: target) else { return }
         NSWorkspace.shared.open(URL(fileURLWithPath: target))
     }
-
-
     func openGraphifyTreeReport() {
         generateAndOpenGraphifyReport(args: ["--graph-tree-json", "--project-root", selectedProjectRoot], label: "Graph tree")
     }
-
-
     func openGraphifyCallflowReport() {
         generateAndOpenGraphifyReport(args: ["--graph-callflow-json", "--project-root", selectedProjectRoot], label: "Graph callflow")
     }
-
-
     func generateAndOpenGraphifyReport(args: [String], label: String) {
         guard !selectedProjectRoot.isEmpty else { return }
         graphifyBusy = true
         logActivity("Generating \(label)...")
-        Task {
+        Task { [weak self] in guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: args)
                 let result = try JSONDecoder().decode(GraphReportResult.self, from: data)
@@ -118,13 +105,10 @@ extension SomaViewModel {
             }
         }
     }
-
-
 func projectPathsMatch(_ lhs: String, _ rhs: String?) -> Bool {
         guard let rhs, !lhs.isEmpty, !rhs.isEmpty else { return true }
         let left = URL(fileURLWithPath: lhs).standardizedFileURL.path
         let right = URL(fileURLWithPath: rhs).standardizedFileURL.path
         return left == right
     }
-
 }
