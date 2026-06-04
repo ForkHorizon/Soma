@@ -164,9 +164,9 @@ extension RusToPromptQueueManager {
         saveToDisk()
     }
     func refreshFreeMemory() {
-        DispatchQueue.global(qos: .utility).async {
-            let value = Self.readFreeMemoryGB()
-            DispatchQueue.main.async {
+        Task {
+            let value = await Self.readFreeMemoryGB()
+            await MainActor.run {
                 self.freeMemoryGB = value
             }
         }
