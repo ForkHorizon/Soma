@@ -10,19 +10,19 @@ func refreshSomaStatus() {
                 let data = try await runSomaHelper(args: ["--status-json", "--project-root", selectedProjectRoot])
                 let status = try JSONDecoder().decode(SomaGatewayStatus.self, from: data)
                 await MainActor.run {
-                    applySomaStatus(status)
+                    self.applySomaStatus(status)
                 }
             } catch {
                 await MainActor.run {
-                    mcpInstallStatus = "Soma status failed: \(error.localizedDescription)"
+                    self.mcpInstallStatus = "Soma status failed: \(error.localizedDescription)"
                 }
             }
             // Refresh activity feed alongside status
-            loadStructuredLogs()
-            loadTokenBenchmarkReport()
-            loadAgentBenchmarkReport()
-            loadMCPSmokeReport()
-            verifyClientConfigs()
+            self.loadStructuredLogs()
+            self.loadTokenBenchmarkReport()
+            self.loadAgentBenchmarkReport()
+            self.loadMCPSmokeReport()
+            self.verifyClientConfigs()
         }
     }
     func applySomaStatus(_ status: SomaGatewayStatus) {

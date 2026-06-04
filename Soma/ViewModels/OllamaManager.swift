@@ -85,38 +85,34 @@ final class OllamaManager: ObservableObject {
         var request = URLRequest(url: url)
         request.timeoutInterval = 3
         URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
-            Task.detached {
-                let errorMsg = error?.localizedDescription
-
-                if let errorMsg {
-                    await MainActor.run {
-                        self?.tagsError = errorMsg
-                        self?.installedModels = []
-                    }
-                    return
+            if let errorMsg = error?.localizedDescription {
+                Task { @MainActor [weak self] in
+                    self?.tagsError = errorMsg
+                    self?.installedModels = []
                 }
+                return
+            }
 
-                guard let data else {
-                    await MainActor.run {
-                        self?.tagsError = "Ollama returned no model list."
-                        self?.installedModels = []
-                    }
-                    return
+            guard let data else {
+                Task { @MainActor [weak self] in
+                    self?.tagsError = "Ollama returned no model list."
+                    self?.installedModels = []
                 }
+                return
+            }
 
-                do {
-                    let decoded = try JSONDecoder().decode(OllamaTagsResponse.self, from: data)
-                    let sorted = decoded.models.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-                    await MainActor.run {
-                        self?.installedModels = sorted
-                        self?.tagsError = nil
-                    }
-                } catch {
-                    let decodingError = error.localizedDescription
-                    await MainActor.run {
-                        self?.tagsError = decodingError
-                        self?.installedModels = []
-                    }
+            do {
+                let decoded = try JSONDecoder().decode(OllamaTagsResponse.self, from: data)
+                let sorted = decoded.models.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+                Task { @MainActor [weak self] in
+                    self?.installedModels = sorted
+                    self?.tagsError = nil
+                }
+            } catch {
+                let decodingError = error.localizedDescription
+                Task { @MainActor [weak self] in
+                    self?.tagsError = decodingError
+                    self?.installedModels = []
                 }
             }
         }.resume()
@@ -126,25 +122,26 @@ final class OllamaManager: ObservableObject {
         var request = URLRequest(url: url)
         request.timeoutInterval = 2
         URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
-            Task.detached {
-                if error != nil {
-                    await MainActor.run {
-                        self?.updateStatus(isRunning: false, loadedModels: [])
-                    }
-                    return
+            if error != nil {
+                Task { @MainActor [weak self] in
+                    self?.updateStatus(isRunning: false, loadedModels: [])
                 }
-                var loaded: Set<String> = []
-                if
-                    let data,
-                    let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                    let models = json["models"] as? [[String: Any]]
-                {
-                    loaded = Set(models.compactMap { ($0["name"] as? String)?.lowercased() })
-                }
+                return
+            }
 
-                await MainActor.run {
-                    self?.updateStatus(isRunning: true, loadedModels: loaded)
-                }
+            let loaded: Set<String>
+            if
+                let data,
+                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let models = json["models"] as? [[String: Any]]
+            {
+                loaded = Set(models.compactMap { ($0["name"] as? String)?.lowercased() })
+            } else {
+                loaded = []
+            }
+
+            Task { @MainActor [weak self] in
+                self?.updateStatus(isRunning: true, loadedModels: loaded)
             }
         }.resume()
     }
@@ -216,6 +213,6 @@ final class OllamaManager: ObservableObject {
         LocalModelSettingsStore.setModel(model, for: role)
     }
 }
-private struct OllamaTagsResponse: Decodable {
+nonisolated private struct OllamaTagsResponse: Decodable {
     let models: [OllamaInstalledModel]
 }

@@ -26,21 +26,21 @@ final class ScoutViewModel: ObservableObject {
             do {
                 somaViewModel.logActivity("Calling scout_pipeline.py...")
                 let stepStart = Date()
-                let result = try await runPythonChat(prompt: prompt, history: scoutHistory, somaViewModel: somaViewModel)
+                let result = try await self.runPythonChat(prompt: prompt, history: self.scoutHistory, somaViewModel: somaViewModel)
                 let stepDuration = Date().timeIntervalSince(stepStart)
                 await MainActor.run {
                     somaViewModel.logActivity("Received response from \(ollama.modelName)", duration: stepDuration)
-                    scoutTranscript += (result.response ?? "") + "\n"
-                    scoutHistory = result.history ?? []
-                    scoutLoading = false
+                    self.scoutTranscript += (result.response ?? "") + "\n"
+                    self.scoutHistory = result.history ?? []
+                    self.scoutLoading = false
                     ollama.checkStatus()
                     somaViewModel.logActivity("Scout total time", duration: Date().timeIntervalSince(startTime))
                 }
             } catch {
                 await MainActor.run {
                     somaViewModel.logActivity("Scout failed: \(error.localizedDescription)")
-                    scoutTranscript += "⚠️ Error: \(error.localizedDescription)\n"
-                    scoutLoading = false
+                    self.scoutTranscript += "⚠️ Error: \(error.localizedDescription)\n"
+                    self.scoutLoading = false
                 }
             }
         }

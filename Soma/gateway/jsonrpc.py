@@ -6,7 +6,7 @@ import os
 import sys
 from typing import Any
 
-from gateway.tool_registry import TOOL_CATALOG, call_tool, tool_schema
+from gateway.tool_registry import TOOL_CATALOG, call_tool, tool_descriptor
 from soma_audit import context_from_arguments
 from soma_logger import log_mcp_request, log_mcp_response, log_server_start, log_server_stop
 
@@ -76,14 +76,7 @@ async def _dispatch(method: str | None, params: dict[str, Any]) -> str:
     if method == "tools/list":
         return json.dumps(
             {
-                "tools": [
-                    {
-                        "name": name,
-                        "description": func.__doc__ or "Soma tool",
-                        "inputSchema": tool_schema(name),
-                    }
-                    for name, func in TOOL_CATALOG.items()
-                ]
+                "tools": [tool_descriptor(name) for name in TOOL_CATALOG]
             }
         )
     if method == "tools/call":

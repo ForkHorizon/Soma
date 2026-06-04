@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-struct MCPSmokeReport: Codable, Sendable {
+nonisolated struct MCPSmokeReport: Codable, Sendable {
     let status: String?
     let generated_at: String?
     let project_root: String?
@@ -16,13 +16,13 @@ struct MCPSmokeReport: Codable, Sendable {
     let log_file: String?
 }
 
-struct MCPSmokeServer: Codable, Sendable {
+nonisolated struct MCPSmokeServer: Codable, Sendable {
     let status: String?
     let tool_count: Int?
     let tool_names: [String]?
 }
 
-struct MCPSmokeStep: Codable, Sendable, Identifiable {
+nonisolated struct MCPSmokeStep: Codable, Sendable, Identifiable {
     var id: String { tool ?? output_hash ?? summary ?? "mcp-smoke-step" }
     let tool: String?
     let status: String?
@@ -36,14 +36,14 @@ struct MCPSmokeStep: Codable, Sendable, Identifiable {
     let tool_names: [String]?
 }
 
-struct MCPSmokePluginStatus: Codable, Sendable {
+nonisolated struct MCPSmokePluginStatus: Codable, Sendable {
     let unity_nexus: String?
     let nexus_connected: Bool?
     let nexus_project: String?
     let project_matches: Bool?
 }
 
-struct MCPSmokeSummary: Codable, Sendable {
+nonisolated struct MCPSmokeSummary: Codable, Sendable {
     let tool_count: Int?
     let smoked_tools: Int?
     let skipped_tools: Int?
@@ -54,7 +54,7 @@ struct MCPSmokeSummary: Codable, Sendable {
 
 // Structured log entry from ~/.soma/logs/soma_YYYYMMDD.jsonl
 
-struct SomaLogEntry: Identifiable, Sendable {
+nonisolated struct SomaLogEntry: Identifiable, Sendable {
     let id: UUID = UUID()
     let ts: String
     let event: String
@@ -216,7 +216,7 @@ struct SomaLogEntry: Identifiable, Sendable {
     }
 }
 
-struct SomaLocalModelStat: Identifiable, Sendable {
+nonisolated struct SomaLocalModelStat: Identifiable, Sendable {
     let id: String
     let calls: Int
     let errors: Int
@@ -228,7 +228,7 @@ struct SomaLocalModelStat: Identifiable, Sendable {
     var errorRate: Double { calls > 0 ? Double(errors) / Double(calls) : 0 }
 }
 
-struct SomaToolStat: Identifiable, Sendable {
+nonisolated struct SomaToolStat: Identifiable, Sendable {
     let id: String
     let calls: Int
     let errors: Int
@@ -244,7 +244,7 @@ struct SomaToolStat: Identifiable, Sendable {
     var errorRate: Double { calls > 0 ? Double(errors) / Double(calls) : 0 }
 }
 
-struct TokenBenchmarkReport: Codable, Sendable {
+nonisolated struct TokenBenchmarkReport: Codable, Sendable {
     let status: String?
     let generated_at: String?
     let model_profile: String?

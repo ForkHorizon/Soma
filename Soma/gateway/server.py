@@ -31,7 +31,7 @@ from gateway.status import (
     query_graph_simple,
     save_memory,
 )
-from gateway.tool_registry import TOOL_CATALOG, call_tool, tool_schema
+from gateway.tool_registry import TOOL_CATALOG, call_tool, tool_descriptor
 from soma_audit import context_from_arguments
 from soma_logger import log_mcp_request, log_mcp_response, log_server_start, log_server_stop
 from soma_project_setup import analyze_project_ai_setup, harden_project_ai_setup, rollback_project_ai_setup
@@ -68,10 +68,7 @@ async def _run_mcp_package_server(transport: str) -> None:
     @server.list_tools()
     async def handle_list_tools() -> list[Tool]:
         start = log_mcp_request("tools/list", None, 0)
-        tools = [
-            Tool(name=name, description=func.__doc__ or "Soma tool", inputSchema=tool_schema(name))
-            for name, func in TOOL_CATALOG.items()
-        ]
+        tools = [Tool(**tool_descriptor(name)) for name in TOOL_CATALOG]
         log_mcp_response("tools/list", None, start, "ok", len(str(tools)))
         return tools
 

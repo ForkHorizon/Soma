@@ -5,21 +5,21 @@ enum MCPError: Error {
     case toolExecutionFailed(String)
 }
 
-struct MCPRequest: Codable, Sendable {
+nonisolated struct MCPRequest: Codable, Sendable {
     let jsonrpc: String
     let id: Int
     let method: String
     let params: [String: AnyCodable]?
 }
 
-struct MCPResponse: Codable, Sendable {
+nonisolated struct MCPResponse: Codable, Sendable {
     let jsonrpc: String
     let id: Int
     let result: [String: AnyCodable]?
     let error: MCPErrorResponse?
 }
 
-struct MCPErrorResponse: Codable, Sendable {
+nonisolated struct MCPErrorResponse: Codable, Sendable {
     let code: Int
     let message: String
 }
@@ -213,11 +213,11 @@ actor SomaMCPCoordinator {
         return try await withTaskCancellationHandler {
             return try await withCheckedThrowingContinuation { continuation in
                 Task {
-                    await self.storeContinuation(id: requestId, continuation: continuation)
+                    self.storeContinuation(id: requestId, continuation: continuation)
                     do {
                         try stdin.fileHandleForWriting.write(contentsOf: requestStr.data(using: .utf8)!)
                     } catch {
-                        await self.removeContinuation(id: requestId)
+                        self.removeContinuation(id: requestId)
                         continuation.resume(throwing: MCPError.toolExecutionFailed("Failed to write to python backend"))
                     }
                 }

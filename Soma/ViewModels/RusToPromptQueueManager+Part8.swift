@@ -13,17 +13,17 @@ extension RusToPromptQueueManager {
             let runStatus = object["run_status"] as? String
             let success = object["success"] as? Bool
             if runStatus == "failed" {
-                return self.queueRunIssueMessage(prefix: "Completed with failed summary", summary: object)
+                return Self.queueRunIssueMessage(prefix: "Completed with failed summary", summary: object)
             }
             if runStatus == "completed_with_issues" || success == false {
-                return self.queueRunIssueMessage(prefix: "Completed with issues", summary: object)
+                return Self.queueRunIssueMessage(prefix: "Completed with issues", summary: object)
             }
             return "Completed"
         }.value
     }
 
 
-    func queueRunIssueMessage(prefix: String, summary: [String: Any]) -> String {
+    nonisolated static func queueRunIssueMessage(prefix: String, summary: [String: Any]) -> String {
         guard let issueCounts = summary["issue_counts"] as? [String: Any] else { return prefix }
         let issues = issueCounts
             .compactMap { key, value -> (String, Int)? in
@@ -76,8 +76,9 @@ extension RusToPromptQueueManager {
                 }
             }
 
+            let parsedEvents = events
             await MainActor.run {
-                for (eventOpt, trimmed) in events {
+                for (eventOpt, trimmed) in parsedEvents {
                     if let event = eventOpt {
                         self.currentStage = self.displayStage(for: event)
                         if let translator = event.translatorModel, let analyzer = event.analyzerModel {

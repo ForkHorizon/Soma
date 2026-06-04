@@ -29,11 +29,11 @@ final class PromptCompilerViewModel: ObservableObject {
         let startTime = Date()
         Task { [weak self] in guard let self else { return }
             do {
-                phase = .gathering
+                self.phase = .gathering
                 let rootLabel = somaViewModel.selectedProjectRoot.isEmpty ? "no selected root" : somaViewModel.selectedProjectRoot
                 somaViewModel.logActivity("Planning collection and compiling strong prompt via analyst gather (\(rootLabel))...")
                 let stepStart = Date()
-                let bundle = try await runAnalystGather(
+                let bundle = try await self.runAnalystGather(
                     prompt: prompt,
                     projectRoot: somaViewModel.selectedProjectRoot,
                     recentRoots: somaViewModel.recentProjectRoots,
@@ -41,12 +41,12 @@ final class PromptCompilerViewModel: ObservableObject {
                 )
                 let stepDuration = Date().timeIntervalSince(stepStart)
                 if let error = bundle.error {
-                    throw SomaError(friendlyError(error))
+                    throw SomaError(self.friendlyError(error))
                 }
                 await MainActor.run {
-                    gatherBundle = bundle
+                    self.gatherBundle = bundle
                     somaViewModel.latestTokenSavings = bundle.token_savings
-                    phase = .done
+                    self.phase = .done
                     ollama.checkStatus()
                     somaViewModel.loadAuditReport()
                     somaViewModel.logActivity("Compiled strong prompt with \(bundle.evidence_items?.count ?? 0) evidence items", duration: stepDuration)
@@ -54,10 +54,10 @@ final class PromptCompilerViewModel: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    let message = friendlyError(error.localizedDescription)
+                    let message = self.friendlyError(error.localizedDescription)
                     somaViewModel.logActivity("Prompt Compiler failed: \(message)")
-                    phase = .failed(message)
-                    errorMessage = message
+                    self.phase = .failed(message)
+                    self.errorMessage = message
                 }
             }
         }

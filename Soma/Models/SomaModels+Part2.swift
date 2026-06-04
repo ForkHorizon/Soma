@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-struct AuditEvent: Codable, Sendable, Hashable, Identifiable {
+nonisolated struct AuditEvent: Codable, Sendable, Hashable, Identifiable {
     var id: String { "\(ts ?? "")-\(event ?? "")-\(tool ?? "")" }
     let ts: String?
     let event: String?
@@ -12,14 +12,14 @@ struct AuditEvent: Codable, Sendable, Hashable, Identifiable {
     let acceptance_status: String?
 }
 
-struct AuditQualityReview: Codable, Sendable, Hashable {
+nonisolated struct AuditQualityReview: Codable, Sendable, Hashable {
     let status: String?
     let notes: String?
     let reviewed_at: String?
     let source: String?
 }
 
-struct AnalysisStage: Codable, Sendable, Hashable {
+nonisolated struct AnalysisStage: Codable, Sendable, Hashable {
     let stage: String?
     let model: String?
     let status: String?
@@ -89,21 +89,21 @@ struct AnalysisStage: Codable, Sendable, Hashable {
     }
 }
 
-struct GitDiffSummary: Codable, Sendable, Hashable {
+nonisolated struct GitDiffSummary: Codable, Sendable, Hashable {
     let changed_files: [GitChangedFile]?
     let changed_file_count: Int?
     let hunks: [GitHunk]?
     let raw_diff_chars_omitted: Int?
 }
 
-struct GitChangedFile: Codable, Sendable, Hashable {
+nonisolated struct GitChangedFile: Codable, Sendable, Hashable {
     let status: String?
     let path: String?
     let added: String?
     let removed: String?
 }
 
-struct GitHunk: Codable, Sendable, Hashable {
+nonisolated struct GitHunk: Codable, Sendable, Hashable {
     let file: String?
     let start_line: Int?
     let end_line: Int?
@@ -112,18 +112,18 @@ struct GitHunk: Codable, Sendable, Hashable {
     let signals: [String]?
 }
 
-struct RepoIndexSummary: Codable, Sendable, Hashable {
+nonisolated struct RepoIndexSummary: Codable, Sendable, Hashable {
     let cache_path: String?
     let indexed_file_count: Int?
     let changed_index_entries: Int?
 }
 
-struct GatheredFile: Codable, Sendable, Hashable {
+nonisolated struct GatheredFile: Codable, Sendable, Hashable {
     let tool: String?
     let preview: String?
 }
 
-struct EvidenceItem: Codable, Sendable, Hashable {
+nonisolated struct EvidenceItem: Codable, Sendable, Hashable {
     let path: String?
     let kind: String?
     let reason: String?
@@ -134,7 +134,7 @@ struct EvidenceItem: Codable, Sendable, Hashable {
     let unity_refs: [String]?
 }
 
-struct RelayResponse: Codable, Sendable {
+nonisolated struct RelayResponse: Codable, Sendable {
     let response: String?
     let source: String?
     let model: String?
@@ -147,7 +147,7 @@ struct RelayResponse: Codable, Sendable {
     let error: String?
 }
 
-struct PacketHistoryItem: Codable, Sendable, Hashable, Identifiable {
+nonisolated struct PacketHistoryItem: Codable, Sendable, Hashable, Identifiable {
     let id: String
     let createdAt: String
     let projectRoot: String
@@ -251,4 +251,4 @@ struct PacketHistoryItem: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
-struct JSONNull: Codable, Sendable, Hashable {}
+nonisolated struct JSONNull: Codable, Sendable, Hashable {}

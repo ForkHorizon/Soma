@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-struct TokenBenchmarkSummary: Codable, Sendable {
+nonisolated struct TokenBenchmarkSummary: Codable, Sendable {
     let mode: String?
     let result_count: Int?
     let valid_result_count: Int?
@@ -13,7 +13,7 @@ struct TokenBenchmarkSummary: Codable, Sendable {
     let total_saved_tokens: Int?
 }
 
-struct TokenBenchmarkResult: Codable, Sendable {
+nonisolated struct TokenBenchmarkResult: Codable, Sendable {
     let project: String?
     let project_root: String?
     let project_type: String?
@@ -24,7 +24,7 @@ struct TokenBenchmarkResult: Codable, Sendable {
     let savings_pct: Double?
 }
 
-struct AgentBenchmarkReport: Codable, Sendable {
+nonisolated struct AgentBenchmarkReport: Codable, Sendable {
     let status: String?
     let generated_at: String?
     let scenario_path: String?
@@ -39,7 +39,7 @@ struct AgentBenchmarkReport: Codable, Sendable {
     let runs: [AgentBenchmarkRun]?
 }
 
-struct AgentBenchmarkSummary: Codable, Sendable {
+nonisolated struct AgentBenchmarkSummary: Codable, Sendable {
     let run_count: Int?
     let failed_run_count: Int?
     let comparison_count: Int?
@@ -51,7 +51,7 @@ struct AgentBenchmarkSummary: Codable, Sendable {
     let usage_sources: [String]?
 }
 
-struct AgentBenchmarkComparison: Codable, Sendable {
+nonisolated struct AgentBenchmarkComparison: Codable, Sendable {
     let task_id: String?
     let run_id: String?
     let agent: String?
@@ -68,7 +68,7 @@ struct AgentBenchmarkComparison: Codable, Sendable {
     let soma_packet_status: String?
 }
 
-struct AgentBenchmarkRun: Codable, Sendable, Identifiable {
+nonisolated struct AgentBenchmarkRun: Codable, Sendable, Identifiable {
     var id: String { "\(task_id ?? "task")-\(agent ?? "agent")-\(mode ?? "mode")" }
     let run_id: String?
     let task_id: String?

@@ -65,14 +65,14 @@ func loadStructuredLogs(date: Date = Date()) {
                 )
             }
             await MainActor.run {
-                logEntries = entries
-                toolStats = stats
-                localModelStats = localStats
+                self.logEntries = entries
+                self.toolStats = stats
+                self.localModelStats = localStats
                 if let latestSavings {
                     self.latestTokenSavings = latestSavings
                 }
-                logsLoading = false
-                refreshPacketLiveToolCounts()
+                self.logsLoading = false
+                self.refreshPacketLiveToolCounts()
             }
         }
     }

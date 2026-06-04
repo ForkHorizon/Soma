@@ -14,23 +14,23 @@ func runScout(ollama: OllamaManager) {
         let startTime = Date()
         Task { [weak self] in guard let self else { return }
             do {
-                logActivity("Calling scout_pipeline.py...")
+                self.logActivity("Calling scout_pipeline.py...")
                 let stepStart = Date()
-                let result = try await runPythonChat(prompt: prompt, history: scoutHistory)
+                let result = try await self.runPythonChat(prompt: prompt, history: self.scoutHistory)
                 let stepDuration = Date().timeIntervalSince(stepStart)
                 await MainActor.run {
-                    logActivity("Received response from \(ollama.modelName)", duration: stepDuration)
-                    scoutTranscript += (result.response ?? "") + "\n"
-                    scoutHistory = result.history ?? []
-                    scoutLoading = false
+                    self.logActivity("Received response from \(ollama.modelName)", duration: stepDuration)
+                    self.scoutTranscript += (result.response ?? "") + "\n"
+                    self.scoutHistory = result.history ?? []
+                    self.scoutLoading = false
                     ollama.checkStatus()
-                    logActivity("Scout total time", duration: Date().timeIntervalSince(startTime))
+                    self.logActivity("Scout total time", duration: Date().timeIntervalSince(startTime))
                 }
             } catch {
                 await MainActor.run {
-                    logActivity("Scout failed: \(error.localizedDescription)")
-                    scoutTranscript += "⚠️ Error: \(error.localizedDescription)\n"
-                    scoutLoading = false
+                    self.logActivity("Scout failed: \(error.localizedDescription)")
+                    self.scoutTranscript += "⚠️ Error: \(error.localizedDescription)\n"
+                    self.scoutLoading = false
                 }
             }
         }
@@ -48,11 +48,11 @@ func runRelay(ollama: OllamaManager) {
         let startTime = Date()
         Task { [weak self] in guard let self else { return }
             do {
-                relayPhase = .gathering
+                self.relayPhase = .gathering
                 let rootLabel = selectedProjectRoot.isEmpty ? "no selected root" : selectedProjectRoot
-                logActivity("Preparing packet via Python router (\(rootLabel))...")
+                self.logActivity("Preparing packet via Python router (\(rootLabel))...")
                 let stepStart = Date()
-                let bundle = try await runGather(
+                let bundle = try await self.runGather(
                     prompt: prompt,
                     projectRoot: selectedProjectRoot,
                     recentRoots: recentProjectRoots,
@@ -62,16 +62,16 @@ func runRelay(ollama: OllamaManager) {
                 if let error = bundle.error {
                     throw SomaError(error)
                 }
-                logActivity("Prepared \(bundle.packet_mode ?? "unknown") packet with \(bundle.evidence_items?.count ?? 0) items. Confidence: \(bundle.confidence ?? 0)", duration: stepDuration)
+                self.logActivity("Prepared \(bundle.packet_mode ?? "unknown") packet with \(bundle.evidence_items?.count ?? 0) items. Confidence: \(bundle.confidence ?? 0)", duration: stepDuration)
                 await MainActor.run {
-                    applyGatherBundle(bundle, prompt: prompt, startTime: startTime, ollama: ollama)
+                    self.applyGatherBundle(bundle, prompt: prompt, startTime: startTime, ollama: ollama)
                 }
             } catch {
                 await MainActor.run {
-                    logActivity("Relay failed: \(error.localizedDescription)")
-                    relayPhase = .failed(error.localizedDescription)
-                    relayError = error.localizedDescription
-                    auditRawCaptureNextRun = false
+                    self.logActivity("Relay failed: \(error.localizedDescription)")
+                    self.relayPhase = .failed(error.localizedDescription)
+                    self.relayError = error.localizedDescription
+                    self.auditRawCaptureNextRun = false
                 }
             }
         }

@@ -34,11 +34,11 @@ final class RelayViewModel: ObservableObject {
         let startTime = Date()
         Task { [weak self] in guard let self else { return }
             do {
-                relayPhase = .gathering
+                self.relayPhase = .gathering
                 let rootLabel = somaViewModel.selectedProjectRoot.isEmpty ? "no selected root" : somaViewModel.selectedProjectRoot
                 somaViewModel.logActivity("Preparing packet via Python router (\(rootLabel))...")
                 let stepStart = Date()
-                let bundle = try await runGather(
+                let bundle = try await self.runGather(
                     prompt: prompt,
                     projectRoot: somaViewModel.selectedProjectRoot,
                     recentRoots: somaViewModel.recentProjectRoots,
@@ -50,11 +50,11 @@ final class RelayViewModel: ObservableObject {
                 }
                 somaViewModel.logActivity("Prepared \(bundle.packet_mode ?? "unknown") packet with \(bundle.evidence_items?.count ?? 0) items. Confidence: \(bundle.confidence ?? 0)", duration: stepDuration)
                 await MainActor.run {
-                    gatherBundle = bundle
+                    self.gatherBundle = bundle
                     somaViewModel.latestTokenSavings = bundle.token_savings
-                    lastPacketHistoryID = somaViewModel.recordPacketRun(prompt: prompt, bundle: bundle)
-                    showContextPanel = true
-                    relayPhase = .done
+                    self.lastPacketHistoryID = somaViewModel.recordPacketRun(prompt: prompt, bundle: bundle)
+                    self.showContextPanel = true
+                    self.relayPhase = .done
                     ollama.checkStatus()
                     somaViewModel.logActivity("Prepared Codex packet (~\(bundle.estimated_tokens ?? 0) tokens)")
                     somaViewModel.logActivity("Evidence compile total time", duration: Date().timeIntervalSince(startTime))
@@ -62,8 +62,8 @@ final class RelayViewModel: ObservableObject {
             } catch {
                 await MainActor.run {
                     somaViewModel.logActivity("Relay failed: \(error.localizedDescription)")
-                    relayPhase = .failed(error.localizedDescription)
-                    relayError = error.localizedDescription
+                    self.relayPhase = .failed(error.localizedDescription)
+                    self.relayError = error.localizedDescription
                 }
             }
         }

@@ -1,6 +1,6 @@
 import Combine
 import Foundation
-struct RusToPromptResult: Codable, Sendable, Hashable {
+nonisolated struct RusToPromptResult: Codable, Sendable, Hashable {
     let status: String?
     let source_language: String?
     let target_language: String?
@@ -16,7 +16,7 @@ struct RusToPromptResult: Codable, Sendable, Hashable {
     let improved_prompt_tokens: Int?
     let original_prompt_hash: String?
 }
-struct RusToPromptTranslationResult: Codable, Sendable, Hashable {
+nonisolated struct RusToPromptTranslationResult: Codable, Sendable, Hashable {
     let status: String?
     let source_language: String?
     let target_language: String?
@@ -34,7 +34,7 @@ struct RusToPromptTranslationResult: Codable, Sendable, Hashable {
         return "Translation did not return a usable English prompt."
     }
 }
-struct RusToPromptImproveResult: Codable, Sendable, Hashable {
+nonisolated struct RusToPromptImproveResult: Codable, Sendable, Hashable {
     let status: String?
     let improved_prompt: String?
     let improver_model: String?
@@ -50,7 +50,7 @@ struct RusToPromptImproveResult: Codable, Sendable, Hashable {
         return "Analyzer returned a degraded prompt."
     }
 }
-struct RusToPromptConfidenceResult: Codable, Sendable, Hashable {
+nonisolated struct RusToPromptConfidenceResult: Codable, Sendable, Hashable {
     let provider: String?
     let model: String?
     let reasoningEffort: String?
@@ -91,7 +91,7 @@ enum RusToPromptPhase: String {
     case degraded
     case failed
 }
-struct RusToPromptModelPreset: Identifiable, Hashable {
+nonisolated struct RusToPromptModelPreset: Identifiable, Hashable {
     let model: String
     let quality: String
     let speed: String
@@ -105,7 +105,7 @@ struct RusToPromptModelPreset: Identifiable, Hashable {
         provider == "gemini" || model.lowercased().hasPrefix("gemini-") || model.lowercased().hasPrefix("auto-gemini")
     }
 }
-enum RusToPromptSettingsStore {
+nonisolated enum RusToPromptSettingsStore {
     static let translatorKey = "rusToPrompt.translatorModel"
     static let analyzerKey = "rusToPrompt.analyzerModel"
     static let confidenceKey = "rusToPrompt.confidenceModel"

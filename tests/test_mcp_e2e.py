@@ -81,6 +81,9 @@ async def main():
         if "inputSchema" not in t:
             print(f"FAIL: Tool {t['name']} missing inputSchema")
             sys.exit(1)
+        if not t.get("signature"):
+            print(f"FAIL: Tool {t['name']} missing signature")
+            sys.exit(1)
 
     # 3. ping (5.3 MCP protocol compliance)
     await send_request("ping", id=3)

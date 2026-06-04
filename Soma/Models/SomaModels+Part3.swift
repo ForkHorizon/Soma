@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-struct AnyCodable: Codable, Sendable {
+nonisolated struct AnyCodable: Codable, Sendable {
     let value: Sendable
 
     init(_ value: Sendable) { self.value = value }
@@ -43,7 +43,7 @@ extension AnyCodable {
 
 // Consolidated status models
 
-struct SomaGatewayStatus: Codable, Sendable {
+nonisolated struct SomaGatewayStatus: Codable, Sendable {
     let status: String?
     let project_root: String?
     let server: SomaServerInfo?
@@ -51,13 +51,13 @@ struct SomaGatewayStatus: Codable, Sendable {
     let graph: SomaGraphStatus?
 }
 
-struct SomaServerInfo: Codable, Sendable {
+nonisolated struct SomaServerInfo: Codable, Sendable {
     let transport: String?
     let tool_count: Int?
     let tool_names: [String]?
 }
 
-struct SomaNexusStatus: Codable, Sendable {
+nonisolated struct SomaNexusStatus: Codable, Sendable {
     let connected: Bool?
     let port: Int?
     let project_path: String?
@@ -67,7 +67,7 @@ struct SomaNexusStatus: Codable, Sendable {
     let busy_reason: String?
 }
 
-struct SomaGraphStatus: Codable, Sendable {
+nonisolated struct SomaGraphStatus: Codable, Sendable {
     let available: Bool?
     let project_graph_available: Bool?
     let managed_available: Bool?
@@ -89,7 +89,7 @@ struct SomaGraphStatus: Codable, Sendable {
     let recommended_action: String?
 }
 
-struct GraphStorageInfo: Codable, Sendable {
+nonisolated struct GraphStorageInfo: Codable, Sendable {
     let project_id: String?
     let project_root: String?
     let display_name: String?
@@ -102,7 +102,7 @@ struct GraphStorageInfo: Codable, Sendable {
     let legacy_paths: [String]?
 }
 
-struct GraphifyToolStatus: Codable, Sendable {
+nonisolated struct GraphifyToolStatus: Codable, Sendable {
     let status: String?
     let installed_version: String?
     let latest_version: String?
@@ -110,7 +110,7 @@ struct GraphifyToolStatus: Codable, Sendable {
     let recommended_action: String?
 }
 
-struct GraphMaintenanceResult: Codable, Sendable {
+nonisolated struct GraphMaintenanceResult: Codable, Sendable {
     let status: String?
     let summary: String?
     let mode: String?
@@ -121,19 +121,19 @@ struct GraphMaintenanceResult: Codable, Sendable {
     let graph: SomaGraphStatus?
 }
 
-struct GraphReportResult: Codable, Sendable {
+nonisolated struct GraphReportResult: Codable, Sendable {
     let status: String?
     let summary: String?
     let output_path: String?
 }
 
-struct GraphSemanticUpdateStatus: Codable, Sendable {
+nonisolated struct GraphSemanticUpdateStatus: Codable, Sendable {
     let status: String?
     let summary: String?
     let pending: Bool?
 }
 
-struct ClientConfigStatus: Codable, Sendable {
+nonisolated struct ClientConfigStatus: Codable, Sendable {
     let status: String
     let summary: String
     let config_path: String?
@@ -146,7 +146,7 @@ struct ClientConfigStatus: Codable, Sendable {
     let issues: [String]
 }
 
-struct ClientConfigInstallStatus: Codable, Sendable {
+nonisolated struct ClientConfigInstallStatus: Codable, Sendable {
     let status: String
     let summary: String
     let config_path: String?
@@ -160,7 +160,7 @@ struct ClientConfigInstallStatus: Codable, Sendable {
     let issues: [String]
 }
 
-struct ClientConfigRollbackStatus: Codable, Sendable {
+nonisolated struct ClientConfigRollbackStatus: Codable, Sendable {
     let status: String
     let summary: String
     let config_path: String?
@@ -171,7 +171,7 @@ struct ClientConfigRollbackStatus: Codable, Sendable {
     let issues: [String]?
 }
 
-struct ProjectAISetupReport: Codable, Sendable {
+nonisolated struct ProjectAISetupReport: Codable, Sendable {
     let status: String?
     let summary: String?
     let generated_at: String?
@@ -190,7 +190,7 @@ struct ProjectAISetupReport: Codable, Sendable {
     let report_path: String?
 }
 
-struct ProjectAISetupFile: Codable, Sendable, Identifiable {
+nonisolated struct ProjectAISetupFile: Codable, Sendable, Identifiable {
     var id: String { path ?? label ?? UUID().uuidString }
     let label: String?
     let path: String?
@@ -201,24 +201,24 @@ struct ProjectAISetupFile: Codable, Sendable, Identifiable {
     let size: Int?
 }
 
-struct ProjectAISetupChangedFile: Codable, Sendable, Identifiable {
+nonisolated struct ProjectAISetupChangedFile: Codable, Sendable, Identifiable {
     var id: String { path ?? UUID().uuidString }
     let path: String?
     let backup_path: String?
 }
 
-struct ProjectAISetupBackup: Codable, Sendable, Identifiable {
+nonisolated struct ProjectAISetupBackup: Codable, Sendable, Identifiable {
     var id: String { "\(path ?? "")-\(backup_path ?? "")" }
     let path: String?
     let backup_path: String?
 }
 
-struct ProjectAISetupVerification: Codable, Sendable {
+nonisolated struct ProjectAISetupVerification: Codable, Sendable {
     let status: String?
     let remaining_issues: [String]?
 }
 
-struct ProjectAISetupLocalCheck: Codable, Sendable, Identifiable {
+nonisolated struct ProjectAISetupLocalCheck: Codable, Sendable, Identifiable {
     var id: String { stage ?? UUID().uuidString }
     let stage: String?
     let status: String?
@@ -229,7 +229,7 @@ struct ProjectAISetupLocalCheck: Codable, Sendable, Identifiable {
     let notes: [String]?
 }
 
-struct LiveVerifyStatus: Codable, Sendable {
+nonisolated struct LiveVerifyStatus: Codable, Sendable {
     let status: String
     let project_root: String?
     let issues: [String]?
@@ -239,13 +239,13 @@ struct LiveVerifyStatus: Codable, Sendable {
     let calls: [String: LiveVerifyCall]?
 }
 
-struct LiveVerifyTools: Codable, Sendable {
+nonisolated struct LiveVerifyTools: Codable, Sendable {
     let count: Int?
     let expected_count: Int?
     let unity_exposed: [String]?
 }
 
-struct LiveVerifyCall: Codable, Sendable {
+nonisolated struct LiveVerifyCall: Codable, Sendable {
     let status: String?
     let summary: String?
     let instance_id: Int?

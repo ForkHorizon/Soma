@@ -74,6 +74,21 @@ class SomaMCPServerTests(unittest.TestCase):
         self.assertIn("goal", schema["required"])
         self.assertFalse(schema["additionalProperties"])
 
+    def test_tool_descriptor_exposes_signature(self):
+        descriptor = gateway.tool_registry.tool_descriptor("soma_prepare_context")
+
+        self.assertEqual(descriptor["signature"], 'soma_prepare_context(goal: string, budget: string = "balanced", depth: string = "deterministic") -> string')
+        self.assertEqual(descriptor["_meta"]["soma_signature"], descriptor["signature"])
+        self.assertIn("inputSchema", descriptor)
+
+    def test_jsonrpc_tools_list_exposes_signatures(self):
+        payload = json.loads(asyncio.run(gateway.jsonrpc._dispatch("tools/list", {})))
+        signatures = {tool["name"]: tool.get("signature") for tool in payload["tools"]}
+
+        self.assertEqual(len(signatures), 12)
+        self.assertTrue(all(signatures.values()))
+        self.assertEqual(signatures["soma_get_map"], "soma_get_map() -> string")
+
     def test_tool_call_ignores_client_added_arguments(self):
         tmp, root = self.make_repo()
         with tmp, patch.object(gateway.core.nexus, "discover", return_value=gateway.core.NexusState()), patch.object(

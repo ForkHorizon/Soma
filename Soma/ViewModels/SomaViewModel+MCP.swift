@@ -121,17 +121,17 @@ func copyMCPConfig(client: String) {
                 guard let config = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !config.isEmpty else {
                     throw SomaError("Empty MCP config")
                 }
-                await MainActor.run {
-                    let pb = NSPasteboard.general
-                    pb.clearContents()
-                    pb.setString(config, forType: .string)
-                    mcpConfigPreview = config
-                    mcpInstallStatus = "\(client.capitalized) MCP config copied. Merge it into the client config and remove direct Nexus entries."
-                }
-            } catch {
-                await MainActor.run {
-                    mcpInstallStatus = "Config generation failed: \(error.localizedDescription)"
-                }
+	                await MainActor.run {
+	                    let pb = NSPasteboard.general
+	                    pb.clearContents()
+	                    pb.setString(config, forType: .string)
+	                    self.mcpConfigPreview = config
+	                    self.mcpInstallStatus = "\(client.capitalized) MCP config copied. Merge it into the client config and remove direct Nexus entries."
+	                }
+	            } catch {
+	                await MainActor.run {
+	                    self.mcpInstallStatus = "Config generation failed: \(error.localizedDescription)"
+	                }
             }
         }
     }
@@ -162,19 +162,19 @@ func verifyCodexConfig(updateStatusText: Bool) {
                 let data = try await runSomaHelper(args: args)
                 let status = try JSONDecoder().decode(ClientConfigStatus.self, from: data)
                 await MainActor.run {
-                    codexConfigStatus = status
-                    mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if updateStatusText {
-                        let issueText = status.issues.isEmpty ? "no issues" : status.issues.joined(separator: ", ")
-                        mcpInstallStatus = "Codex config \(status.status): \(status.summary) (\(issueText))."
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    if updateStatusText {
-                        mcpInstallStatus = "Codex config verification failed: \(error.localizedDescription)"
-                    }
-                }
+	                    self.codexConfigStatus = status
+	                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+	                    if updateStatusText {
+	                        let issueText = status.issues.isEmpty ? "no issues" : status.issues.joined(separator: ", ")
+	                        self.mcpInstallStatus = "Codex config \(status.status): \(status.summary) (\(issueText))."
+	                    }
+	                }
+	            } catch {
+	                await MainActor.run {
+	                    if updateStatusText {
+	                        self.mcpInstallStatus = "Codex config verification failed: \(error.localizedDescription)"
+	                    }
+	                }
             }
         }
     }
@@ -193,19 +193,19 @@ func verifyGeminiConfig(updateStatusText: Bool) {
                 let data = try await runSomaHelper(args: args)
                 let status = try JSONDecoder().decode(ClientConfigStatus.self, from: data)
                 await MainActor.run {
-                    geminiConfigStatus = status
-                    mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if updateStatusText {
-                        let issueText = status.issues.isEmpty ? "no issues" : status.issues.joined(separator: ", ")
-                        mcpInstallStatus = "Gemini config \(status.status): \(status.summary) (\(issueText))."
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    if updateStatusText {
-                        mcpInstallStatus = "Gemini config verification failed: \(error.localizedDescription)"
-                    }
-                }
+	                    self.geminiConfigStatus = status
+	                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+	                    if updateStatusText {
+	                        let issueText = status.issues.isEmpty ? "no issues" : status.issues.joined(separator: ", ")
+	                        self.mcpInstallStatus = "Gemini config \(status.status): \(status.summary) (\(issueText))."
+	                    }
+	                }
+	            } catch {
+	                await MainActor.run {
+	                    if updateStatusText {
+	                        self.mcpInstallStatus = "Gemini config verification failed: \(error.localizedDescription)"
+	                    }
+	                }
             }
         }
     }
@@ -224,19 +224,19 @@ func verifyHermesConfig(updateStatusText: Bool) {
                 let data = try await runSomaHelper(args: args)
                 let status = try JSONDecoder().decode(ClientConfigStatus.self, from: data)
                 await MainActor.run {
-                    hermesConfigStatus = status
-                    mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if updateStatusText {
-                        let issueText = status.issues.isEmpty ? "no issues" : status.issues.joined(separator: ", ")
-                        mcpInstallStatus = "Hermes config \(status.status): \(status.summary) (\(issueText))."
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    if updateStatusText {
-                        mcpInstallStatus = "Hermes config verification failed: \(error.localizedDescription)"
-                    }
-                }
+	                    self.hermesConfigStatus = status
+	                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+	                    if updateStatusText {
+	                        let issueText = status.issues.isEmpty ? "no issues" : status.issues.joined(separator: ", ")
+	                        self.mcpInstallStatus = "Hermes config \(status.status): \(status.summary) (\(issueText))."
+	                    }
+	                }
+	            } catch {
+	                await MainActor.run {
+	                    if updateStatusText {
+	                        self.mcpInstallStatus = "Hermes config verification failed: \(error.localizedDescription)"
+	                    }
+	                }
             }
         }
     }
@@ -251,7 +251,7 @@ func installCodexConfig() {
                 let data = try await runSomaHelper(args: ["--install-codex-config", "--project-root", selectedProjectRoot])
                 let status = try JSONDecoder().decode(ClientConfigInstallStatus.self, from: data)
                 await MainActor.run {
-                    codexConfigStatus = ClientConfigStatus(
+	                    self.codexConfigStatus = ClientConfigStatus(
                         status: status.status,
                         summary: status.summary,
                         config_path: status.config_path,
@@ -263,14 +263,14 @@ func installCodexConfig() {
                         project_matches: status.project_matches,
                         issues: status.issues
                     )
-                    mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let backupText = status.backup_path == nil ? "no previous config backup needed" : "backup: \(status.backup_path ?? "")"
-                    mcpInstallStatus = "Codex config \(status.status): \(status.summary) \(backupText)."
-                }
-            } catch {
-                await MainActor.run {
-                    mcpInstallStatus = "Codex config install failed: \(error.localizedDescription)"
-                }
+	                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+	                    let backupText = status.backup_path == nil ? "no previous config backup needed" : "backup: \(status.backup_path ?? "")"
+	                    self.mcpInstallStatus = "Codex config \(status.status): \(status.summary) \(backupText)."
+	                }
+	            } catch {
+	                await MainActor.run {
+	                    self.mcpInstallStatus = "Codex config install failed: \(error.localizedDescription)"
+	                }
             }
         }
     }
@@ -285,7 +285,7 @@ func installGeminiConfig() {
                 let data = try await runSomaHelper(args: ["--install-gemini-config", "--project-root", selectedProjectRoot])
                 let status = try JSONDecoder().decode(ClientConfigInstallStatus.self, from: data)
                 await MainActor.run {
-                    geminiConfigStatus = ClientConfigStatus(
+	                    self.geminiConfigStatus = ClientConfigStatus(
                         status: status.status,
                         summary: status.summary,
                         config_path: status.config_path,
@@ -297,14 +297,14 @@ func installGeminiConfig() {
                         project_matches: status.project_matches,
                         issues: status.issues
                     )
-                    mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let backupText = status.backup_path == nil ? "no previous config backup needed" : "backup: \(status.backup_path ?? "")"
-                    mcpInstallStatus = "Gemini config \(status.status): \(status.summary) \(backupText)."
-                }
-            } catch {
-                await MainActor.run {
-                    mcpInstallStatus = "Gemini config install failed: \(error.localizedDescription)"
-                }
+	                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+	                    let backupText = status.backup_path == nil ? "no previous config backup needed" : "backup: \(status.backup_path ?? "")"
+	                    self.mcpInstallStatus = "Gemini config \(status.status): \(status.summary) \(backupText)."
+	                }
+	            } catch {
+	                await MainActor.run {
+	                    self.mcpInstallStatus = "Gemini config install failed: \(error.localizedDescription)"
+	                }
             }
         }
     }
@@ -319,7 +319,7 @@ func installHermesConfig() {
                 let data = try await runSomaHelper(args: ["--install-hermes-config", "--project-root", selectedProjectRoot])
                 let status = try JSONDecoder().decode(ClientConfigInstallStatus.self, from: data)
                 await MainActor.run {
-                    hermesConfigStatus = ClientConfigStatus(
+	                    self.hermesConfigStatus = ClientConfigStatus(
                         status: status.status,
                         summary: status.summary,
                         config_path: status.config_path,
@@ -331,14 +331,14 @@ func installHermesConfig() {
                         project_matches: status.project_matches,
                         issues: status.issues
                     )
-                    mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let backupText = status.backup_path == nil ? "no previous config backup needed" : "backup: \(status.backup_path ?? "")"
-                    mcpInstallStatus = "Hermes config \(status.status): \(status.summary) \(backupText)."
-                }
-            } catch {
-                await MainActor.run {
-                    mcpInstallStatus = "Hermes config install failed: \(error.localizedDescription)"
-                }
+	                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+	                    let backupText = status.backup_path == nil ? "no previous config backup needed" : "backup: \(status.backup_path ?? "")"
+	                    self.mcpInstallStatus = "Hermes config \(status.status): \(status.summary) \(backupText)."
+	                }
+	            } catch {
+	                await MainActor.run {
+	                    self.mcpInstallStatus = "Hermes config install failed: \(error.localizedDescription)"
+	                }
             }
         }
     }
@@ -489,15 +489,15 @@ func rollbackCodexConfig() {
                 let data = try await runSomaHelper(args: ["--rollback-codex-config"])
                 let status = try JSONDecoder().decode(ClientConfigRollbackStatus.self, from: data)
                 await MainActor.run {
-                    mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let backupText = status.backup_path ?? "no backup"
-                    mcpInstallStatus = "Codex rollback \(status.status): \(status.summary) \(backupText)."
-                    verifyCodexConfig(updateStatusText: false)
-                }
-            } catch {
-                await MainActor.run {
-                    mcpInstallStatus = "Codex rollback failed: \(error.localizedDescription)"
-                }
+	                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+	                    let backupText = status.backup_path ?? "no backup"
+	                    self.mcpInstallStatus = "Codex rollback \(status.status): \(status.summary) \(backupText)."
+	                    self.verifyCodexConfig(updateStatusText: false)
+	                }
+	            } catch {
+	                await MainActor.run {
+	                    self.mcpInstallStatus = "Codex rollback failed: \(error.localizedDescription)"
+	                }
             }
         }
     }
@@ -508,15 +508,15 @@ func rollbackGeminiConfig() {
                 let data = try await runSomaHelper(args: ["--rollback-gemini-config"])
                 let status = try JSONDecoder().decode(ClientConfigRollbackStatus.self, from: data)
                 await MainActor.run {
-                    mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let backupText = status.backup_path ?? "no backup"
-                    mcpInstallStatus = "Gemini rollback \(status.status): \(status.summary) \(backupText)."
-                    verifyGeminiConfig(updateStatusText: false)
-                }
-            } catch {
-                await MainActor.run {
-                    mcpInstallStatus = "Gemini rollback failed: \(error.localizedDescription)"
-                }
+	                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+	                    let backupText = status.backup_path ?? "no backup"
+	                    self.mcpInstallStatus = "Gemini rollback \(status.status): \(status.summary) \(backupText)."
+	                    self.verifyGeminiConfig(updateStatusText: false)
+	                }
+	            } catch {
+	                await MainActor.run {
+	                    self.mcpInstallStatus = "Gemini rollback failed: \(error.localizedDescription)"
+	                }
             }
         }
     }
@@ -806,16 +806,16 @@ func runLiveVerify() {
                 )
                 let status = try JSONDecoder().decode(LiveVerifyStatus.self, from: data)
                 await MainActor.run {
-                    mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    mcpInstallStatus = summarizeLiveVerify(status)
-                    nexusConnected = status.nexus?.connected ?? nexusConnected
-                    graphAvailable = status.graph?.project_graph_available ?? status.graph?.available ?? graphAvailable
-                    graphStale = status.graph?.stale ?? graphStale
-                }
-            } catch {
-                await MainActor.run {
-                    mcpInstallStatus = "Live verify failed: \(error.localizedDescription)"
-                }
+	                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+	                    self.mcpInstallStatus = self.summarizeLiveVerify(status)
+	                    self.nexusConnected = status.nexus?.connected ?? self.nexusConnected
+	                    self.graphAvailable = status.graph?.project_graph_available ?? status.graph?.available ?? self.graphAvailable
+	                    self.graphStale = status.graph?.stale ?? self.graphStale
+	                }
+	            } catch {
+	                await MainActor.run {
+	                    self.mcpInstallStatus = "Live verify failed: \(error.localizedDescription)"
+	                }
             }
         }
     }

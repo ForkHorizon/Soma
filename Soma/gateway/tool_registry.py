@@ -150,6 +150,69 @@ def tool_schema(name: str) -> dict[str, Any]:
     return schema
 
 
+def tool_signature(name: str) -> str:
+    if name not in TOOL_CATALOG:
+        return f"{name}(...) -> string"
+    signature = inspect.signature(TOOL_CATALOG[name])
+    rendered_params = [
+        _format_signature_param(param_name, param)
+        for param_name, param in signature.parameters.items()
+        if param.kind in {inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY}
+    ]
+    return f"{name}({', '.join(rendered_params)}) -> string"
+
+
+def tool_descriptor(name: str) -> dict[str, Any]:
+    signature = tool_signature(name)
+    func = TOOL_CATALOG.get(name)
+    return {
+        "name": name,
+        "description": (func.__doc__ if func else None) or "Soma tool",
+        "inputSchema": tool_schema(name),
+        "signature": signature,
+        "_meta": {
+            "soma_signature": signature,
+            "soma_audit_arguments": sorted(AUDIT_ARGUMENT_KEYS),
+        },
+    }
+
+
+def _format_signature_param(param_name: str, param: inspect.Parameter) -> str:
+    annotation = _format_annotation(param.annotation)
+    rendered = f"{param_name}: {annotation}"
+    if param.default is not inspect.Parameter.empty:
+        rendered += f" = {_format_default(param.default)}"
+    return rendered
+
+
+def _format_annotation(annotation: Any) -> str:
+    if annotation is inspect.Parameter.empty:
+        return "any"
+    value = annotation if isinstance(annotation, str) else getattr(annotation, "__name__", str(annotation))
+    replacements = {
+        "str": "string",
+        "int": "integer",
+        "bool": "boolean",
+        "Any": "any",
+    }
+    for source, target in replacements.items():
+        value = value.replace(source, target)
+    value = value.replace("dict[string, any]", "object")
+    value = value.replace("list[object]", "array<object>").replace("list[string]", "array<string>")
+    value = value.replace(" | None", " | null")
+    return value
+
+
+def _format_default(value: Any) -> str:
+    if isinstance(value, str):
+        return json.dumps(value)
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return "null"
+    return repr(value)
+
+
 def sanitize_tool_arguments(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
     """Ignore client-added fields such as Gemini's wait_for_previous."""
     if name not in TOOL_CATALOG:

@@ -1,6 +1,6 @@
 import Combine
 import Foundation
-enum RusToPromptQueueItemStatus: String, Codable, CaseIterable {
+nonisolated enum RusToPromptQueueItemStatus: String, Codable, CaseIterable {
     case queued
     case waitingLocalAI = "waiting_local_ai"
     case running
@@ -9,7 +9,7 @@ enum RusToPromptQueueItemStatus: String, Codable, CaseIterable {
     case blocked
     case interrupted
 }
-struct RusToPromptQueueSettings: Codable, Hashable {
+nonisolated struct RusToPromptQueueSettings: Codable, Hashable {
     var autoEnqueueEnabled: Bool
     var translatorCandidates: [String]
     var improverCandidates: [String]
@@ -61,7 +61,7 @@ struct RusToPromptQueueSettings: Codable, Hashable {
         return models.isEmpty ? fallback.filter { RusToPromptQueueManager.isLocalStageModel($0) } : models
     }
 }
-struct RusToPromptQueueItemSnapshot: Codable, Hashable {
+nonisolated struct RusToPromptQueueItemSnapshot: Codable, Hashable {
     var translatorModels: [String]
     var improverModels: [String]
     var confidenceReferee: String
@@ -72,7 +72,7 @@ struct RusToPromptQueueItemSnapshot: Codable, Hashable {
     var confidenceBatchSize: Int
     var cooldownSeconds: Double
 }
-struct RusToPromptQueueItem: Identifiable, Codable, Hashable {
+nonisolated struct RusToPromptQueueItem: Identifiable, Codable, Hashable {
     var id: String
     var prompt: String
     var normalizedPrompt: String
@@ -88,7 +88,7 @@ struct RusToPromptQueueItem: Identifiable, Codable, Hashable {
     var recoveredAfterRestart: Bool
     var snapshot: RusToPromptQueueItemSnapshot?
 }
-struct RusToPromptQueueDiskState: Codable {
+nonisolated struct RusToPromptQueueDiskState: Codable {
     var settings: RusToPromptQueueSettings
     var items: [RusToPromptQueueItem]
     var isPaused: Bool?
@@ -99,7 +99,7 @@ enum RusToPromptQueuePowerSource: String {
     case battery
     case unknown
 }
-struct QueueProgressEvent: Decodable {
+nonisolated struct QueueProgressEvent: Decodable, Sendable {
     let event: String?
     let stage: String?
     let caseID: String?
@@ -139,7 +139,7 @@ struct QueueProgressEvent: Decodable {
         case confidenceModelRefs = "confidence_model_refs"
     }
 }
-struct QueueProgressModelRef: Decodable, Hashable {
+nonisolated struct QueueProgressModelRef: Decodable, Hashable, Sendable {
     let translatorModel: String?
     let analyzerModel: String?
     enum CodingKeys: String, CodingKey {
@@ -156,7 +156,7 @@ struct QueueModelProgressState: Hashable {
     var status: String
     var updatedAt: Date
 }
-struct QueueOllamaTagsResponse: Decodable {
+nonisolated struct QueueOllamaTagsResponse: Decodable {
     let models: [OllamaInstalledModel]
 }
 @MainActor

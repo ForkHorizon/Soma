@@ -63,7 +63,7 @@ enum LocalModelRole: String, CaseIterable, Identifiable, Codable {
     var allowsAuto: Bool { self == .translator }
 }
 
-struct OllamaInstalledModel: Identifiable, Decodable, Hashable {
+nonisolated struct OllamaInstalledModel: Identifiable, Decodable, Hashable {
     let name: String
     let model: String?
     let modified_at: String?
@@ -73,7 +73,7 @@ struct OllamaInstalledModel: Identifiable, Decodable, Hashable {
 
     var id: String { name }
 
-    struct Details: Decodable, Hashable {
+    nonisolated struct Details: Decodable, Hashable {
         let family: String?
         let parameter_size: String?
         let quantization_level: String?

@@ -10,18 +10,18 @@ extension DateFormatter {
     }()
 }
 
-struct ChatMessage: Codable, Sendable {
+nonisolated struct ChatMessage: Codable, Sendable {
     let role: String
     let content: String?
 }
 
-struct OllamaResponse: Codable, Sendable {
+nonisolated struct OllamaResponse: Codable, Sendable {
     let response: String?
     let history: [[String: AnyCodable]]?
     let error: String?
 }
 
-struct GatherBundle: Codable, Sendable {
+nonisolated struct GatherBundle: Codable, Sendable {
     let mode: String?
     let original_prompt: String?
     let project_root: String?
@@ -63,7 +63,7 @@ struct GatherBundle: Codable, Sendable {
     let error: String?
 }
 
-struct CollectionPlan: Codable, Sendable, Hashable {
+nonisolated struct CollectionPlan: Codable, Sendable, Hashable {
     let task_type: String?
     let target_scope: String?
     let scope_hints: [String]?
@@ -74,7 +74,7 @@ struct CollectionPlan: Codable, Sendable, Hashable {
     let warnings: [String]?
 }
 
-struct TokenMetric: Codable, Sendable, Hashable {
+nonisolated struct TokenMetric: Codable, Sendable, Hashable {
     let metric: String?
     let status: String?
     let model_profile: String?
@@ -96,7 +96,7 @@ struct TokenMetric: Codable, Sendable, Hashable {
     let warnings: [String]?
 }
 
-struct TokenSavings: Codable, Sendable, Hashable {
+nonisolated struct TokenSavings: Codable, Sendable, Hashable {
     let status: String?
     let primary_metric: String?
     let model_profile: String?
@@ -116,7 +116,7 @@ struct TokenSavings: Codable, Sendable, Hashable {
     let warnings: [String]?
 }
 
-struct LanguageOptimization: Codable, Sendable, Hashable {
+nonisolated struct LanguageOptimization: Codable, Sendable, Hashable {
     let status: String?
     let source_language: String?
     let target_language: String?
@@ -130,7 +130,7 @@ struct LanguageOptimization: Codable, Sendable, Hashable {
     let warning: String?
 }
 
-struct LocalAIMetrics: Codable, Sendable, Hashable {
+nonisolated struct LocalAIMetrics: Codable, Sendable, Hashable {
     let local_ai_policy: String?
     let local_ai_call_count: Int?
     let local_ai_input_tokens: Int?
@@ -141,7 +141,7 @@ struct LocalAIMetrics: Codable, Sendable, Hashable {
     let local_ai_net_savings_tokens: Int?
 }
 
-struct AuditSummary: Codable, Sendable, Hashable {
+nonisolated struct AuditSummary: Codable, Sendable, Hashable {
     let run_id: String?
     let task_id: String?
     let workflow: String?
@@ -159,7 +159,7 @@ struct AuditSummary: Codable, Sendable, Hashable {
     let audit_report_path: String?
 }
 
-struct AuditReport: Codable, Sendable, Hashable {
+nonisolated struct AuditReport: Codable, Sendable, Hashable {
     let run_id: String?
     let task_id: String?
     let workflow: String?
@@ -189,7 +189,7 @@ struct AuditReport: Codable, Sendable, Hashable {
     let audit_report_path: String?
 }
 
-struct AuditEvidence: Codable, Sendable, Hashable, Identifiable {
+nonisolated struct AuditEvidence: Codable, Sendable, Hashable, Identifiable {
     var id: String { path ?? UUID().uuidString }
     let path: String?
     let kind: String?
@@ -199,7 +199,7 @@ struct AuditEvidence: Codable, Sendable, Hashable, Identifiable {
     let end_line: Int?
 }
 
-struct AuditMissingEvidence: Codable, Sendable, Hashable {
+nonisolated struct AuditMissingEvidence: Codable, Sendable, Hashable {
     let status: String?
     let unresolved_references: [AuditMissingReference]?
     let missing_files: [AuditMissingReference]?
@@ -214,7 +214,7 @@ struct AuditMissingEvidence: Codable, Sendable, Hashable {
     let reason: String?
 }
 
-struct AuditMissingReference: Codable, Sendable, Hashable, Identifiable {
+nonisolated struct AuditMissingReference: Codable, Sendable, Hashable, Identifiable {
     var id: String { reference ?? UUID().uuidString }
     let reference: String?
     let reason: String?
@@ -222,21 +222,21 @@ struct AuditMissingReference: Codable, Sendable, Hashable, Identifiable {
     let matched_paths: [String]?
 }
 
-struct AuditSkippedStage: Codable, Sendable, Hashable, Identifiable {
+nonisolated struct AuditSkippedStage: Codable, Sendable, Hashable, Identifiable {
     var id: String { "\(stage ?? "stage")-\(status ?? "status")-\(reason ?? "")" }
     let stage: String?
     let status: String?
     let reason: String?
 }
 
-struct AuditEvidenceQuality: Codable, Sendable, Hashable {
+nonisolated struct AuditEvidenceQuality: Codable, Sendable, Hashable {
     let status: String?
     let strong_match_count: Int?
     let weak_match_count: Int?
     let warnings: [String]?
 }
 
-struct AuditToolCall: Codable, Sendable, Hashable, Identifiable {
+nonisolated struct AuditToolCall: Codable, Sendable, Hashable, Identifiable {
     var id: String { "\(ts ?? "")-\(tool ?? "")" }
     let ts: String?
     let tool: String?

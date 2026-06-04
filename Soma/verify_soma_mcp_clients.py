@@ -24,7 +24,7 @@ install_soma_gateway_namespace(Path(__file__).parent)
 
 from gateway.client_config import verify_codex_config, verify_gemini_config, verify_hermes_config
 from gateway.status import build_status_payload
-from gateway.tool_registry import TOOL_ORDER, tool_schema
+from gateway.tool_registry import TOOL_ORDER, tool_schema, tool_signature
 from soma_logger import log_mcp_event
 from scout_pipeline import normalize_path
 
@@ -208,6 +208,10 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
             tools_list = _safe_tool_record("tools/list", "ok", list_started, {"status": "ok", "tool_count": len(tools)})
             tools_list["tool_count"] = len(tools)
             tools_list["tool_names"] = [tool.get("name") for tool in tools if isinstance(tool, dict)]
+            tools_list["signature_count"] = len(
+                [tool for tool in tools if isinstance(tool, dict) and str(tool.get("signature") or "").strip()]
+            )
+            listed_tools = {tool.get("name"): tool for tool in tools if isinstance(tool, dict)}
 
             if len(tools) != len(TOOL_ORDER):
                 issues.append(f"tool_count={len(tools)}")
@@ -215,6 +219,11 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
                 schema = tool_schema(name)
                 if not schema.get("properties") and name not in {"soma_get_map", "soma_scene", "soma_delta"}:
                     issues.append(f"schema_missing:{name}")
+                listed_signature = str((listed_tools.get(name) or {}).get("signature") or "").strip()
+                if not listed_signature:
+                    issues.append(f"signature_missing:{name}")
+                elif listed_signature != tool_signature(name):
+                    issues.append(f"signature_mismatch:{name}")
 
             for tool in TOOL_ORDER:
                 call_started = time.monotonic()
@@ -258,7 +267,7 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
         },
         "initialize": initialize,
         "tools_list": tools_list,
-        "tool_catalog": [{"name": name, "schema": tool_schema(name)} for name in TOOL_ORDER],
+        "tool_catalog": [{"name": name, "signature": tool_signature(name), "schema": tool_schema(name)} for name in TOOL_ORDER],
         "tool_results": tool_results,
         "plugin_status": {
             "unity_nexus": plugin_status,

@@ -21,7 +21,7 @@ extension RusToPromptQueueManager {
     var queueDirectoryPath: String {
         appSupportURL.path
     }
-    static func isLocalStageModel(_ model: String) -> Bool {
+    nonisolated static func isLocalStageModel(_ model: String) -> Bool {
         let normalized = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if normalized.isEmpty { return false }
         if normalized.hasPrefix("gpt-") || normalized.hasPrefix("codex-") { return false }
