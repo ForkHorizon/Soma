@@ -14,7 +14,7 @@ extension TestsView {
             }
             ScrollView {
                 VStack(spacing: 6) {
-                    ForEach(queueLocalModelRows(selected: selected, statsByModel: statsByModel), id: \.model) { preset in
+                    ForEach(queueStageModelRows(selected: selected, statsByModel: statsByModel, role: role), id: \.model) { preset in
                         let isSelected = selected.contains { $0.caseInsensitiveCompare(preset.model) == .orderedSame }
                         let stats = statsByModel[preset.model.lowercased()]
                         Toggle(isOn: Binding(
@@ -38,8 +38,14 @@ extension TestsView {
                                         .lineLimit(1)
                                         .truncationMode(.middle)
                                     Spacer(minLength: 6)
-                                    if !isInstalled(preset.model) {
+                                    if !preset.isOnlineProvider && !isInstalled(preset.model) {
                                         StatusChip(text: "Missing", tone: .warning)
+                                    }
+                                    if preset.isOnlineProvider {
+                                        StatusChip(text: preset.providerName, tone: .info)
+                                    }
+                                    if preset.isDeepSeek {
+                                        StatusChip(text: "Paid API", tone: .warning)
                                     }
                                     if let decision = modelScopeDecisionChip(stats) {
                                         StatusChip(text: decision.text, tone: decision.tone)

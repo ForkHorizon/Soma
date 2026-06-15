@@ -8,6 +8,8 @@ struct LocalAISettingsView: View {
     @State private var showInstalledModels = false
     @State private var showRecentUsage = false
     @State private var showRuntimeDetails = false
+    @State private var deepSeekAPIKeyInput = ""
+    @State private var deepSeekCredentialMessage = ""
 
     var body: some View {
         SomaPage {
@@ -24,6 +26,7 @@ struct LocalAISettingsView: View {
                 roleTablePanel
             } secondary: {
                 modelSummaryPanel
+                apiProvidersPanel
                 advancedRoleSettingsPanel
                 installedModelsPanel
                 recentUsagePanel
@@ -34,6 +37,7 @@ struct LocalAISettingsView: View {
             ollama.refreshInstalledModels()
             ollama.checkStatus()
             viewModel.loadStructuredLogs()
+            refreshDeepSeekCredentialStatus()
         }
     }
 
@@ -159,6 +163,46 @@ struct LocalAISettingsView: View {
         }
     }
 
+    private var apiProvidersPanel: some View {
+        SomaPanel(title: "API Providers", subtitle: "Paid provider keys used by online Rus to Prompt models.", icon: "key", tone: .warning) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Text("DeepSeek")
+                        .font(.subheadline.bold())
+                    StatusChip(text: deepSeekCredentialStatusText, tone: deepSeekCredentialTone)
+                    Spacer()
+                }
+                SecureField(deepSeekSecureFieldPlaceholder, text: $deepSeekAPIKeyInput)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.caption, design: .monospaced))
+                HStack(spacing: 8) {
+                    Button {
+                        saveDeepSeekAPIKey()
+                    } label: {
+                        Label("Save Key", systemImage: "key.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(deepSeekAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    Button {
+                        clearDeepSeekAPIKey()
+                    } label: {
+                        Label("Clear", systemImage: "trash")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(!DeepSeekCredentialStore.hasKeychainAPIKey())
+                }
+                if !deepSeekCredentialMessage.isEmpty {
+                    Text(deepSeekCredentialMessage)
+                        .font(.caption)
+                        .foregroundColor(deepSeekCredentialMessage.hasPrefix("Could not") ? .red : .secondary)
+                }
+            }
+        }
+    }
+
     private var headerActions: some View {
         HStack(spacing: 8) {
             Button {
@@ -208,6 +252,51 @@ struct LocalAISettingsView: View {
             detail: "\(ollama.installedModels.count) installed models found. \(ollama.loadedModelNames.count) model(s) currently loaded.",
             tone: .good
         )
+    }
+
+    private var deepSeekCredentialStatusText: String {
+        if DeepSeekCredentialStore.hasEnvironmentAPIKey() { return "Env active" }
+        if DeepSeekCredentialStore.hasKeychainAPIKey() { return "Key saved" }
+        return "Missing key"
+    }
+
+    private var deepSeekCredentialTone: SomaStatusTone {
+        if DeepSeekCredentialStore.hasEnvironmentAPIKey() || DeepSeekCredentialStore.hasKeychainAPIKey() { return .good }
+        return .warning
+    }
+
+    private var deepSeekSecureFieldPlaceholder: String {
+        DeepSeekCredentialStore.hasKeychainAPIKey() ? "Saved in Keychain" : "DeepSeek API key"
+    }
+
+    private func refreshDeepSeekCredentialStatus() {
+        if DeepSeekCredentialStore.hasEnvironmentAPIKey() {
+            deepSeekCredentialMessage = "Environment key will be used before Keychain."
+        } else if DeepSeekCredentialStore.hasKeychainAPIKey() {
+            deepSeekCredentialMessage = "DeepSeek key is saved in Keychain."
+        } else {
+            deepSeekCredentialMessage = "DeepSeek models need an API key before paid requests can run."
+        }
+    }
+
+    private func saveDeepSeekAPIKey() {
+        do {
+            try DeepSeekCredentialStore.saveAPIKey(deepSeekAPIKeyInput)
+            deepSeekAPIKeyInput = ""
+            deepSeekCredentialMessage = "DeepSeek key saved in Keychain."
+        } catch {
+            deepSeekCredentialMessage = "Could not save DeepSeek key: \(error.localizedDescription)"
+        }
+    }
+
+    private func clearDeepSeekAPIKey() {
+        do {
+            try DeepSeekCredentialStore.clearAPIKey()
+            deepSeekAPIKeyInput = ""
+            deepSeekCredentialMessage = "DeepSeek key removed from Keychain."
+        } catch {
+            deepSeekCredentialMessage = "Could not clear DeepSeek key: \(error.localizedDescription)"
+        }
     }
 
     private var advancedRoleSettingsPanel: some View {

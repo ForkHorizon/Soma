@@ -131,7 +131,11 @@ def _translation_attempt(row: dict[str, Any], model: str, case_id: str) -> dict[
 def _translation_failed(row: dict[str, Any]) -> bool:
     status = str(row.get("status") or "")
     translation_status = str(row.get("translation_status") or "")
-    return status == "translation_failed" or translation_status in {"failed", "failed_fallback", "exception", "timeout"} or (translation_status and not str(row.get("translation") or "").strip())
+    return bool(
+        status == "translation_failed"
+        or translation_status in {"failed", "failed_fallback", "exception", "timeout"}
+        or (translation_status and not str(row.get("translation") or "").strip())
+    )
 
 
 def _should_record_improver(row: dict[str, Any]) -> bool:

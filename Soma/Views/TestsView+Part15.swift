@@ -134,7 +134,7 @@ extension TestsView {
             arguments.append("--local-confidence-models")
             arguments.append(contentsOf: Array(selectedLocalConfidenceModels.prefix(2)))
             arguments.append(contentsOf: [
-                "--hybrid-confidence-gemini-model", hybridGeminiFallbackModel,
+                "--hybrid-confidence-online-model", hybridGeminiFallbackModel,
                 "--hybrid-confidence-fallback-referee", selectedConfidenceFallbackReferee,
                 "--hybrid-confidence-local-threshold", "0.80",
                 "--hybrid-confidence-disagreement-threshold", "0.15",
@@ -149,6 +149,7 @@ extension TestsView {
         environment.removeValue(forKey: "SOMA_PROJECT_ROOT")
         environment["PYTHONDONTWRITEBYTECODE"] = "1"
         environment["PATH"] = codexSearchPath(existing: environment["PATH"])
+        DeepSeekCredentialStore.apply(to: &environment)
         return environment
     }
 

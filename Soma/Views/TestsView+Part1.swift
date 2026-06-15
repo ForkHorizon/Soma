@@ -22,6 +22,8 @@ extension TestsView {
             RusToPromptModelPreset(model: "gpt-5.3-codex-spark", quality: "Good", speed: "Medium", ram: "0 GB", detail: "Codex Spark model. Useful as a cheaper/faster Codex-flavored candidate; default catalog reasoning is high, but Soma passes medium for test stages.", recommended: false, isCodex: true),
             RusToPromptModelPreset(model: "gpt-5.2", quality: "Good", speed: "Medium", ram: "0 GB", detail: "Older Codex-accessible GPT model. Keep it for regression comparison against newer GPT/Codex models.", recommended: false, isCodex: true),
             RusToPromptModelPreset(model: "codex-auto-review", quality: "Good", speed: "Medium", ram: "0 GB", detail: "Codex auto-review model from the local Codex catalog. Mostly useful as an experimental judge/improver comparison.", recommended: false, isCodex: true),
+            RusToPromptModelPreset(model: "deepseek-v4-flash", quality: "High", speed: "Fast", ram: "Paid API", detail: "DeepSeek paid API Flash model. Lower-cost default DeepSeek option for stage and confidence comparisons.", recommended: false, provider: "deepseek"),
+            RusToPromptModelPreset(model: "deepseek-v4-pro", quality: "Best", speed: "Medium", ram: "Paid API", detail: "DeepSeek paid API Pro model. Use for higher-quality stage and confidence comparisons when token cost is acceptable.", recommended: false, provider: "deepseek"),
             RusToPromptModelPreset(model: "gemini-3-flash-preview", quality: "High", speed: "Medium", ram: "0 GB", detail: "Gemini CLI Flash candidate. Best first Gemini option for bulk translation/improvement tests while using your Google One AI Pro quota.", recommended: false, provider: "gemini"),
             RusToPromptModelPreset(model: "gemini-3-pro-preview", quality: "Best", speed: "Slow", ram: "0 GB", detail: "Gemini CLI Pro candidate. Use for smaller quality samples or hard cases before running a full sweep.", recommended: false, provider: "gemini"),
             RusToPromptModelPreset(model: "gemini-3.1-pro-preview", quality: "Best", speed: "Slow", ram: "0 GB", detail: "Gemini CLI Pro preview candidate. Strong quality option when speed and quota pressure are less important.", recommended: false, provider: "gemini"),
@@ -59,31 +61,39 @@ extension TestsView {
 
 
     var selectedConfidenceFallbackReferee: String {
-        selectedConfidencePreset?.isGemini == true ? "gemini" : "codex"
+        if selectedConfidencePreset?.isDeepSeek == true { return "deepseek" }
+        if selectedConfidencePreset?.isGemini == true { return "gemini" }
+        return providerForOnlineModelName(selectedConfidenceModel) ?? "codex"
     }
 
 
     var selectedConfidenceReferee: String {
         if hybridConfidenceActive { return "hybrid" }
-        return selectedConfidencePreset?.isGemini == true ? "gemini" : "codex"
+        if selectedConfidencePreset?.isDeepSeek == true { return "deepseek" }
+        if selectedConfidencePreset?.isGemini == true { return "gemini" }
+        return providerForOnlineModelName(selectedConfidenceModel) ?? "codex"
     }
 
 
     var selectedConfidenceProviderLabel: String {
-        if hybridConfidenceActive { return "Local + \(selectedConfidenceFallbackReferee.capitalized)" }
+        if hybridConfidenceActive { return "Local + \(providerDisplayName(selectedConfidenceFallbackReferee))" }
+        if selectedConfidencePreset?.isDeepSeek == true { return "DeepSeek" }
         return selectedConfidencePreset?.isGemini == true ? "Gemini" : "Codex"
     }
 
 
     var selectedConfidenceDescription: String {
         if hybridConfidenceActive {
-            return "Local judges \(selectedLocalConfidenceModels.joined(separator: " + ")); fallback \(selectedConfidenceFallbackReferee) \(hybridGeminiFallbackModel), batch \(selectedConfidenceBatchSize), local gate 0.80"
+            return "Local judges \(selectedLocalConfidenceModels.joined(separator: " + ")); fallback \(providerDisplayName(selectedConfidenceFallbackReferee)) \(hybridGeminiFallbackModel), batch \(selectedConfidenceBatchSize), local gate 0.80"
         }
         if useHybridConfidence {
-            return "Choose two local judges to enable local gate; direct fallback is \(selectedConfidenceFallbackReferee) \(hybridGeminiFallbackModel)"
+            return "Choose two local judges to enable local gate; direct fallback is \(providerDisplayName(selectedConfidenceFallbackReferee)) \(hybridGeminiFallbackModel)"
         }
         if selectedConfidencePreset?.isGemini == true {
             return "Checked by \(selectedConfidenceModel) via Gemini CLI, batch \(selectedConfidenceBatchSize), translation gate 0.75"
+        }
+        if selectedConfidencePreset?.isDeepSeek == true {
+            return "Checked by \(selectedConfidenceModel) via DeepSeek paid API, batch \(selectedConfidenceBatchSize), translation gate 0.75"
         }
         return "Checked by \(selectedConfidenceModel), reasoning \(RusToPromptSettingsStore.defaultConfidenceReasoning), batch \(selectedConfidenceBatchSize), translation gate 0.75"
     }

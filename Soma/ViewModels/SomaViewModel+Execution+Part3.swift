@@ -16,6 +16,7 @@ func scriptEnvironment(projectRoot: String? = nil, includeProjectRoot: Bool = tr
         environment["PATH"] = (environment["PATH"] ?? "") + ":/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:\(homeDir)/.local/bin"
         environment["PYTHONDONTWRITEBYTECODE"] = "1"
         LocalModelSettingsStore.apply(to: &environment)
+        DeepSeekCredentialStore.apply(to: &environment)
         if !includeProjectRoot {
             environment.removeValue(forKey: "SOMA_PROJECT_ROOT")
         } else if let projectRoot, !projectRoot.isEmpty {

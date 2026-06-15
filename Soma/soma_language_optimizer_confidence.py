@@ -8,7 +8,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from soma_language_optimizer_core import _clip_text, _cyrillic_count, _extract_json_object, _improved_prompt_sanity_error, _string_list, protect_spans
+from soma_deepseek_api import run_deepseek_json
+from soma_language_optimizer_core import _clip_text, _cyrillic_count, _extract_json_object, _improved_prompt_sanity_error, _string_list, is_deepseek_stage_model, protect_spans
 
 
 def _confidence_schema() -> dict[str, Any]:
@@ -27,8 +28,11 @@ def score_general_prompt_confidence(*, source_prompt: str, translation: str, imp
     timeout = timeout or float(os.environ.get("SOMA_RUS_TO_PROMPT_CONFIDENCE_TIMEOUT", "180"))
     codex_bin = codex_bin or os.environ.get("SOMA_CODEX_BIN", "codex")
     started = time.monotonic()
-    result = _base_confidence_result(model, reasoning_effort)
+    provider = "deepseek" if is_deepseek_stage_model(model) else "codex"
+    result = _base_confidence_result(model, reasoning_effort, provider=provider)
     prompt = _confidence_prompt(source_prompt=source_prompt, translation=translation, improved_prompt=improved_prompt, pipeline_status=pipeline_status, pipeline_warnings=pipeline_warnings or [])
+    if provider == "deepseek":
+        return _score_confidence_deepseek(result, prompt, model, timeout, started)
     with tempfile.TemporaryDirectory(prefix="soma-rus-prompt-confidence-") as tmp:
         paths = _confidence_paths(tmp)
         completed = _run_confidence_codex(codex_bin, model, reasoning_effort, paths, prompt, timeout, started, result)
@@ -37,8 +41,21 @@ def score_general_prompt_confidence(*, source_prompt: str, translation: str, imp
         return _finish_confidence_result(result, completed, paths["output"], started)
 
 
-def _base_confidence_result(model, reasoning_effort):
-    return {"provider": "codex", "model": model, "reasoning_effort": reasoning_effort, "status": "failed", "confidence": None, "verdict": None, "scores": {}, "warnings": [], "notes": [], "seconds": 0}
+def _base_confidence_result(model, reasoning_effort, provider="codex"):
+    return {"provider": provider, "model": model, "reasoning_effort": reasoning_effort, "status": "failed", "confidence": None, "verdict": None, "scores": {}, "warnings": [], "notes": [], "seconds": 0}
+
+
+def _score_confidence_deepseek(result, prompt, model, timeout, started):
+    decoded, meta = run_deepseek_json(prompt=prompt, schema=_confidence_schema(), model=model, timeout=timeout, temp_prefix="soma-rus-prompt-deepseek-confidence-")
+    if not isinstance(decoded, dict) or meta.get("status") != "ok":
+        result.update({"error": str(meta.get("error") or "DeepSeek confidence check failed."), "seconds": time.monotonic() - started})
+        if meta.get("stats") is not None:
+            result["stats"] = meta.get("stats")
+        return result
+    result.update(_decoded_confidence_fields(decoded, started))
+    if meta.get("stats") is not None:
+        result["stats"] = meta.get("stats")
+    return result
 
 
 def _confidence_paths(tmp):

@@ -36,6 +36,10 @@ extension TestsView {
                     if preset.isGemini {
                         StatusChip(text: "Gemini", tone: .info)
                     }
+                    if preset.isDeepSeek {
+                        StatusChip(text: "DeepSeek", tone: .info)
+                        StatusChip(text: "Paid API", tone: .warning)
+                    }
                     if let decision = modelScopeDecisionChip(row.stats) {
                         StatusChip(text: decision.text, tone: decision.tone)
                     }

@@ -124,6 +124,14 @@ def score_confidence_with_gemini(case: PromptCase, result: CaseResult, model: st
     return normalize_confidence_payload(decoded, provider="gemini", model=model, stage=stage, seconds=float(meta.get("seconds") or 0), stats=meta.get("stats"))
 
 
+def score_confidence_with_deepseek(case: PromptCase, result: CaseResult, model: str, timeout: float, stage: str = "overall") -> dict[str, Any]:
+    started = time.monotonic()
+    decoded, meta = _api().run_deepseek_json(prompt=build_codex_confidence_prompt(case, result, stage), schema=codex_confidence_schema(), model=model, timeout=timeout, temp_prefix="soma-rus-prompt-deepseek-confidence-")
+    if decoded is None or meta.get("status") != "ok":
+        return _confidence_error("deepseek", model, stage, str(meta.get("error") or "DeepSeek confidence check failed."), started, stats=meta.get("stats"))
+    return normalize_confidence_payload(decoded, provider="deepseek", model=model, stage=stage, seconds=float(meta.get("seconds") or 0), stats=meta.get("stats"))
+
+
 def score_confidence_with_local(case: PromptCase, result: CaseResult, model: str, timeout: float, stage: str = "overall") -> dict[str, Any]:
     decoded, meta = _api().run_local_ollama_json(prompt=build_codex_confidence_prompt(case, result, stage), schema=codex_confidence_schema(), model=model, timeout=timeout)
     if decoded is None or meta.get("status") != "ok":
@@ -222,6 +230,8 @@ def _single_confidence(item: ConfidenceItem, **kwargs: Any) -> dict[str, dict[st
     provider, model, stage = kwargs["provider"], kwargs["model"], kwargs["stage"]
     if provider == "gemini":
         confidence = score_confidence_with_gemini(case, result, model, kwargs["timeout"], kwargs["gemini_bin"], stage)
+    elif provider == "deepseek":
+        confidence = score_confidence_with_deepseek(case, result, model, kwargs["timeout"], stage)
     elif provider == "local":
         confidence = score_confidence_with_local(case, result, model, kwargs["timeout"], stage)
     else:
@@ -235,6 +245,8 @@ def _batch_confidence(items: list[ConfidenceItem], **kwargs: Any) -> dict[str, d
     provider, model = kwargs["provider"], kwargs["model"]
     if provider == "gemini":
         decoded, meta = _api().run_gemini_json(prompt=prompt, schema=confidence_batch_schema(), model=model, timeout=kwargs["timeout"], gemini_bin=kwargs["gemini_bin"], temp_prefix="soma-rus-prompt-gemini-confidence-batch-")
+    elif provider == "deepseek":
+        decoded, meta = _api().run_deepseek_json(prompt=prompt, schema=confidence_batch_schema(), model=model, timeout=kwargs["timeout"], temp_prefix="soma-rus-prompt-deepseek-confidence-batch-")
     elif provider == "local":
         decoded, meta = _api().run_local_ollama_json(prompt=prompt, schema=confidence_batch_schema(), model=model, timeout=kwargs["timeout"])
     else:
@@ -265,7 +277,7 @@ def _fallback_confidences(items: list[ConfidenceItem], local_by_item: dict[str, 
 
 def _fallback_batch(items: list[ConfidenceItem], provider: str, kwargs: dict[str, Any]) -> dict[str, dict[str, Any]]:
     fallback_kwargs = dict(kwargs)
-    fallback_kwargs.update({"provider": provider, "model": kwargs.get("hybrid_gemini_model") or kwargs["model"]})
+    fallback_kwargs.update({"provider": provider, "model": kwargs.get("hybrid_online_model") or kwargs.get("hybrid_gemini_model") or kwargs["model"]})
     return score_confidence_batch_with_provider(items, **fallback_kwargs)
 
 

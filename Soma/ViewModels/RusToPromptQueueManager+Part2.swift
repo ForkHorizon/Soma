@@ -36,7 +36,7 @@ extension RusToPromptQueueManager {
                 self.markWaitingForPower(index: currentIndex)
                 return
             }
-            if !isOnline {
+            if !isOnline && self.queueNeedsOllamaForConfiguredModels() {
                 self.mark(index: currentIndex, status: .waitingLocalAI, message: "Waiting for Ollama")
                 self.appendActivity("Ollama offline; queue waiting.")
                 return
@@ -68,8 +68,8 @@ extension RusToPromptQueueManager {
     func startItem(at index: Int, installedModels: Set<String>, allowBatteryStart: Bool = false) {
         guard activeProcess == nil, items.indices.contains(index) else { return }
         let installedLower = Set(installedModels.map { $0.lowercased() })
-        let translators = localCandidates(settings.translatorCandidates, installedLower: installedLower)
-        let improvers = localCandidates(settings.improverCandidates, installedLower: installedLower)
+        let translators = stageCandidates(settings.translatorCandidates, installedLower: installedLower)
+        let improvers = stageCandidates(settings.improverCandidates, installedLower: installedLower)
         guard validateQueueModels(index: index, translators: translators, improvers: improvers) else { return }
         guard let context = prepareRunContext(index: index, translators: translators, improvers: improvers) else { return }
 
@@ -97,13 +97,27 @@ extension RusToPromptQueueManager {
         candidates.filter { installedLower.contains($0.lowercased()) && Self.isLocalStageModel($0) }
     }
 
+    func stageCandidates(_ candidates: [String], installedLower: Set<String>) -> [String] {
+        candidates.filter { candidate in
+            if Self.isOnlineStageModel(candidate) { return true }
+            return installedLower.contains(candidate.lowercased()) && Self.isLocalStageModel(candidate)
+        }
+    }
+
+    func queueNeedsOllamaForConfiguredModels() -> Bool {
+        settings.translatorCandidates.contains { Self.isLocalStageModel($0) }
+            || settings.improverCandidates.contains { Self.isLocalStageModel($0) }
+            || settings.confidenceReferee == "local"
+            || settings.confidenceReferee == "hybrid"
+    }
+
     func validateQueueModels(index: Int, translators: [String], improvers: [String]) -> Bool {
         guard !translators.isEmpty else {
-            mark(index: index, status: .blocked, message: "No installed local translator candidates.")
+            mark(index: index, status: .blocked, message: "No runnable translator candidates.")
             return false
         }
         guard !improvers.isEmpty else {
-            mark(index: index, status: .blocked, message: "No installed local improver candidates.")
+            mark(index: index, status: .blocked, message: "No runnable improver candidates.")
             return false
         }
         return true
@@ -162,6 +176,7 @@ extension RusToPromptQueueManager {
         environment["PYTHONDONTWRITEBYTECODE"] = "1"
         environment["PATH"] = Self.searchPath(existing: environment["PATH"])
         LocalModelSettingsStore.apply(to: &environment)
+        DeepSeekCredentialStore.apply(to: &environment)
         process.environment = environment
         return process
     }
@@ -185,7 +200,7 @@ extension RusToPromptQueueManager {
         if snapshot.confidenceReferee == "hybrid" {
             arguments.append("--local-confidence-models")
             arguments.append(contentsOf: snapshot.localConfidenceModels)
-            arguments.append(contentsOf: ["--hybrid-confidence-gemini-model", snapshot.hybridGeminiModel, "--hybrid-confidence-fallback-referee", snapshot.hybridFallbackReferee ?? "gemini", "--hybrid-confidence-local-threshold", "0.80", "--hybrid-confidence-disagreement-threshold", "0.15"])
+            arguments.append(contentsOf: ["--hybrid-confidence-online-model", snapshot.hybridGeminiModel, "--hybrid-confidence-fallback-referee", snapshot.hybridFallbackReferee ?? "gemini", "--hybrid-confidence-local-threshold", "0.80", "--hybrid-confidence-disagreement-threshold", "0.15"])
         }
         return arguments
     }

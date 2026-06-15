@@ -24,10 +24,25 @@ extension RusToPromptQueueManager {
     nonisolated static func isLocalStageModel(_ model: String) -> Bool {
         let normalized = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if normalized.isEmpty { return false }
+        if normalized.hasPrefix("gpt-oss") { return true }
         if normalized.hasPrefix("gpt-") || normalized.hasPrefix("codex-") { return false }
         if normalized.hasPrefix("o1") || normalized.hasPrefix("o3") || normalized.hasPrefix("o4") { return false }
         if normalized.hasPrefix("gemini-") || normalized.hasPrefix("auto-gemini") || normalized.hasPrefix("gemma-4-") { return false }
+        if normalized.hasPrefix("deepseek-") { return false }
         return true
+    }
+    nonisolated static func isOnlineStageModel(_ model: String) -> Bool {
+        let normalized = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if normalized.isEmpty { return false }
+        if normalized.hasPrefix("gpt-oss") { return false }
+        if normalized.hasPrefix("gpt-") || normalized.hasPrefix("codex-") { return true }
+        if normalized.hasPrefix("o1") || normalized.hasPrefix("o3") || normalized.hasPrefix("o4") { return true }
+        if normalized.hasPrefix("gemini-") || normalized.hasPrefix("auto-gemini") || normalized.hasPrefix("gemma-4-") { return true }
+        if normalized.hasPrefix("deepseek-") { return true }
+        return false
+    }
+    nonisolated static func isStageCandidateModel(_ model: String) -> Bool {
+        isLocalStageModel(model) || isOnlineStageModel(model)
     }
     func enqueueRealPrompt(_ prompt: String, source: String = "Rus to Prompt") {
         guard settings.autoEnqueueEnabled else { return }
@@ -66,12 +81,12 @@ extension RusToPromptQueueManager {
         saveToDisk()
     }
     func updateTranslatorCandidates(_ models: [String]) {
-        settings.translatorCandidates = cleanLocalModels(models)
+        settings.translatorCandidates = cleanStageModels(models)
         saveToDisk()
         startNextIfPossible()
     }
     func updateImproverCandidates(_ models: [String]) {
-        settings.improverCandidates = cleanLocalModels(models)
+        settings.improverCandidates = cleanStageModels(models)
         saveToDisk()
         startNextIfPossible()
     }

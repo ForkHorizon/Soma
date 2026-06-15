@@ -414,4 +414,8 @@ def _confidence_failed(result: CaseResult) -> int:
 
 def _translation_failed_result(result: CaseResult) -> bool:
     translation_status = str(result.translation_status or "")
-    return result.status == "translation_failed" or translation_status in {"failed", "failed_fallback", "exception", "timeout"} or (translation_status and not (result.translation or "").strip())
+    return bool(
+        result.status == "translation_failed"
+        or translation_status in {"failed", "failed_fallback", "exception", "timeout"}
+        or (translation_status and not (result.translation or "").strip())
+    )

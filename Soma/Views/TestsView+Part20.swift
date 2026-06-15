@@ -65,7 +65,7 @@ extension TestsView {
         to presets: inout [RusToPromptModelPreset],
         seen: inout Set<String>
     ) {
-        for preset in knownPresets where preset.isCodex || preset.isGemini {
+        for preset in knownPresets where preset.isOnlineProvider {
             let key = preset.model.lowercased()
             if !seen.contains(key) {
                 presets.append(preset)
@@ -90,21 +90,13 @@ extension TestsView {
     }
 
 
-    func queueLocalModelRows(selected: [String], statsByModel: [String: TestModelRoleStats]) -> [RusToPromptModelPreset] {
-        let knownLocal = (RusToPromptViewModel.translatorPresets + RusToPromptViewModel.analyzerPresets)
-            .filter { !$0.isCodex && !$0.isGemini && RusToPromptQueueManager.isLocalStageModel($0.model) }
-        var rows = installedModelPresets(knownPresets: knownLocal)
-            .filter { !$0.isCodex && !$0.isGemini && RusToPromptQueueManager.isLocalStageModel($0.model) }
+    func queueStageModelRows(selected: [String], statsByModel: [String: TestModelRoleStats], role: TestModelRole) -> [RusToPromptModelPreset] {
+        let knownPresets = role == .translator ? testTranslatorPresets : testImproverPresets
+        var rows = installedModelPresets(knownPresets: knownPresets)
+            .filter { RusToPromptQueueManager.isStageCandidateModel($0.model) }
         var seen = Set(rows.map { $0.model.lowercased() })
         for model in selected where !seen.contains(model.lowercased()) {
-            rows.append(RusToPromptModelPreset(
-                model: model,
-                quality: "Unknown",
-                speed: "Unknown",
-                ram: "Missing",
-                detail: "Selected queue model. Install it in Ollama before this queue can use it.",
-                recommended: false
-            ))
+            rows.append(adHocPreset(for: model))
             seen.insert(model.lowercased())
         }
         return rows.sorted { lhs, rhs in
@@ -192,7 +184,7 @@ extension TestsView {
 
 
     func setQueueConfidenceFallbackReferee(_ fallback: String) {
-        let normalized = ["off", "gemini", "codex"].contains(fallback) ? fallback : "off"
+        let normalized = ["off", "gemini", "codex", "deepseek"].contains(fallback) ? fallback : "off"
         let localModels = queueManager.settings.localConfidenceModels
         let model = queueDefaultConfidenceModel(for: normalized, current: queueManager.settings.confidenceModel)
         queueManager.updateConfidence(
@@ -207,7 +199,7 @@ extension TestsView {
 
 
     func setQueueOnlineConfidenceModel(_ model: String) {
-        let fallback = isGeminiModelName(model) ? "gemini" : "codex"
+        let fallback = providerForOnlineModelName(model) ?? "codex"
         let localModels = queueManager.settings.localConfidenceModels
         queueManager.updateConfidence(
             referee: queueEffectiveConfidenceReferee(localModels: localModels, fallbackReferee: fallback),
@@ -245,6 +237,9 @@ extension TestsView {
         case "codex":
             if isCodexModelName(current) { return current }
             return RusToPromptSettingsStore.defaultConfidence
+        case "deepseek":
+            if isDeepSeekModelName(current) { return current }
+            return "deepseek-v4-flash"
         default:
             return current
         }
@@ -264,9 +259,9 @@ extension TestsView {
 
     var localConfidenceModelPresets: [RusToPromptModelPreset] {
         let knownLocal = (RusToPromptViewModel.analyzerPresets + RusToPromptViewModel.translatorPresets)
-            .filter { !$0.isCodex && !$0.isGemini }
+            .filter { !$0.isOnlineProvider }
         var presets = installedModelPresets(knownPresets: knownLocal)
-            .filter { !$0.isCodex && !$0.isGemini }
+            .filter { !$0.isOnlineProvider }
         var seen = Set(presets.map { $0.model.lowercased() })
         let pinned = knownLocal + selectedLocalConfidenceModels.map {
             RusToPromptModelPreset(

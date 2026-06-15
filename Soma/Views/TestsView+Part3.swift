@@ -38,6 +38,7 @@ extension TestsView {
                     Text("Off").tag("off")
                     Text("Gemini").tag("gemini")
                     Text("Codex").tag("codex")
+                    Text("DeepSeek").tag("deepseek")
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
@@ -81,14 +82,14 @@ extension TestsView {
 
     var queueConfidenceFallbackReferee: String {
         let stored = queueManager.settings.hybridFallbackReferee ?? ""
-        if ["off", "gemini", "codex"].contains(stored) {
+        if ["off", "gemini", "codex", "deepseek"].contains(stored) {
             return stored
         }
-        if queueManager.settings.confidenceReferee == "gemini" || queueManager.settings.confidenceReferee == "codex" {
+        if queueManager.settings.confidenceReferee == "gemini" || queueManager.settings.confidenceReferee == "codex" || queueManager.settings.confidenceReferee == "deepseek" {
             return queueManager.settings.confidenceReferee
         }
         let model = queueManager.settings.confidenceModel
-        return isGeminiModelName(model) ? "gemini" : (isCodexModelName(model) ? "codex" : "off")
+        return providerForOnlineModelName(model) ?? "off"
     }
 
 
@@ -96,7 +97,7 @@ extension TestsView {
         let localCount = queueManager.settings.localConfidenceModels.count
         let fallback = queueConfidenceFallbackReferee
         if localCount >= 2 {
-            return fallback == "off" ? "Local x2" : "Local x2 + \(fallback.capitalized)"
+            return fallback == "off" ? "Local x2" : "Local x2 + \(providerDisplayName(fallback))"
         }
         if localCount == 1 && fallback == "off" {
             return "Local"
@@ -104,7 +105,7 @@ extension TestsView {
         if fallback == "off" {
             return "Off"
         }
-        return fallback.capitalized
+        return providerDisplayName(fallback)
     }
 
 
@@ -112,7 +113,7 @@ extension TestsView {
         let locals = queueManager.settings.localConfidenceModels.prefix(2).joined(separator: " + ")
         let fallback = queueConfidenceFallbackReferee
         if queueManager.settings.localConfidenceModels.count >= 2 {
-            let fallbackText = fallback == "off" ? "no online fallback" : "\(fallback) fallback \(queueManager.settings.confidenceModel)"
+            let fallbackText = fallback == "off" ? "no online fallback" : "\(providerDisplayName(fallback)) fallback \(queueManager.settings.confidenceModel)"
             return "Local gate: \(locals). If local judges fail, disagree, or score low: \(fallbackText)."
         }
         if queueManager.settings.localConfidenceModels.count == 1 && fallback == "off" {
@@ -121,7 +122,7 @@ extension TestsView {
         if fallback == "off" {
             return "Confidence is disabled. Translation gates and quality stats will not be scored."
         }
-        return "Online-only confidence with \(fallback) \(queueManager.settings.confidenceModel). Add two local judges to use a local gate before online fallback."
+        return "Online-only confidence with \(providerDisplayName(fallback)) \(queueManager.settings.confidenceModel). Add two local judges to use a local gate before online fallback."
     }
 
 
@@ -130,7 +131,9 @@ extension TestsView {
         case "gemini":
             return RusToPromptViewModel.confidencePresets.filter { $0.isGemini }
         case "codex":
-            return RusToPromptViewModel.confidencePresets.filter { !$0.isGemini }
+            return RusToPromptViewModel.confidencePresets.filter { $0.isCodex }
+        case "deepseek":
+            return RusToPromptViewModel.confidencePresets.filter { $0.isDeepSeek }
         default:
             return RusToPromptViewModel.confidencePresets
         }
@@ -152,7 +155,7 @@ extension TestsView {
                 .buttonStyle(.borderless)
             }
 
-            Text("Pick two local Ollama models for the local gate. Online fallback is configured separately and can be Gemini, Codex, or Off.")
+            Text("Pick two local Ollama models for the local gate. Online fallback is configured separately and can be Gemini, Codex, DeepSeek, or Off.")
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

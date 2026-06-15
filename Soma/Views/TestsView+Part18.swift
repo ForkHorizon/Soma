@@ -237,6 +237,7 @@ extension TestsView {
 
     func isCodexModelName(_ model: String) -> Bool {
         let normalized = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if normalized.hasPrefix("gpt-oss") { return false }
         return normalized.hasPrefix("gpt-")
             || normalized.hasPrefix("o1")
             || normalized.hasPrefix("o3")
@@ -250,6 +251,36 @@ extension TestsView {
         return normalized.hasPrefix("gemini-")
             || normalized.hasPrefix("auto-gemini")
             || normalized.hasPrefix("gemma-4-")
+    }
+
+
+    func isDeepSeekModelName(_ model: String) -> Bool {
+        let normalized = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized.hasPrefix("deepseek-")
+    }
+
+
+    func providerForOnlineModelName(_ model: String) -> String? {
+        if isDeepSeekModelName(model) { return "deepseek" }
+        if isGeminiModelName(model) { return "gemini" }
+        if isCodexModelName(model) { return "codex" }
+        return nil
+    }
+
+
+    func providerDisplayName(_ provider: String) -> String {
+        switch provider {
+        case "deepseek":
+            return "DeepSeek"
+        case "gemini":
+            return "Gemini"
+        case "codex":
+            return "Codex"
+        case "local":
+            return "Local"
+        default:
+            return provider.capitalized
+        }
     }
 
 }

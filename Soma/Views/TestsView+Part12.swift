@@ -222,7 +222,7 @@ extension TestsView {
         if selectedTranslatorModels.isEmpty { return "Choose at least one translator model." }
         if selectedBenchmarkMode != .translation && selectedImproverModels.isEmpty { return "Choose at least one improver model." }
         if hybridConfidenceActive {
-            return "\(selectedBenchmarkMode.rawValue): \(transformOperationCount) operations, \(logicalConfidenceCheckCount) confidence items, two local judges first; \(selectedConfidenceFallbackReferee.capitalized) only on issues."
+            return "\(selectedBenchmarkMode.rawValue): \(transformOperationCount) operations, \(logicalConfidenceCheckCount) confidence items, two local judges first; \(providerDisplayName(selectedConfidenceFallbackReferee)) only on issues."
         }
         return "\(selectedBenchmarkMode.rawValue): \(transformOperationCount) operations, \(logicalConfidenceCheckCount) checks as ~\(estimatedConfidenceRequestCount) batched requests x\(effectiveConfidenceWorkers)."
     }
@@ -230,7 +230,7 @@ extension TestsView {
 
     var activeConfidenceSummary: String {
         if hybridConfidenceActive {
-            return "Local x2 -> \(selectedConfidenceFallbackReferee) \(hybridGeminiFallbackModel)"
+            return "Local x2 -> \(providerDisplayName(selectedConfidenceFallbackReferee)) \(hybridGeminiFallbackModel)"
         }
         return "\(selectedConfidenceModel) · \(selectedConfidenceProviderLabel)"
     }

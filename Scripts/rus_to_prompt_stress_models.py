@@ -15,6 +15,8 @@ from rus_to_prompt_confidence_semantics import confidence_value as semantic_conf
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "Soma"))
 
+from soma_language_optimizer_core import is_deepseek_stage_model  # noqa: E402
+
 DEFAULT_CONFIDENCE_REASONING_EFFORT = "medium"
 DEFAULT_CODEX_STAGE_REASONING_EFFORT = "medium"
 DEFAULT_LOCAL_CONFIDENCE_MODELS = ["qwen3:30b-a3b", "qwen3-coder:30b-a3b-q4_K_M"]
@@ -122,10 +124,14 @@ def adversarial_prompts() -> list[PromptCase]:
 
 def provider_for_stage_model(model: str, configured_provider: str) -> str:
     normalized = (model or "").strip().lower()
+    if normalized.startswith("gpt-oss"):
+        return configured_provider
     if normalized in CODEX_STAGE_MODELS or normalized.startswith(("gpt-", "codex-", "o1", "o3", "o4")):
         return "codex"
     if normalized in GEMINI_STAGE_MODELS or normalized.startswith(("gemini-", "gemma-4-", "auto-gemini")):
         return "gemini"
+    if is_deepseek_stage_model(normalized):
+        return "deepseek"
     return configured_provider
 
 
@@ -133,6 +139,8 @@ def classify_external_error(message: str | None) -> str | None:
     lowered = (message or "").lower()
     if any(token in lowered for token in ["429", "rate limit", "quota", "resource exhausted"]):
         return "rate_limit"
+    if any(token in lowered for token in ["401", "403", "unauthorized", "forbidden", "invalid api key", "api key missing"]):
+        return "auth_error"
     if any(token in lowered for token in ["timed out", "timeout", "deadline"]):
         return "timeout"
     return "external_error" if lowered else None

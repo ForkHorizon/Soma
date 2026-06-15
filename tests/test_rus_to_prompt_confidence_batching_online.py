@@ -136,6 +136,24 @@ class RusToPromptOnlineConfidenceBatchingTests(unittest.TestCase):
         self.assertEqual(by_id[items[0][0]]["batch_size"], 2)
         self.assertEqual(by_id[items[0][0]]["seconds"], 5.0)
 
+    def test_deepseek_batch_confidence_maps_each_item(self):
+        _case, items = make_items("rtp-deepseek-batch")
+
+        def fake_deepseek_json(prompt, schema, model, timeout, temp_prefix):
+            payload = payload_from(prompt)
+            self.assertEqual(model, "deepseek-v4-flash")
+            self.assertEqual(len(payload["items"]), 2)
+            results = [response_item(item["id"], 0.89) for item in payload["items"]]
+            return {"results": results}, {"status": "ok", "seconds": 8.0, "stats": {"usage": {"total_tokens": 42}}}
+
+        with patch.object(rus_to_prompt_stress, "run_deepseek_json", side_effect=fake_deepseek_json):
+            by_id = score_batch(items, provider="deepseek", model="deepseek-v4-flash")
+
+        self.assertEqual(set(by_id), {item_id for item_id, _case, _result in items})
+        self.assertEqual(by_id[items[0][0]]["provider"], "deepseek")
+        self.assertEqual(by_id[items[0][0]]["confidence"], 0.89)
+        self.assertEqual(by_id[items[0][0]]["stats"]["usage"]["total_tokens"], 42)
+
     def test_batch_falls_back_when_provider_omits_item(self):
         _case, items = make_items()
         calls: list[int] = []
@@ -190,6 +208,33 @@ class RusToPromptOnlineConfidenceBatchingTests(unittest.TestCase):
         self.assertEqual(first["fallback_provider"], "gemini")
         self.assertEqual(first["confidence"], 0.88)
         self.assertIn("below threshold", first["hybrid_escalation_reason"])
+
+    def test_hybrid_confidence_escalates_problem_items_to_deepseek(self):
+        _case, items = make_items("rtp-hybrid-deepseek")
+
+        def fake_local_json(prompt, schema, model, timeout):
+            confidence = 0.93 if model == "local-a" else 0.52
+            status, verdict = ("review", "review") if confidence < 0.75 else ("ok", "pass")
+            return {"results": [response_item(item["id"], confidence, status, verdict) for item in payload_from(prompt)["items"]]}, {"status": "ok", "seconds": 2.0}
+
+        def fake_deepseek_json(prompt, schema, model, timeout, temp_prefix):
+            self.assertEqual(model, "deepseek-v4-flash")
+            return {"results": [response_item(item["id"], 0.86) for item in payload_from(prompt)["items"]]}, {"status": "ok", "seconds": 5.0}
+
+        with patch.object(rus_to_prompt_stress, "run_local_ollama_json", side_effect=fake_local_json), patch.object(rus_to_prompt_stress, "run_deepseek_json", side_effect=fake_deepseek_json):
+            by_id = score_batch(
+                items,
+                provider="hybrid",
+                local_models=["local-a", "local-b"],
+                hybrid_fallback_provider="deepseek",
+                hybrid_online_model="deepseek-v4-flash",
+            )
+
+        first = by_id[items[0][0]]
+        self.assertTrue(first["hybrid_escalated"])
+        self.assertEqual(first["fallback_provider"], "deepseek")
+        self.assertEqual(first["fallback_model"], "deepseek-v4-flash")
+        self.assertEqual(first["confidence"], 0.86)
 
     def test_hybrid_confidence_keeps_local_fallback_when_gemini_fails(self):
         _case, items = make_items("rtp-hybrid-fallback")

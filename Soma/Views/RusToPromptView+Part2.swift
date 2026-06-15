@@ -87,9 +87,7 @@ extension RusToPromptView {
     func presetRow(_ row: RusToPromptScoredPreset, selection: Binding<String>, requiresOllama: Bool) -> some View {
         let preset = row.preset
         let selected = selection.wrappedValue == preset.model
-        let usesCodex = preset.isCodex
-        let usesGemini = preset.isGemini
-        let installed = usesCodex || usesGemini || !requiresOllama || isInstalled(preset.model)
+        let installed = preset.isOnlineProvider || !requiresOllama || isInstalled(preset.model)
 
         return Button {
             selection.wrappedValue = preset.model
@@ -108,9 +106,12 @@ extension RusToPromptView {
                     }
                     if !installed {
                         StatusChip(text: "Missing", tone: .warning)
-                    } else if usesGemini {
-                        StatusChip(text: "Gemini", tone: .info)
-                    } else if usesCodex || !requiresOllama {
+                    } else if preset.isOnlineProvider {
+                        StatusChip(text: preset.providerName, tone: .info)
+                        if preset.isDeepSeek {
+                            StatusChip(text: "Paid API", tone: .warning)
+                        }
+                    } else if !requiresOllama {
                         StatusChip(text: "Codex", tone: .info)
                     }
                     if let decision = rusToPromptScopeDecisionChip(row.stats) {
@@ -177,13 +178,18 @@ extension RusToPromptView {
         }
         if !selectedModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            rowsByModel[selectedModel.lowercased()] == nil {
+            let normalized = selectedModel.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let isCodex = !normalized.hasPrefix("gpt-oss") && (normalized.hasPrefix("gpt-") || normalized.hasPrefix("codex-") || normalized.hasPrefix("o1") || normalized.hasPrefix("o3") || normalized.hasPrefix("o4"))
+            let provider = normalized.hasPrefix("deepseek-") ? "deepseek" : (normalized.hasPrefix("gemini-") || normalized.hasPrefix("auto-gemini") || normalized.hasPrefix("gemma-4-") ? "gemini" : nil)
             rowsByModel[selectedModel.lowercased()] = RusToPromptModelPreset(
                 model: selectedModel,
                 quality: "Unknown",
                 speed: "Unknown",
-                ram: "Custom",
-                detail: "Selected custom model.",
-                recommended: false
+                ram: provider == "deepseek" ? "Paid API" : "Custom",
+                detail: provider == "deepseek" ? "Selected custom DeepSeek paid API model." : "Selected custom model.",
+                recommended: false,
+                isCodex: isCodex,
+                provider: provider
             )
         }
 
@@ -197,15 +203,16 @@ extension RusToPromptView {
     func statsBackedPreset(_ stats: TestModelRoleStats) -> RusToPromptModelPreset {
         let isCodex = stats.provider == "Codex"
         let isGemini = stats.provider == "Gemini"
+        let isDeepSeek = stats.provider == "DeepSeek"
         return RusToPromptModelPreset(
             model: stats.model,
             quality: "Benchmarked",
             speed: "Unknown",
-            ram: isCodex || isGemini ? "0 GB" : "Stats",
+            ram: isDeepSeek ? "Paid API" : (isCodex || isGemini ? "0 GB" : "Stats"),
             detail: "Model found in benchmark stats.",
             recommended: false,
             isCodex: isCodex,
-            provider: isGemini ? "gemini" : nil
+            provider: isDeepSeek ? "deepseek" : (isGemini ? "gemini" : nil)
         )
     }
 
@@ -519,19 +526,19 @@ extension RusToPromptView {
 
 
     var transformDisabled: Bool {
-        viewModel.isBusy || !ollama.isOllamaRunning || viewModel.inputPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        viewModel.isBusy || (selectedModelsNeedOllama && !ollama.isOllamaRunning) || viewModel.inputPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
 
     var transformDisabledReason: String {
         if viewModel.isBusy { return "Rus to Prompt is already running." }
-        if !ollama.isOllamaRunning { return "Launch Ollama first." }
+        if selectedModelsNeedOllama && !ollama.isOllamaRunning { return "Launch Ollama first." }
         return "Enter a prompt."
     }
 
 
     var phaseTitle: String {
-        if !ollama.isOllamaRunning && !viewModel.isBusy { return "Offline" }
+        if selectedModelsNeedOllama && !ollama.isOllamaRunning && !viewModel.isBusy { return "Offline" }
         switch viewModel.phase {
         case .idle: return "Ready"
         case .translating: return "Translating"
@@ -541,6 +548,22 @@ extension RusToPromptView {
         case .degraded: return "Fallback"
         case .failed: return "Failed"
         }
+    }
+
+
+    var selectedModelsNeedOllama: Bool {
+        !isRusToPromptOnlineModel(viewModel.translatorModel) || !isRusToPromptOnlineModel(viewModel.analyzerModel)
+    }
+
+
+    func isRusToPromptOnlineModel(_ model: String) -> Bool {
+        let normalized = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if normalized.hasPrefix("gpt-oss") { return false }
+        if normalized.hasPrefix("gpt-") || normalized.hasPrefix("codex-") { return true }
+        if normalized.hasPrefix("o1") || normalized.hasPrefix("o3") || normalized.hasPrefix("o4") { return true }
+        if normalized.hasPrefix("gemini-") || normalized.hasPrefix("auto-gemini") || normalized.hasPrefix("gemma-4-") { return true }
+        if normalized.hasPrefix("deepseek-") { return true }
+        return false
     }
 
 

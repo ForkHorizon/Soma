@@ -43,14 +43,18 @@ def confidence_warnings(confidence: dict[str, Any] | None) -> list[str]:
 
 
 def provider_for_model(model: str, explicit: str | None = None) -> str:
-    explicit_clean = (explicit or "").strip().lower()
-    if explicit_clean in {"local", "codex", "gemini"}:
-        return explicit_clean.capitalize() if explicit_clean != "codex" else "Codex"
     normalized = (model or "").strip().lower()
+    if normalized.startswith("gpt-oss"):
+        return "Local"
+    explicit_clean = (explicit or "").strip().lower()
+    if explicit_clean in {"local", "codex", "gemini", "deepseek"}:
+        return {"codex": "Codex", "deepseek": "DeepSeek"}.get(explicit_clean, explicit_clean.capitalize())
     if normalized in CODEX_MODELS or normalized.startswith(("gpt-", "codex-", "o1", "o3", "o4")):
         return "Codex"
     if normalized.startswith(("gemini-", "gemma-4-", "auto-gemini")):
         return "Gemini"
+    if normalized.startswith("deepseek-"):
+        return "DeepSeek"
     return "Local" if normalized else "Unknown"
 
 

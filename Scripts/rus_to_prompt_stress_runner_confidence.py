@@ -183,7 +183,7 @@ def _fallback_confidences_model_major(items, local_by_item: dict[str, list[dict[
     if provider == "off":
         return {item_id: aggregate_local_confidences(local_by_item[item_id], model=aggregate_model, stage=stage, batch_item_id=item_id) for item_id, _case, _result in items}
     fallback_kwargs = confidence_kwargs(args, stage)
-    fallback_kwargs.update({"provider": provider, "model": args.hybrid_confidence_gemini_model or args.confidence_model})
+    fallback_kwargs.update({"provider": provider, "model": args.hybrid_confidence_online_model or args.confidence_model})
     try:
         fallback = score_confidence_batch_with_provider(items, **fallback_kwargs)
     except Exception as exc:
@@ -301,7 +301,8 @@ def confidence_kwargs(args, stage: str) -> dict[str, Any]:
         "gemini_bin": args.gemini_bin,
         "reasoning_effort": args.confidence_reasoning_effort,
         "local_models": args.local_confidence_models or DEFAULT_LOCAL_CONFIDENCE_MODELS,
-        "hybrid_gemini_model": args.hybrid_confidence_gemini_model or args.confidence_model,
+        "hybrid_online_model": args.hybrid_confidence_online_model or args.confidence_model,
+        "hybrid_gemini_model": args.hybrid_confidence_online_model or args.confidence_model,
         "hybrid_fallback_provider": args.hybrid_confidence_fallback_referee,
         "hybrid_local_threshold": args.hybrid_confidence_local_threshold,
         "hybrid_disagreement_threshold": args.hybrid_confidence_disagreement_threshold,
@@ -309,7 +310,18 @@ def confidence_kwargs(args, stage: str) -> dict[str, Any]:
 
 
 def confidence_timeout(args) -> float:
-    return args.gemini_stage_timeout if args.confidence_referee in {"gemini", "hybrid"} else args.codex_stage_timeout
+    if args.confidence_referee == "deepseek":
+        return args.deepseek_stage_timeout
+    if args.confidence_referee == "gemini":
+        return args.gemini_stage_timeout
+    if args.confidence_referee == "hybrid":
+        fallback = args.hybrid_confidence_fallback_referee
+        if fallback == "deepseek":
+            return args.deepseek_stage_timeout
+        if fallback == "codex":
+            return args.codex_stage_timeout
+        return args.gemini_stage_timeout
+    return args.codex_stage_timeout
 
 
 def confidence_progress_stage(stage: str) -> str:

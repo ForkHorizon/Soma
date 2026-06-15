@@ -28,7 +28,7 @@ from rus_to_prompt_stress_runner_resume import (
     translation_payload_from_result,
     write_existing_results,
 )
-from rus_to_prompt_stress_providers import improve_with_codex, improve_with_gemini, translate_with_codex, translate_with_gemini
+from rus_to_prompt_stress_providers import improve_with_codex, improve_with_deepseek, improve_with_gemini, translate_with_codex, translate_with_deepseek, translate_with_gemini
 
 import soma_language_optimizer as optimizer  # noqa: E402
 
@@ -201,6 +201,8 @@ def _translate(prompt: str, model: str, provider: str, args):
         payload = translate_with_codex(prompt, model, args.codex_stage_timeout, args.codex_bin, args.model_profile)
     elif provider == "gemini":
         payload = translate_with_gemini(prompt, model, args.gemini_stage_timeout, args.gemini_bin, args.model_profile)
+    elif provider == "deepseek":
+        payload = translate_with_deepseek(prompt, model, args.deepseek_stage_timeout, args.model_profile)
     else:
         payload = optimizer.translate_general_prompt(prompt, model, args.model_profile)
     return payload, time.monotonic() - start
@@ -215,6 +217,8 @@ def _improve(translation: dict, model: str, provider: str, args):
         payload = improve_with_codex(text, model, args.codex_stage_timeout, args.codex_bin, args.model_profile)
     elif provider == "gemini":
         payload = improve_with_gemini(text, model, args.gemini_stage_timeout, args.gemini_bin, args.model_profile)
+    elif provider == "deepseek":
+        payload = improve_with_deepseek(text, model, args.deepseek_stage_timeout, args.model_profile)
     else:
         payload = optimizer.improve_general_prompt(text, model, args.model_profile)
     return payload, time.monotonic() - start

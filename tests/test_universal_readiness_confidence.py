@@ -1,4 +1,5 @@
 from universal_readiness_helpers import *
+import soma_language_optimizer_confidence
 
 
 class UniversalReadinessConfidenceTests(UniversalReadinessTestCase):
@@ -150,6 +151,44 @@ class UniversalReadinessConfidenceTests(UniversalReadinessTestCase):
         self.assertEqual(payload["model"], "gpt-5.4-mini")
         self.assertEqual(payload["status"], "ok")
         self.assertEqual(payload["confidence"], 0.96)
+
+    def test_rus_to_prompt_confidence_uses_deepseek_model(self):
+        def fake_deepseek_json(prompt, schema, model, timeout, temp_prefix):
+            self.assertEqual(model, "deepseek-v4-flash")
+            self.assertIn("strict prompt-quality referee", prompt)
+            return (
+                {
+                    "status": "ok",
+                    "confidence": 0.91,
+                    "verdict": "pass",
+                    "scores": {
+                        "intent_preservation": 5,
+                        "english_quality": 5,
+                        "protected_span_preservation": 5,
+                        "actionability": 5,
+                        "concision": 4,
+                        "no_invention": 5,
+                    },
+                    "warnings": [],
+                    "notes": ["safe"],
+                },
+                {"status": "ok", "seconds": 2.0, "stats": {"usage": {"total_tokens": 25}}},
+            )
+
+        with patch.object(soma_language_optimizer_confidence, "run_deepseek_json", side_effect=fake_deepseek_json):
+            payload = soma_language_optimizer.score_general_prompt_confidence(
+                source_prompt="Сделай Project Info компактнее.",
+                translation="Make Project Info more compact.",
+                improved_prompt="Make Project Info more compact.",
+                confidence_model="deepseek-v4-flash",
+                timeout=30,
+            )
+
+        self.assertEqual(payload["provider"], "deepseek")
+        self.assertEqual(payload["model"], "deepseek-v4-flash")
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["confidence"], 0.91)
+        self.assertEqual(payload["stats"]["usage"]["total_tokens"], 25)
 
     def test_rus_to_prompt_confidence_failure_is_non_blocking_payload(self):
         with patch.object(

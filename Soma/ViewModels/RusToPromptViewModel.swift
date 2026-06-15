@@ -104,6 +104,18 @@ nonisolated struct RusToPromptModelPreset: Identifiable, Hashable {
     var isGemini: Bool {
         provider == "gemini" || model.lowercased().hasPrefix("gemini-") || model.lowercased().hasPrefix("auto-gemini")
     }
+    var isDeepSeek: Bool {
+        provider == "deepseek" || model.lowercased().hasPrefix("deepseek-")
+    }
+    var isOnlineProvider: Bool {
+        isCodex || isGemini || isDeepSeek
+    }
+    var providerName: String {
+        if isDeepSeek { return "DeepSeek" }
+        if isGemini { return "Gemini" }
+        if isCodex { return "Codex" }
+        return "Local"
+    }
 }
 nonisolated enum RusToPromptSettingsStore {
     static let translatorKey = "rusToPrompt.translatorModel"

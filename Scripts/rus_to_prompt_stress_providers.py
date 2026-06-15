@@ -20,6 +20,7 @@ from rus_to_prompt_stress_models import (
 )
 
 import soma_language_optimizer as optimizer  # noqa: E402
+from soma_deepseek_api import run_deepseek_json  # noqa: E402
 
 
 def _api() -> Any:
@@ -116,12 +117,20 @@ def translate_with_gemini(prompt: str, model: str, timeout: float, gemini_bin: s
     return _translate_with_provider("gemini", prompt, model, timeout, gemini_bin, model_profile, None)
 
 
+def translate_with_deepseek(prompt: str, model: str, timeout: float, model_profile: str) -> dict[str, Any]:
+    return _translate_with_provider("deepseek", prompt, model, timeout, "", model_profile, None)
+
+
 def improve_with_codex(prompt: str, model: str, timeout: float, codex_bin: str, model_profile: str, reasoning_effort: str = DEFAULT_CODEX_STAGE_REASONING_EFFORT) -> dict[str, Any]:
     return _improve_with_provider("codex", prompt, model, timeout, codex_bin, model_profile, reasoning_effort)
 
 
 def improve_with_gemini(prompt: str, model: str, timeout: float, gemini_bin: str, model_profile: str) -> dict[str, Any]:
     return _improve_with_provider("gemini", prompt, model, timeout, gemini_bin, model_profile, None)
+
+
+def improve_with_deepseek(prompt: str, model: str, timeout: float, model_profile: str) -> dict[str, Any]:
+    return _improve_with_provider("deepseek", prompt, model, timeout, "", model_profile, None)
 
 
 def codex_translate_schema() -> dict[str, Any]:
@@ -150,7 +159,7 @@ def _translate_with_provider(provider: str, prompt: str, model: str, timeout: fl
     decoded, meta = _call_json_provider(provider, _translation_prompt(protected, result["source_language"]), codex_translate_schema(), model, timeout, binary, "translate", effort)
     translated = str((decoded or {}).get("translation") or "").strip()
     warnings = list((decoded or {}).get("warnings") or []) if isinstance((decoded or {}).get("warnings"), list) else []
-    failure = _translation_failure(decoded, translated, protected, original, provider)
+    failure = _translation_failure(decoded, translated, protected, original, provider, meta)
     if failure:
         result["warnings"] = warnings + [failure]
         return result
@@ -169,11 +178,16 @@ def _improve_with_provider(provider: str, prompt: str, model: str, timeout: floa
     decoded, meta = _call_json_provider(provider, _improve_prompt(protected), codex_improve_schema(), model, timeout, binary, "improve", effort)
     improved_protected = str((decoded or {}).get("improved_prompt") or "").strip()
     warnings = list((decoded or {}).get("warnings") or []) if isinstance((decoded or {}).get("warnings"), list) else []
-    if not isinstance(decoded, dict) or decoded.get("status") != "ok" or not improved_protected or looks_like_codex_payload_echo(improved_protected):
-        return _degraded_result(result, translation, warnings, "improvement failed validation", profile)
+    if not isinstance(decoded, dict):
+        return _degraded_result(result, translation, warnings + [_provider_failure(provider, "improvement", decoded, meta)], "", profile)
+    if not _provider_status_ok(decoded) or not improved_protected or looks_like_codex_payload_echo(improved_protected):
+        extra = _provider_failure(provider, "improvement", decoded, meta)
+        if looks_like_codex_payload_echo(improved_protected):
+            extra = f"{_provider_label(provider)} improvement echoed the control payload instead of improving the prompt."
+        return _degraded_result(result, translation, warnings, extra, profile)
     improved, validation_error = optimizer._restore_valid_improved_prompt(translation, protected, improved_protected)
     if validation_error:
-        return _degraded_result(result, translation, warnings + ["Codex improvement failed validation: " + validation_error], "", profile)
+        return _degraded_result(result, translation, warnings + [f"{_provider_label(provider)} improvement failed validation: " + validation_error], "", profile)
     result.update({"status": "ok", "improved_prompt": improved, "warnings": warnings, "protected_spans_count": len(protected.spans), "improved_prompt_tokens": optimizer.estimate_tokens(improved, profile), f"{provider}_seconds": meta.get("seconds")})
     return result
 
@@ -182,6 +196,8 @@ def _call_json_provider(provider: str, prompt: str, schema: dict[str, Any], mode
     api = _api()
     if provider == "gemini":
         return api.run_gemini_json(prompt=prompt, schema=schema, model=model, timeout=timeout, gemini_bin=binary, temp_prefix=f"soma-rus-prompt-gemini-{stage}-")
+    if provider == "deepseek":
+        return api.run_deepseek_json(prompt=prompt, schema=schema, model=model, timeout=timeout, temp_prefix=f"soma-rus-prompt-deepseek-{stage}-")
     return api.run_codex_json(prompt=prompt, schema=schema, model=model, timeout=timeout, codex_bin=binary, temp_prefix=f"soma-rus-prompt-codex-{stage}-", reasoning_effort=effort or DEFAULT_CODEX_STAGE_REASONING_EFFORT)
 
 
@@ -190,16 +206,16 @@ def _translation_result(model: str, provider: str, original: str) -> dict[str, A
 
 
 def _translation_prompt(protected: Any, source_language: str) -> str:
-    return "You are a precise technical translator. Do not use tools. Return JSON only. Preserve placeholders exactly.\nSource language hint: " + source_language + "\nProtected prompt:\n<<<PROMPT\n" + protected.text + "\nPROMPT>>>"
+    return "You are a precise technical translator. Do not use tools. Return JSON only. Set status exactly to ok when the translation succeeds, otherwise failed. Preserve placeholders exactly.\nSource language hint: " + source_language + "\nProtected prompt:\n<<<PROMPT\n" + protected.text + "\nPROMPT>>>"
 
 
 def _improve_prompt(protected: Any) -> str:
-    return "You are a conservative prompt editor. Do not use tools. Return JSON only. Preserve placeholders exactly. Return a direct task prompt, not a meta-prompt.\nTranslated request:\n<<<PROMPT\n" + protected.text + "\nPROMPT>>>"
+    return "You are a conservative prompt editor. Do not use tools. Return JSON only. Set status exactly to ok when the improvement succeeds, otherwise failed. Preserve placeholders exactly. Each placeholder must appear the same number of times as in the translated request; do not omit, rename, or duplicate placeholders. Return a direct task prompt, not a meta-prompt.\nTranslated request:\n<<<PROMPT\n" + protected.text + "\nPROMPT>>>"
 
 
-def _translation_failure(decoded: dict[str, Any] | None, translated: str, protected: Any, original: str, provider: str) -> str | None:
-    if not isinstance(decoded, dict) or decoded.get("status") != "ok" or not translated:
-        return f"{provider.title()} translation returned failed status or empty translation."
+def _translation_failure(decoded: dict[str, Any] | None, translated: str, protected: Any, original: str, provider: str, meta: dict[str, Any]) -> str | None:
+    if not isinstance(decoded, dict) or not _provider_status_ok(decoded) or not translated:
+        return _provider_failure(provider, "translation", decoded, meta)
     if looks_like_codex_payload_echo(translated):
         return f"{provider.title()} translation echoed the control payload instead of translating the prompt."
     invalid = optimizer.invalid_placeholders(translated, len(protected.spans))
@@ -210,6 +226,27 @@ def _translation_failure(decoded: dict[str, Any] | None, translated: str, protec
     return None
 
 
+def _provider_status_ok(decoded: dict[str, Any]) -> bool:
+    status = str(decoded.get("status") or "").strip().lower()
+    return status in {"ok", "success", "succeeded", "completed", "complete", "done", "pass", "passed"}
+
+
+def _provider_failure(provider: str, stage: str, decoded: dict[str, Any] | None, meta: dict[str, Any]) -> str:
+    label = _provider_label(provider)
+    if not isinstance(decoded, dict):
+        error = str((meta or {}).get("error") or "").strip()
+        return f"{label} {stage} failed: {error}" if error else f"{label} {stage} returned invalid JSON."
+    status = str(decoded.get("status") or "").strip()
+    field = "translation" if stage == "translation" else "improved_prompt"
+    if not str(decoded.get(field) or "").strip():
+        return f"{label} {stage} returned status {status or 'missing'} with an empty {field}."
+    return f"{label} {stage} returned failed status {status or 'missing'}."
+
+
+def _provider_label(provider: str) -> str:
+    return "DeepSeek" if provider == "deepseek" else provider.title()
+
+
 def _degraded_result(result: dict[str, Any], fallback: str, warnings: list[str], extra: str, profile: str) -> dict[str, Any]:
     if extra:
         warnings.append(extra)
@@ -218,7 +255,7 @@ def _degraded_result(result: dict[str, Any], fallback: str, warnings: list[str],
 
 
 def _stage_schema(properties: dict[str, Any]) -> dict[str, Any]:
-    props = {"status": {"type": "string"}, "warnings": _schema_string_list()}
+    props = {"status": {"type": "string", "enum": ["ok", "failed"]}, "warnings": _schema_string_list()}
     props.update(properties)
     return {"type": "object", "additionalProperties": False, "properties": props, "required": list(props)}
 

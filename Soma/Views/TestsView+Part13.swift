@@ -52,6 +52,8 @@ extension TestsView {
             return .info
         case "Gemini":
             return .warning
+        case "DeepSeek":
+            return .info
         case "Local":
             return .good
         default:

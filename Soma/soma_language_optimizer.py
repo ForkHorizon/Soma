@@ -41,10 +41,18 @@ from soma_language_optimizer_core import (
     detect_language,
     estimate_tokens,
     is_codex_stage_model,
+    is_deepseek_stage_model,
     log_fields,
     invalid_placeholders,
     protect_spans,
     restore_spans,
+)
+from soma_deepseek_api import (
+    run_deepseek_json,
+)
+from soma_language_optimizer_deepseek import (
+    _improve_general_prompt_deepseek,
+    _translate_general_prompt_deepseek,
 )
 from soma_language_optimizer_flow import (
     _improver_model,

@@ -243,7 +243,7 @@ extension TestsView {
         storageKey: String
     ) -> some View {
         HStack(spacing: 8) {
-            TextField("Custom model, e.g. gemini-3-pro-preview or gpt-5.5", text: customModel)
+            TextField("Custom model, e.g. deepseek-v4-flash, gemini-3-pro-preview, or gpt-5.5", text: customModel)
                 .textFieldStyle(.roundedBorder)
                 .font(.caption.monospaced())
             Button {
@@ -255,7 +255,7 @@ extension TestsView {
             .controlSize(.small)
             .disabled(customModel.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
-        .help("Add any model name supported by Ollama, Codex CLI, or Gemini CLI. Names starting with gpt-/o-/codex- run via Codex; gemini-/auto-gemini run via Gemini.")
+        .help("Add any model name supported by Ollama, Codex CLI, Gemini CLI, or DeepSeek API. Names starting with gpt-/o-/codex- run via Codex; gemini-/auto-gemini run via Gemini; deepseek- runs via DeepSeek.")
     }
 
 

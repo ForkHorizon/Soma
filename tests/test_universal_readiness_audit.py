@@ -8,6 +8,33 @@ class UniversalReadinessAuditTests(UniversalReadinessTestCase):
         self.assertEqual(rus_to_prompt_stress.provider_for_stage_model("codex-auto-review", "local"), "codex")
         self.assertEqual(rus_to_prompt_stress.provider_for_stage_model("gemini-3-pro-preview", "local"), "gemini")
         self.assertEqual(rus_to_prompt_stress.provider_for_stage_model("auto-gemini-3", "local"), "gemini")
+        self.assertEqual(rus_to_prompt_stress.provider_for_stage_model("deepseek-v4-flash", "local"), "deepseek")
+        self.assertEqual(rus_to_prompt_stress.provider_for_stage_model("deepseek-v4-pro", "local"), "deepseek")
+        self.assertEqual(rus_to_prompt_stress.provider_for_stage_model("deepseek-chat", "local"), "deepseek")
+        self.assertEqual(rus_to_prompt_stress.provider_for_stage_model("gpt-oss:20b", "local"), "local")
+        self.assertFalse(soma_language_optimizer.is_codex_stage_model("gpt-oss:20b"))
+
+    def test_rus_to_prompt_cli_accepts_deepseek_provider_choices(self):
+        from rus_to_prompt_stress_runner import _parser
+
+        args = _parser().parse_args(
+            [
+                "--translator-provider",
+                "deepseek",
+                "--analyzer-provider",
+                "deepseek",
+                "--confidence-referee",
+                "deepseek",
+                "--hybrid-confidence-fallback-referee",
+                "deepseek",
+                "--dry-run",
+            ]
+        )
+
+        self.assertEqual(args.translator_provider, "deepseek")
+        self.assertEqual(args.analyzer_provider, "deepseek")
+        self.assertEqual(args.confidence_referee, "deepseek")
+        self.assertEqual(args.hybrid_confidence_fallback_referee, "deepseek")
 
     def test_rus_to_prompt_codex_translate_rejects_payload_echo(self):
         prompt = "Проверь JSON {\"mode\":\"compact\"}."
@@ -49,6 +76,104 @@ class UniversalReadinessAuditTests(UniversalReadinessTestCase):
         self.assertEqual(payload["status"], "degraded")
         self.assertEqual(payload["improved_prompt"], translation)
         self.assertTrue(any("validation" in warning for warning in payload["warnings"]))
+
+    def test_rus_to_prompt_deepseek_translate_restores_protected_spans(self):
+        prompt = "Сохрани `A.swift` и JSON {\"mode\":\"compact\"}."
+
+        def fake_deepseek_json(prompt, schema, model, timeout, temp_prefix):
+            self.assertEqual(model, "deepseek-v4-flash")
+            self.assertIn("__SOMA_PROTECTED_SPAN_0__", prompt)
+            self.assertIn("<<<PROMPT", prompt)
+            payload = {"status": "ok", "source_language": "ru", "translation_status": "translated", "translation": "Preserve __SOMA_PROTECTED_SPAN_0__ and __SOMA_PROTECTED_SPAN_1__ __SOMA_PROTECTED_SPAN_2__.", "warnings": []}
+            return payload, {"status": "ok", "seconds": 1.0}
+
+        with patch.object(rus_to_prompt_stress, "run_deepseek_json", side_effect=fake_deepseek_json):
+            payload = rus_to_prompt_stress.translate_with_deepseek(prompt, "deepseek-v4-flash", 30, "gpt-5.5")
+
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["translation_status"], "translated")
+        self.assertIn("`A.swift`", payload["translation"])
+        self.assertIn("{\"mode\":\"compact\"}", payload["translation"])
+        self.assertNotIn("__SOMA_PROTECTED_SPAN_", payload["translation"])
+
+    def test_rus_to_prompt_deepseek_translate_accepts_success_status_synonym(self):
+        prompt = "Проверь `A.swift`."
+
+        def fake_deepseek_json(prompt, schema, model, timeout, temp_prefix):
+            return (
+                {
+                    "status": "success",
+                    "source_language": "ru",
+                    "translation_status": "completed",
+                    "translation": "Check __SOMA_PROTECTED_SPAN_0__.",
+                    "warnings": [],
+                },
+                {"status": "ok", "seconds": 1.0},
+            )
+
+        with patch.object(rus_to_prompt_stress, "run_deepseek_json", side_effect=fake_deepseek_json):
+            payload = rus_to_prompt_stress.translate_with_deepseek(prompt, "deepseek-v4-flash", 30, "gpt-5.5")
+
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["translation_status"], "translated")
+        self.assertEqual(payload["translation"], "Check `A.swift`.")
+
+    def test_rus_to_prompt_online_stage_surfaces_provider_error(self):
+        def fake_deepseek_json(prompt, schema, model, timeout, temp_prefix):
+            return None, {"status": "failed", "error": "DeepSeek API key missing.", "seconds": 0.0}
+
+        with patch.object(rus_to_prompt_stress, "run_deepseek_json", side_effect=fake_deepseek_json):
+            payload = rus_to_prompt_stress.translate_with_deepseek("Проверь проект.", "deepseek-v4-flash", 30, "gpt-5.5")
+
+        self.assertEqual(payload["status"], "failed")
+        self.assertTrue(any("API key missing" in warning for warning in payload["warnings"]))
+
+    def test_rus_to_prompt_deepseek_improve_degrades_on_validation_failure(self):
+        translation = "Show the translation and warning if improvement is poor."
+
+        def fake_deepseek_json(prompt, schema, model, timeout, temp_prefix):
+            return (
+                {
+                    "status": "ok",
+                    "improved_prompt": "Create a task prompt for an AI assistant about poor improvement quality.",
+                    "warnings": [],
+                },
+                {"status": "ok", "seconds": 1.0},
+            )
+
+        with patch.object(rus_to_prompt_stress, "run_deepseek_json", side_effect=fake_deepseek_json):
+            payload = rus_to_prompt_stress.improve_with_deepseek(translation, "deepseek-v4-pro", 30, "gpt-5.5")
+
+        self.assertEqual(payload["status"], "degraded")
+        self.assertEqual(payload["improved_prompt"], translation)
+        self.assertTrue(any("validation" in warning for warning in payload["warnings"]))
+
+    def test_rus_to_prompt_summary_handles_missing_translation_status_bool(self):
+        result = rus_to_prompt_stress.CaseResult(
+            id="case-001",
+            category="unit",
+            status="translation_only",
+            translation_status=None,
+            improve_status=None,
+            seconds=1.0,
+            source_language="ru",
+            protected_spans_count=0,
+            missing_protected_spans=[],
+            placeholder_leak=False,
+            internal_instruction_leak=False,
+            meta_prompt_output=False,
+            improvement_retry_used=False,
+            cyrillic_in_translation=0,
+            cyrillic_in_improved=0,
+            warnings=[],
+            translation="",
+            improved_prompt="",
+        )
+
+        summary = rus_to_prompt_stress.summarize([result], "2026-06-05T00:00:00+00:00", "2026-06-05T00:00:01+00:00")
+
+        self.assertEqual(summary["total"], 1)
+        self.assertEqual(summary["translation_failed"], 0)
 
     def test_russian_quiet_hours_prompt_uses_english_packet_without_original_prompt(self):
         tmp, root = make_quiet_hours_repo()

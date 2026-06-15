@@ -22,6 +22,14 @@ CODEX_STAGE_MODELS = {
     "o4-mini",
     "codex-auto-review",
 }
+DEEPSEEK_STAGE_MODELS = {
+    "deepseek-v4-flash",
+    "deepseek-v4-pro",
+}
+DEEPSEEK_LEGACY_MODELS = {
+    "deepseek-chat",
+    "deepseek-reasoner",
+}
 
 @dataclass(frozen=True)
 class ProtectedPrompt:
@@ -46,6 +54,8 @@ def detect_language(text: str) -> str:
 
 def is_codex_stage_model(model: str | None) -> bool:
     normalized = (model or "").strip().lower()
+    if normalized.startswith("gpt-oss"):
+        return False
     return (
         normalized in CODEX_STAGE_MODELS
         or normalized.startswith("gpt-")
@@ -54,6 +64,10 @@ def is_codex_stage_model(model: str | None) -> bool:
         or normalized.startswith("o3")
         or normalized.startswith("o4")
     )
+
+def is_deepseek_stage_model(model: str | None) -> bool:
+    normalized = (model or "").strip().lower()
+    return normalized in DEEPSEEK_STAGE_MODELS or normalized in DEEPSEEK_LEGACY_MODELS or normalized.startswith("deepseek-")
 
 def _span_patterns() -> list[re.Pattern[str]]:
     return [

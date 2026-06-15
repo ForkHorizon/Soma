@@ -5,7 +5,7 @@ import sys
 from typing import Any
 
 from token_calculator import estimate_tokens
-from soma_language_optimizer_core import TARGET_LANGUAGE, _compute_metadata, _cyrillic_count, _restore_valid_improved_prompt, _sha, detect_language, is_codex_stage_model, invalid_placeholders, protect_spans, restore_spans
+from soma_language_optimizer_core import TARGET_LANGUAGE, _compute_metadata, _cyrillic_count, _restore_valid_improved_prompt, _sha, detect_language, is_codex_stage_model, is_deepseek_stage_model, invalid_placeholders, protect_spans, restore_spans
 
 
 def _api():
@@ -67,6 +67,8 @@ def translate_general_prompt(prompt: str, model: str | None = None, model_profil
         return result
     if is_codex_stage_model(translator_model):
         return _api()._translate_general_prompt_codex(original, source_language, translator_model, model_profile, _translation_timeout())
+    if is_deepseek_stage_model(translator_model):
+        return _api()._translate_general_prompt_deepseek(original, source_language, translator_model, model_profile, _translation_timeout())
     return _translate_general_local(original, translator_model, model_profile, result, warnings)
 
 
@@ -107,6 +109,8 @@ def improve_general_prompt(prompt: str, model: str | None = None, model_profile:
         return result
     if is_codex_stage_model(improver_model):
         return _api()._improve_general_prompt_codex(translation, improver_model, model_profile, _improvement_timeout())
+    if is_deepseek_stage_model(improver_model):
+        return _api()._improve_general_prompt_deepseek(translation, improver_model, model_profile, _improvement_timeout())
     return _improve_general_local(translation, improver_model, model_profile, result, warnings)
 
 

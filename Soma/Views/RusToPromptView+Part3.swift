@@ -29,7 +29,7 @@ extension RusToPromptView {
 
 
     var phaseTone: SomaStatusTone {
-        if !ollama.isOllamaRunning && !viewModel.isBusy { return .warning }
+        if selectedModelsNeedOllama && !ollama.isOllamaRunning && !viewModel.isBusy { return .warning }
         switch viewModel.phase {
         case .idle: return .neutral
         case .translating, .analyzing, .checkingConfidence: return .info

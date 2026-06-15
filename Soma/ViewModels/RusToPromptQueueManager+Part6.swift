@@ -152,6 +152,19 @@ extension RusToPromptQueueManager {
         return cleaned
     }
 
+    func cleanStageModels(_ models: [String]) -> [String] {
+        var seen = Set<String>()
+        var cleaned: [String] = []
+        for model in models {
+            let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = trimmed.lowercased()
+            guard !trimmed.isEmpty, Self.isStageCandidateModel(trimmed), !seen.contains(key) else { continue }
+            cleaned.append(trimmed)
+            seen.insert(key)
+        }
+        return cleaned
+    }
+
 
     func normalizePrompt(_ prompt: String) -> String {
         prompt

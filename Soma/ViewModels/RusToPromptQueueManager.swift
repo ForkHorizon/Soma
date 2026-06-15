@@ -22,11 +22,11 @@ nonisolated struct RusToPromptQueueSettings: Codable, Hashable {
     var cooldownSeconds: Double
     var ramWarningGB: Double
     static func defaults() -> RusToPromptQueueSettings {
-        let translators = localModelsFromDefaults(
+        let translators = stageModelsFromDefaults(
             key: "tests.rusToPrompt.translatorModels",
             fallback: [RusToPromptSettingsStore.defaultTranslator]
         )
-        let improvers = localModelsFromDefaults(
+        let improvers = stageModelsFromDefaults(
             key: "tests.rusToPrompt.improverModels",
             fallback: [RusToPromptSettingsStore.defaultAnalyzer]
         )
@@ -59,6 +59,16 @@ nonisolated struct RusToPromptQueueSettings: Codable, Hashable {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty && RusToPromptQueueManager.isLocalStageModel($0) }
         return models.isEmpty ? fallback.filter { RusToPromptQueueManager.isLocalStageModel($0) } : models
+    }
+    static func stageModelsFromDefaults(key: String, fallback: [String]) -> [String] {
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let decoded = try? JSONDecoder().decode([String].self, from: data) else {
+            return fallback.filter { RusToPromptQueueManager.isStageCandidateModel($0) }
+        }
+        let models = decoded
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && RusToPromptQueueManager.isStageCandidateModel($0) }
+        return models.isEmpty ? fallback.filter { RusToPromptQueueManager.isStageCandidateModel($0) } : models
     }
 }
 nonisolated struct RusToPromptQueueItemSnapshot: Codable, Hashable {

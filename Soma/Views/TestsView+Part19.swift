@@ -15,6 +15,17 @@ extension TestsView {
                 provider: "gemini"
             )
         }
+        if isDeepSeekModelName(model) {
+            return RusToPromptModelPreset(
+                model: model,
+                quality: "Custom",
+                speed: "Unknown",
+                ram: "Paid API",
+                detail: "Custom DeepSeek API model. It will run through the DeepSeek paid API when an API key is configured.",
+                recommended: false,
+                provider: "deepseek"
+            )
+        }
         if isCodexModelName(model) {
             return RusToPromptModelPreset(
                 model: model,

@@ -32,6 +32,9 @@ def write_run(root: Path, name: str, rows: list[dict], *, finished_at: str = "20
 
 
 class RusToPromptStatsTests(unittest.TestCase):
+    def test_gpt_oss_is_local_not_codex(self):
+        self.assertEqual(rus_to_prompt_stats.provider_for_model("gpt-oss:20b", "codex"), "Local")
+
     def test_translation_attempts_are_deduped_across_improvers(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -206,6 +209,9 @@ class RusToPromptStatsTests(unittest.TestCase):
         self.assertEqual(rus_to_prompt_stats.provider_for_model("gpt-5.3-codex"), "Codex")
         self.assertEqual(rus_to_prompt_stats.provider_for_model("codex-auto-review"), "Codex")
         self.assertEqual(rus_to_prompt_stats.provider_for_model("gemini-3-flash-preview"), "Gemini")
+        self.assertEqual(rus_to_prompt_stats.provider_for_model("deepseek-v4-flash"), "DeepSeek")
+        self.assertEqual(rus_to_prompt_stats.provider_for_model("deepseek-v4-pro"), "DeepSeek")
+        self.assertEqual(rus_to_prompt_stats.provider_for_model("custom-name", "deepseek"), "DeepSeek")
         self.assertEqual(rus_to_prompt_stats.provider_for_model("", ""), "Unknown")
 
     def test_translation_only_rows_do_not_count_as_improver_attempts(self):
