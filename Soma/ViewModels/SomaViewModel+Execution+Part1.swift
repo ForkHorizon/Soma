@@ -79,7 +79,6 @@ func runRelay(ollama: OllamaManager) {
     func applyGatherBundle(_ bundle: GatherBundle, prompt: String, startTime: Date, ollama: OllamaManager) {
         gatherBundle = bundle
         latestTokenSavings = bundle.token_savings
-        _ = recordPacketRun(prompt: prompt, bundle: bundle)
         auditRawCaptureNextRun = false
         showContextPanel = true
         relayPhase = .done

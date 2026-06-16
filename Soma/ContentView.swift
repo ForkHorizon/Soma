@@ -4,14 +4,12 @@ import Foundation
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var ollama = OllamaManager()
     @ObservedObject var viewModel: SomaViewModel
-    @StateObject private var scoutViewModel = ScoutViewModel()
-    @StateObject private var relayViewModel = RelayViewModel()
+    @ObservedObject var ollama: OllamaManager
+    @ObservedObject var rusToPromptQueueManager: RusToPromptQueueManager
     @StateObject private var promptCompilerViewModel = PromptCompilerViewModel()
     @StateObject private var rusToPromptViewModel = RusToPromptViewModel()
-    @StateObject private var rusToPromptQueueManager = RusToPromptQueueManager()
-    @State private var selectedRoute: AppRoute? = .relay
+    @State private var selectedRoute: AppRoute? = .rusToPrompt
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -20,32 +18,28 @@ struct ContentView: View {
                 .navigationTitle("Soma")
         } detail: {
             VStack(spacing: 0) {
-                if selectedRoute != .rusToPrompt && selectedRoute != .tests {
+                if selectedRoute != .rusToPrompt && selectedRoute != .tests
+                    && selectedRoute != .queue && selectedRoute != .modelStats
+                    && selectedRoute != .extensions && selectedRoute != .voiceToText {
                     GlobalSettingsBar(viewModel: viewModel, ollama: ollama, selectedRoute: $selectedRoute)
                 }
-                
+
                 if let route = selectedRoute {
                     switch route {
-                    case .relay:
-                        RelayView(viewModel: relayViewModel, somaViewModel: viewModel, ollama: ollama)
-                            .navigationTitle(route.title)
                     case .rusToPrompt:
                         RusToPromptView(viewModel: rusToPromptViewModel, somaViewModel: viewModel, ollama: ollama, queueManager: rusToPromptQueueManager)
                             .navigationTitle(route.title)
+                    case .voiceToText:
+                        VoiceToTextView(somaViewModel: viewModel, ollama: ollama)
+                            .navigationTitle(route.title)
+                    case .queue:
+                        TestsView(mode: .queue, ollama: ollama, queueManager: rusToPromptQueueManager)
+                            .navigationTitle(route.title)
+                    case .modelStats:
+                        TestsView(mode: .stats, ollama: ollama, queueManager: rusToPromptQueueManager)
+                            .navigationTitle(route.title)
                     case .tests:
-                        TestsView(ollama: ollama, queueManager: rusToPromptQueueManager)
-                            .navigationTitle(route.title)
-                    case .projectSetup:
-                        ProjectSetupView(viewModel: viewModel, selectedRoute: $selectedRoute)
-                            .navigationTitle(route.title)
-                    case .packets:
-                        PacketsView(viewModel: viewModel, selectedRoute: $selectedRoute)
-                            .navigationTitle(route.title)
-                    case .diagnostics:
-                        DiagnosticsView(viewModel: viewModel, scoutViewModel: scoutViewModel, ollama: ollama, selectedRoute: $selectedRoute)
-                            .navigationTitle(route.title)
-                    case .projects:
-                        ProjectsView(viewModel: viewModel, selectedRoute: $selectedRoute)
+                        TestsView(mode: .full, ollama: ollama, queueManager: rusToPromptQueueManager)
                             .navigationTitle(route.title)
                     case .promptCompiler:
                         PromptCompilerView(viewModel: promptCompilerViewModel, somaViewModel: viewModel, ollama: ollama)
@@ -53,14 +47,8 @@ struct ContentView: View {
                     case .localAI:
                         LocalAISettingsView(viewModel: viewModel, ollama: ollama)
                             .navigationTitle(route.title)
-                    case .projectHealth:
-                        ProjectHealthView(viewModel: viewModel, ollama: ollama)
-                            .navigationTitle(route.title)
                     case .logs:
                         LogsView(viewModel: viewModel, ollama: ollama)
-                            .navigationTitle(route.title)
-                    case .externalTools:
-                        AdvancedToolsView(somaViewModel: viewModel, scoutViewModel: scoutViewModel, ollama: ollama, selectedRoute: $selectedRoute)
                             .navigationTitle(route.title)
                     case .tokenCalculator:
                         TokenCalculatorView(viewModel: viewModel)
@@ -68,15 +56,13 @@ struct ContentView: View {
                     case .systemStatus:
                         SystemStatusView(viewModel: viewModel, ollama: ollama)
                             .navigationTitle(route.title)
-                    #if DEBUG
-                    case .redesignMock:
-                        RedesignMockView()
+                    case .extensions:
+                        ToolVersionsView()
                             .navigationTitle(route.title)
-                    #endif
                     }
                 } else {
                     Spacer()
-                    Text("Select Prepare Packet to start")
+                    Text("Select Rus to Prompt to start")
                         .foregroundColor(.secondary)
                     Spacer()
                 }
@@ -85,7 +71,6 @@ struct ContentView: View {
         .frame(minWidth: 1120, minHeight: 680)
         .task {
             viewModel.hydrateProjectRootsIfNeeded()
-            viewModel.hydratePacketHistoryIfNeeded()
         }
     }
 

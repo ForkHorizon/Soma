@@ -19,21 +19,7 @@ struct GlobalSettingsBar: View {
                     icon: setupTone == .good ? "checkmark.seal.fill" : "exclamationmark.triangle.fill",
                     tone: setupTone
                 )
-                comfortStatusPill(
-                    title: "Last Packet",
-                    value: viewModel.latestPacketFeedbackLabel(),
-                    detail: "Mark each packet useful or not useful after a run.",
-                    icon: "tray.full",
-                    tone: viewModel.latestPacketFeedbackTone()
-                )
                 Spacer(minLength: 12)
-                Button {
-                    selectedRoute = .diagnostics
-                } label: {
-                    Label("Diagnostics", systemImage: "stethoscope")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
