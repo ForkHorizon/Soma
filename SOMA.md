@@ -2,27 +2,28 @@
 
 ## Purpose
 
-Soma is a local-first evidence compiler for coding agents. The daily product loop is intentionally simple:
+Soma is a personal local-first workbench for testing language models, plus a per-project tool/MCP control panel. The daily product loop:
 
-1. Choose this project.
-2. Describe one concrete coding task.
-3. Prepare a compact evidence packet.
-4. Paste that packet into Codex, Claude, Gemini, Hermes, or another coding model.
-5. For Codex, copy `Use with Codex` and keep follow-up context inside Soma tools.
-6. Mark the packet useful or not useful.
+1. Speak or type a task in Russian (Voice to Text / Rus to Prompt).
+2. Soma normalizes it to a clean English prompt.
+3. Run it across local (Ollama) and paid (DeepSeek, Gemini, OpenAI) models — Queue / Tests.
+4. Compare output, latency, and token cost — Model Stats / Token Calculator.
+5. Manage the tools wired into each project (Graphify, Serena, Ponytail, MCP configs) — Extensions / System Status.
 
 The near-term goal is comfort and daily use, not more features.
 
+Legacy: the evidence-compiler / packet pipeline (`scout_pipeline_module/`, `gateway/`, `soma_mcp_server.py`) is retained only as the backend for the System Status MCP control panel. The Prepare-Packet, Packets, Projects, Project Health, Diagnostics, and Scout screens were removed in the model-bench cleanup (branch `cleanup/model-bench-pivot`).
+
 ## Important Paths
 
-- `Soma/Views/RelayView.swift`: primary Prepare Packet workflow.
-- `Soma/Views/ProjectSetupView.swift`: simple project readiness screen.
-- `Soma/Views/PacketsView.swift`: real packet history and usefulness feedback.
-- `Soma/Views/DiagnosticsView.swift`: advanced screens moved out of the main workflow.
-- `Soma/ViewModels/RelayViewModel.swift`: packet preparation flow.
-- `Soma/ViewModels/SomaViewModel+Packets.swift`: local packet history.
-- `Soma/scout_pipeline_module/`: deterministic evidence selection and packet construction.
-- `Soma/gateway/`: MCP gateway and client config integration.
+- `Soma/Views/RusToPromptView*.swift`: Russian → English prompt workflow.
+- `Soma/Views/TestsView*.swift`: run prompt cases across models; `.queue` and `.stats` modes back the Queue and Model Stats routes.
+- `Soma/Views/VoiceToTextView.swift`: local speech-to-text (Mega-ASR).
+- `Soma/Views/SystemStatusView.swift`: MCP-config control panel (install/verify Codex/Gemini/Hermes, start server, smoke, benchmark reports).
+- `Soma/Views/ToolVersionsView.swift`: Extensions panel — check/update globally installed tools (Graphify, Ponytail, Serena).
+- `Soma/ViewModels/RusToPromptQueueManager*.swift`: prompt run queue and model execution.
+- `Soma/soma_language_optimizer*.py`, `Soma/soma_asr_server.py`: prompt normalization + ASR backend.
+- `Soma/scout_pipeline_module/`, `Soma/gateway/`, `Soma/soma_mcp_server.py`: legacy evidence-compiler / MCP gateway — retained only as the System Status backend.
 
 ## Commands
 
@@ -51,14 +52,12 @@ Check gateway status:
 
 - Do not add new first-layer features until Soma has been used on at least five real tasks.
 - Before the next feature wave, prove three real tasks with useful packets and at least one live Soma follow-up when context is missing.
-- Keep `Prepare Packet` as the primary route.
-- Keep MCP, Graphify, Nexus, Local AI, raw logs, benchmarks, and token utilities in Diagnostics.
+- Keep `Rus to Prompt` and `Tests` as the primary routes.
+- Keep advanced tooling (MCP config, Graphify/Serena, Local AI, logs, benchmarks, token utilities) under the Advanced section / System Status, not the main flow.
 - Treat optional systems as optional, not as scary failures.
 - Keep Graphify managed by Soma under `~/.soma/graphs`; use it as project-only ranking hints, not raw packet context. Unity graphs scan `Assets/` only.
 - Prefer changes that make the app calmer, clearer, and faster to use.
 
 ## Acceptance Notes
 
-A useful packet should make the next coding-agent prompt easier, smaller, or more grounded. If a packet misses obvious files or feels like extra work, mark it `Not useful` and improve the selection or UI before adding features.
-
-The `Packets` screen is the product truth source. It should show selected files, useful/not useful status, missed files, why a packet failed, final outcome, and whether Codex used live Soma tools after the packet.
+A useful run makes it clear which model gives the best output for a prompt at acceptable latency and token cost. `Model Stats` and `Tests` are the product truth source: they show per-model results across translation, improver, and confidence stages so you can compare and pick.
