@@ -1,3 +1,6 @@
+# sourcekit-lsp build server config (machine-specific DerivedData path)
+buildServer.json
+
 # Prerequisites
 *.d
 

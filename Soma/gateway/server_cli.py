@@ -20,6 +20,7 @@ from gateway.client_config import (
 )
 from gateway.jsonrpc import run_daemon
 from gateway.status import build_status_payload, graphify
+from extension_manager import scan_ai_clients, sync_ai_clients, tool_status, update_tool, verify_ai_clients
 from soma_project_setup import analyze_project_ai_setup, harden_project_ai_setup, rollback_project_ai_setup
 from scout_pipeline import normalize_path
 
@@ -57,6 +58,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--status-json", action="store_true", help="Print compact Soma/Nexus/Graphify status and exit")
     parser.add_argument("--graph-storage-json", action="store_true", help="Print managed Graphify storage info and exit")
     parser.add_argument("--check-graphify-tool-json", action="store_true", help="Print installed/latest Graphify tool version info")
+    parser.add_argument("--tool-status-json", nargs="?", const="all", default=None, help="Print managed extension tool version info")
+    parser.add_argument("--update-tool", choices=["graphify", "ponytail", "serena"], default=None, help="Update one managed extension tool and verify clients")
+    parser.add_argument("--scan-ai-clients-json", action="store_true", help="Scan known project/client AI config locations")
+    parser.add_argument("--verify-ai-clients-json", action="store_true", help="Verify known AI client configs")
+    parser.add_argument("--sync-ai-clients", action="store_true", help="Install/repair known AI client configs for Soma")
+    parser.add_argument("--recent-project-root", action="append", default=[], help="Additional project root to scan/verify")
     parser.add_argument("--migrate-graph", action="store_true", help="Copy a legacy graphify-out into Soma managed graph storage")
     parser.add_argument("--refresh-managed-graph", action="store_true", help="Refresh the selected project's managed Graphify graph without project-root output")
     parser.add_argument("--refresh-all-managed-graphs", action="store_true", help="Refresh all real indexed managed Graphify graphs")
@@ -108,6 +115,21 @@ def _handle_status_commands(args: argparse.Namespace, project_root: str | None) 
         return True
     if args.check_graphify_tool_json:
         _emit(graphify.storage.tool_version_status(check_latest=True))
+        return True
+    if args.tool_status_json:
+        _emit(tool_status(args.tool_status_json))
+        return True
+    if args.update_tool:
+        _emit(update_tool(args.update_tool, project_root, args.recent_project_root))
+        return True
+    if args.scan_ai_clients_json:
+        _emit(scan_ai_clients(project_root, args.recent_project_root))
+        return True
+    if args.verify_ai_clients_json:
+        _emit(verify_ai_clients(project_root, args.recent_project_root))
+        return True
+    if args.sync_ai_clients:
+        _emit(sync_ai_clients(project_root, args.recent_project_root))
         return True
     return False
 

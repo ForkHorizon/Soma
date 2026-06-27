@@ -18,11 +18,12 @@ Legacy: the evidence-compiler / packet pipeline (`scout_pipeline_module/`, `gate
 
 - `Soma/Views/RusToPromptView*.swift`: Russian → English prompt workflow.
 - `Soma/Views/TestsView*.swift`: run prompt cases across models; `.queue` and `.stats` modes back the Queue and Model Stats routes.
-- `Soma/Views/VoiceToTextView.swift`: local speech-to-text (Mega-ASR).
+- `Soma/Views/VoiceToTextView.swift`: local speech-to-text (engine picker: Whisper large-v3 / GigaAM v2).
 - `Soma/Views/SystemStatusView.swift`: MCP-config control panel (install/verify Codex/Gemini/Hermes, start server, smoke, benchmark reports).
 - `Soma/Views/ToolVersionsView.swift`: Extensions panel — check/update globally installed tools (Graphify, Ponytail, Serena).
 - `Soma/ViewModels/RusToPromptQueueManager*.swift`: prompt run queue and model execution.
-- `Soma/soma_language_optimizer*.py`, `Soma/soma_asr_server.py`: prompt normalization + ASR backend.
+- `Soma/soma_language_optimizer*.py`: prompt normalization backend.
+- ASR backend lives outside the repo at `AI_Test_PlayGround/asr-engines/asr_server.py` (warm multi-engine server; per-engine venvs `venv-whisper` / `venv-gigaam`; weights in sibling `asr-models/`). Launched by `ASRManager.swift`.
 - `Soma/scout_pipeline_module/`, `Soma/gateway/`, `Soma/soma_mcp_server.py`: legacy evidence-compiler / MCP gateway — retained only as the System Status backend.
 
 ## Commands

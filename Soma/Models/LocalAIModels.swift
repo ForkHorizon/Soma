@@ -28,7 +28,7 @@ enum LocalModelRole: String, CaseIterable, Identifiable, Codable {
 
     var defaultModel: String {
         switch self {
-        case .scout, .ranker: return "gemma4:e4b"
+        case .scout, .ranker: return "gemma4:e4b-mlx"
         case .analyst: return "qwen3-coder:30b-a3b-q4_K_M"
         case .translator: return ""
         }

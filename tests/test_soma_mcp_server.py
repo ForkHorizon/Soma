@@ -29,6 +29,7 @@ import soma_language_optimizer
 import soma_logger
 import soma_audit
 import soma_project_setup
+import extension_manager
 
 
 class SomaMCPServerTests(unittest.TestCase):
@@ -333,6 +334,97 @@ class SomaMCPServerTests(unittest.TestCase):
         self.assertFalse(payload["project_matches"])
         self.assertIn("direct_nexus_exposed", payload["issues"])
         self.assertIn("project_root_mismatch", payload["issues"])
+
+    def test_extension_manager_repairs_antigravity_json_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            config = home / ".gemini/antigravity-ide/mcp_config.json"
+            config.parent.mkdir(parents=True)
+            config.write_text(
+                json.dumps(
+                    {
+                        "mcpServers": {
+                            "nexus-unity": {"command": "python3", "args": ["nexus_unity_bridge.py"]},
+                            "soma": {
+                                "command": "/usr/bin/python3",
+                                "args": ["/tmp/soma_mcp_server.py", "--project-root", "/tmp/old"],
+                                "env": {"SOMA_PROJECT_ROOT": "/tmp/old"},
+                            },
+                        }
+                    }
+                )
+            )
+
+            before = extension_manager.verify_ai_clients("/tmp/project", [], home=home)
+            synced = extension_manager.sync_ai_clients("/tmp/project", [], home=home)
+            updated = json.loads(config.read_text())
+
+        self.assertEqual(before["status"], "degraded")
+        self.assertNotIn("nexus-unity", updated["mcpServers"])
+        self.assertIn("soma", updated["mcpServers"])
+        self.assertIn("antigravity", {item["client"] for item in synced["clients"]})
+
+    def test_extension_manager_degrades_when_project_root_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "settings.json"
+            config.write_text(json.dumps({"mcpServers": {"soma": {"command": "/usr/bin/python3", "args": ["/tmp/soma_mcp_server.py"]}}}))
+
+            payload = extension_manager._verify_json_config(config, "/tmp/project")
+
+        self.assertEqual(payload["status"], "degraded")
+        self.assertIn("project_root_missing", payload["issues"])
+
+    def test_extension_manager_update_does_not_sync_after_failed_update(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            before = {"tool_id": "graphify", "installed_version": "1.0.0", "latest_version": "1.0.1"}
+            failed = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="failed")
+
+            with patch.object(extension_manager, "_tool_status_one", side_effect=[before, before]), patch.object(extension_manager, "_run_shell", return_value=failed), patch.object(extension_manager, "sync_ai_clients") as sync:
+                payload = extension_manager.update_tool("graphify", "/tmp/project", [], home=home)
+
+        sync.assert_not_called()
+        self.assertEqual(payload["status"], "degraded")
+        self.assertIn("update_command_failed", payload["issues"])
+        self.assertNotIn("smoke_failed", payload["issues"])
+        self.assertEqual(payload["clients"], [])
+
+    def test_extension_manager_backup_names_do_not_collide(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.json"
+            config.write_text("{}")
+            first = extension_manager._backup(config)
+            first.write_text("{}")
+
+            second = extension_manager._backup(config)
+
+        self.assertNotEqual(first, second)
+
+    def test_extension_manager_disables_antigravity_direct_tool_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            direct = home / ".gemini/antigravity/mcp/nexus-unity"
+            direct.mkdir(parents=True)
+            (direct / "unity_wait.json").write_text("{}")
+            (home / ".gemini/antigravity/mcp/soma").mkdir()
+
+            synced = extension_manager.sync_ai_clients(None, [], home=home)
+
+            tool_statuses = [item for item in synced["clients"] if item["client"] == "antigravity" and "antigravity/mcp" in item["config_path"]]
+            self.assertEqual(tool_statuses[0]["status"], "ok")
+            self.assertFalse(direct.exists())
+            self.assertTrue(any(path.name.startswith("nexus-unity.disabled-soma-backup-") for path in direct.parent.iterdir()))
+
+    def test_extension_manager_scans_project_markers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            project = home / "Daliys/App"
+            project.mkdir(parents=True)
+            (project / ".mcp.json").write_text("{}")
+
+            report = extension_manager.scan_ai_clients(None, [], home=home)
+
+        self.assertIn(str(project.resolve()), {item["project_root"] for item in report["projects"]})
 
     def test_install_hermes_config_preserves_settings_and_removes_direct_nexus(self):
         with tempfile.TemporaryDirectory() as tmp:

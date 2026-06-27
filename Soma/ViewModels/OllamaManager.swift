@@ -172,10 +172,16 @@ final class OllamaManager: ObservableObject {
             }
         }
     }
-    func startModel() { sendKeepAlive(-1, model: modelName) }
+    /// Idle keep-loaded duration shared with the Voice-to-Text ASR server.
+    /// 0 means unload immediately; default 10 min mirrors Ollama's old behavior.
+    private var keepAliveSeconds: Int {
+        let minutes = UserDefaults.standard.object(forKey: "modelKeepLoadedMinutes") as? Int ?? 10
+        return minutes * 60
+    }
+    func startModel() { sendKeepAlive(keepAliveSeconds, model: modelName) }
     func stopModel() { sendKeepAlive(0, model: modelName) }
     func loadModel(_ model: String) {
-        sendKeepAlive(-1, model: model)
+        sendKeepAlive(keepAliveSeconds, model: model)
     }
     func unloadModel(_ model: String) {
         sendKeepAlive(0, model: model)

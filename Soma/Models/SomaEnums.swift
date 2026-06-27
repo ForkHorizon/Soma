@@ -73,7 +73,7 @@ enum AppRoute: String, Hashable, CaseIterable {
         case .rusToPrompt:
             return "Translate Russian prompts to English and polish them without project context."
         case .voiceToText:
-            return "Record speech and transcribe it locally with Mega-ASR."
+            return "Record speech and transcribe it locally (Whisper / GigaAM)."
         case .queue:
             return "Real prompt queue: enqueue, monitor, and run benchmark jobs."
         case .modelStats:

@@ -64,25 +64,46 @@ def run_gemini_json(
     gemini_bin: str,
     temp_prefix: str,
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    # REST API, not the gemini CLI: the CLI's Google One / unpaid tier is being shut down
+    # (June 2026) and it hangs on interactive auth, timing out every call. The API key (AI
+    # Studio) is a separate product and fails fast instead of hanging. gemini_bin is unused.
     started = time.monotonic()
+    api_key = (os.environ.get("SOMA_GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or "").strip()
+    if not api_key:
+        return None, _failed_meta("gemini", model, "Gemini API key missing. Set it in Soma settings (SOMA_GEMINI_API_KEY) — an AI Studio key, not the AI Pro/CLI login.", started)
     full_prompt = prompt + "\n\nReturn only one valid JSON object matching this JSON Schema. Do not wrap it in markdown.\n" + json.dumps(schema)
-    cmd = [gemini_bin, "--model", model, "--prompt", "", "--output-format", "json", "--skip-trust"]
-    env = _clean_env()
-    env["TERM"] = env.get("TERM") if env.get("TERM") not in {None, "", "dumb"} else "xterm-256color"
-    with tempfile.TemporaryDirectory(prefix=temp_prefix) as tmp:
-        completed = _run_stage_process(cmd, full_prompt, timeout, env=env, cwd=tmp)
-    if isinstance(completed, BaseException):
-        return None, _failed_meta("gemini", model, str(completed), started)
-    wrapper = _extract_json_object(completed.stdout or "")
-    response_text = _gemini_response_text(wrapper, completed.stdout or "")
-    if completed.returncode != 0:
-        return None, _failed_meta("gemini", model, completed.stderr or completed.stdout, started)
+    body = {
+        "contents": [{"role": "user", "parts": [{"text": full_prompt}]}],
+        "generationConfig": {"temperature": 0, "responseMimeType": "application/json"},
+    }
+    request = urllib.request.Request(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            wrapper = json.loads(response.read().decode("utf-8", errors="replace"))
+    except Exception as exc:  # HTTPError, URLError, timeout, JSON decode
+        detail = exc.read().decode("utf-8", errors="replace") if hasattr(exc, "read") else ""
+        code = getattr(exc, "code", None)
+        message = f"HTTP {code}: {detail[:500]}" if code else (detail[:500] or str(exc))
+        return None, _failed_meta("gemini", model, message, started)
+    response_text = _gemini_rest_text(wrapper)
     decoded = _extract_json_object(response_text)
     if not isinstance(decoded, dict):
         meta = _failed_meta("gemini", model, "Gemini returned invalid JSON.", started)
-        meta["raw"] = _clip_text(response_text or completed.stdout or "", 2000)
+        meta["raw"] = _clip_text(response_text or json.dumps(wrapper)[:2000], 2000)
         return None, meta
-    return decoded, {"provider": "gemini", "model": model, "status": "ok", "seconds": time.monotonic() - started, "stats": wrapper.get("stats") if isinstance(wrapper, dict) else None}
+    return decoded, {"provider": "gemini", "model": model, "status": "ok", "seconds": time.monotonic() - started, "stats": wrapper.get("usageMetadata") if isinstance(wrapper, dict) else None}
+
+
+def _gemini_rest_text(wrapper: dict[str, Any] | None) -> str:
+    try:
+        parts = wrapper["candidates"][0]["content"]["parts"]  # type: ignore[index]
+    except (KeyError, IndexError, TypeError):
+        return ""
+    return "".join(part.get("text", "") for part in parts if isinstance(part, dict))
 
 
 def run_local_ollama_json(
@@ -93,6 +114,8 @@ def run_local_ollama_json(
     timeout: float,
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     started = time.monotonic()
+    if os.environ.get("SOMA_OLLAMA_WEDGED") == "1" and "-mlx" not in (model or "").lower():
+        return None, _failed_meta("local", model, "Ollama GGUF backend unavailable (failed preflight); skipped.", started)
     payload = _ollama_payload(prompt, schema, model)
     request = urllib.request.Request("http://127.0.0.1:11434/api/chat", data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"})
     try:
@@ -300,4 +323,4 @@ def _gemini_response_text(wrapper: dict[str, Any] | None, stdout: str) -> str:
 
 def _ollama_payload(prompt: str, schema: dict[str, Any], model: str) -> dict[str, Any]:
     full_prompt = prompt + "\n\nReturn only one valid JSON object matching this JSON Schema.\n" + json.dumps(schema)
-    return {"model": model, "think": False, "stream": False, "messages": [{"role": "system", "content": "You are a strict JSON-only quality referee."}, {"role": "user", "content": full_prompt}], "format": schema, "options": {"temperature": 0.0, "num_predict": int(os.environ.get("SOMA_LOCAL_CONFIDENCE_NUM_PREDICT", "4096"))}}
+    return {"model": model, "think": False, "stream": False, "keep_alive": os.environ.get("SOMA_OLLAMA_KEEP_ALIVE", "10m"), "messages": [{"role": "system", "content": "You are a strict JSON-only quality referee."}, {"role": "user", "content": full_prompt}], "format": schema, "options": {"temperature": 0.0, "num_predict": int(os.environ.get("SOMA_LOCAL_CONFIDENCE_NUM_PREDICT", "4096")), "seed": int(os.environ.get("SOMA_LOCAL_SEED", "0"))}}

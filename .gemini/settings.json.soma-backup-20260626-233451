@@ -16,19 +16,5 @@
         ]
       }
     ]
-  },
-  "mcpServers": {
-    "soma": {
-      "args": [
-        "/Users/daliys/Daliys/Swift/Soma/Soma/soma_mcp_server.py",
-        "--project-root",
-        "/Users/daliys/Daliys/Swift/Soma"
-      ],
-      "command": "/opt/homebrew/opt/python@3.14/bin/python3.14",
-      "env": {
-        "SOMA_PROJECT_ROOT": "/Users/daliys/Daliys/Swift/Soma"
-      },
-      "trust": true
-    }
   }
 }

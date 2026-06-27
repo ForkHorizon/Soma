@@ -174,7 +174,6 @@ def score_hybrid_confidence_batch(items: list[ConfidenceItem], **kwargs: Any) ->
     final.update(_fallback_confidences(fallback_items, local_by_item, reasons, aggregate_model, kwargs))
     return final
 
-
 def normalize_confidence_payload(decoded: dict[str, Any], *, provider: str, model: str, stage: str, seconds: float, reasoning_effort: str | None = None, batch_size: int | None = None, batch_seconds: float | None = None, stats: Any | None = None) -> dict[str, Any]:
     raw_confidence = _normalized_confidence(decoded.get("confidence"))
     raw_scores = decoded.get("scores") if isinstance(decoded.get("scores"), dict) else {}

@@ -20,6 +20,7 @@ from rus_to_prompt_stress_models import (
     split_model_values,
 )
 from rus_to_prompt_stress_results import apply_run_health, summarize
+from rus_to_prompt_stress_runner_confidence import preflight_confidence_providers, preflight_local_backend
 from rus_to_prompt_stress_runner_modes import run_cases
 from rus_to_prompt_stress_runner_resume import load_resume_results
 from rus_to_prompt_stress_runner_summary import summary_metadata
@@ -44,6 +45,8 @@ def main() -> int:
     results_path = out_dir / "results.jsonl"
     existing_results = load_resume_results(results_path, args.benchmark_mode) if args.resume_existing else []
     print(progress_event_line(event="run_start", stage="queued", total_operations=total_operations, status="running"), flush=True)
+    preflight_local_backend(translators, analyzers)  # probe Ollama; if wedged, non-mlx local calls fail fast
+    preflight_confidence_providers(args)             # probe online judges up front; dead ones are skipped per-item
     results = run_cases(cases, translators, analyzers, args, results_path, total_operations, existing_results=existing_results)
     summary = summarize(results, started_at, datetime.now(timezone.utc).isoformat())
     summary.update(summary_metadata(args, translators, analyzers, total_operations, results))
@@ -93,6 +96,9 @@ def _add_confidence_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--confidence-workers", type=int, default=1)
     parser.add_argument("--confidence-batch-size", type=int, default=1)
     parser.add_argument("--translation-confidence-threshold", type=float, default=0.75)
+    # Bound local-judge calls so a slow heavy model fails fast and escalates to the online
+    # referee, instead of inheriting the 240s stage timeout twice per item.
+    parser.add_argument("--local-confidence-timeout", type=float, default=float(os.environ.get("SOMA_LOCAL_CONFIDENCE_TIMEOUT", "60")))
     parser.add_argument("--local-confidence-models", nargs="+")
     parser.add_argument("--hybrid-confidence-online-model", "--hybrid-confidence-gemini-model", dest="hybrid_confidence_online_model", default=os.environ.get("SOMA_RUS_TO_PROMPT_HYBRID_ONLINE_MODEL") or os.environ.get("SOMA_RUS_TO_PROMPT_HYBRID_GEMINI_MODEL", "gemini-3-flash-preview"))
     parser.add_argument("--hybrid-confidence-fallback-referee", default="gemini", choices=["gemini", "codex", "deepseek", "off"])
@@ -120,7 +126,7 @@ class _Tee:
         for stream in self.streams:
             try:
                 stream.write(data)
-            except ValueError:
+            except (ValueError, OSError):  # ponytail: OSError swallows BrokenPipeError when the app's pipe end closes; the run keeps writing to progress.log
                 pass
         return len(data)
 
@@ -128,7 +134,7 @@ class _Tee:
         for stream in self.streams:
             try:
                 stream.flush()
-            except ValueError:
+            except (ValueError, OSError):
                 pass
 
 
