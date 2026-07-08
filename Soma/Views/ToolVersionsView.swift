@@ -89,6 +89,8 @@ struct ToolVersionsView: View {
                     .disabled(busy)
                 Button("Sync Clients") { Task { await verifyClients(sync: true) } }
                     .disabled(busy)
+                Button("Setup Project Memory") { Task { await setupProjectMemory() } }
+                    .disabled(busy || viewModel.selectedProjectRoot.isEmpty)
                 if busy {
                     ProgressView().controlSize(.small)
                 }
@@ -203,6 +205,23 @@ struct ToolVersionsView: View {
             }
         } catch {
             await MainActor.run { status = "Client verification failed: \(error.localizedDescription)" }
+        }
+    }
+
+    private func setupProjectMemory() async {
+        busy = true
+        defer { busy = false }
+        do {
+            let data = try await viewModel.runSomaHelper(args: projectArgs(["--setup-memory-tools"]))
+            let decoded = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            await refresh()
+            await MainActor.run {
+                let toolIssues = (decoded?["issues"] as? [String]) ?? []
+                let restart = (decoded?["restart_needed"] as? [String]) ?? []
+                status = "Project memory \(decoded?["status"] as? String ?? "unknown"): \(toolIssues.count) issues, restart \(restart.joined(separator: ", "))."
+            }
+        } catch {
+            await MainActor.run { status = "Project memory setup failed: \(error.localizedDescription)" }
         }
     }
 

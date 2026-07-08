@@ -1,0 +1,29 @@
+{
+  "mcpServers": {
+    "serena": {
+      "command": "/Users/daliys/.local/bin/serena",
+      "args": [
+        "start-mcp-server",
+        "--context",
+        "ide-assistant",
+        "--project",
+        "/Users/daliys/Daliys/Swift/Soma",
+        "--enable-web-dashboard",
+        "false",
+        "--open-web-dashboard",
+        "false"
+      ]
+    },
+    "soma": {
+      "args": [
+        "/Users/daliys/Daliys/Swift/Soma/Soma/soma_mcp_server.py",
+        "--project-root",
+        "/Users/daliys/Daliys/Swift/Soma"
+      ],
+      "command": "/opt/homebrew/opt/python@3.14/bin/python3.14",
+      "env": {
+        "SOMA_PROJECT_ROOT": "/Users/daliys/Daliys/Swift/Soma"
+      }
+    }
+  }
+}

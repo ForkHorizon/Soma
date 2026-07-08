@@ -6,7 +6,12 @@ extension SomaViewModel {
 func selectProjectRoot(_ path: String) {
         guard let normalized = validatedDirectoryPath(path) else { return }
         selectedProjectRoot = normalized
-        recentProjectRoots = deduplicatedRoots([normalized] + recentProjectRoots).prefix(10).map(\.self)
+        var roots = deduplicatedRoots(recentProjectRoots)
+        if !roots.contains(normalized) {
+            roots.append(normalized)
+            if roots.count > 10 { roots.removeFirst(roots.count - 10) }
+        }
+        recentProjectRoots = roots
         recordProjectOpen(normalized)
         persistProjectRoots()
         refreshSomaStatus()
@@ -33,7 +38,12 @@ func hydrateProjectRootsIfNeeded() {
             selectedProjectRoot = restored
         }
         if !selectedProjectRoot.isEmpty {
-            recentProjectRoots = deduplicatedRoots([selectedProjectRoot] + recentProjectRoots).prefix(10).map(\.self)
+            var roots = deduplicatedRoots(recentProjectRoots)
+            if !roots.contains(selectedProjectRoot) {
+                roots.append(selectedProjectRoot)
+                if roots.count > 10 { roots.removeFirst(roots.count - 10) }
+            }
+            recentProjectRoots = roots
             refreshSomaStatus()
         }
         persistProjectRoots()

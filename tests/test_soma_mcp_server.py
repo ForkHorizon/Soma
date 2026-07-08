@@ -426,6 +426,117 @@ class SomaMCPServerTests(unittest.TestCase):
 
         self.assertIn(str(project.resolve()), {item["project_root"] for item in report["projects"]})
 
+    def test_extension_manager_sets_up_memory_tools_for_project(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            root = Path(tmp) / "project"
+            home.mkdir()
+            root.mkdir()
+            ok = subprocess.CompletedProcess(args=[], returncode=0, stdout="ok", stderr="")
+
+            with patch.object(extension_manager, "_installed_version", return_value="1.0.0"), patch.object(
+                extension_manager, "_latest_version", return_value="1.0.0"
+            ), patch.object(
+                extension_manager, "_codebase_memory_bin", return_value="/bin/echo"
+            ), patch.object(
+                extension_manager, "_projectmem_cli", return_value="/bin/echo"
+            ), patch.object(
+                extension_manager, "_run", return_value=ok
+            ):
+                report = extension_manager.setup_memory_tools(str(root), home=home)
+
+            codex_config = home / ".codex/config.toml"
+            gemini_config = home / ".gemini/settings.json"
+            agents = root / "AGENTS.md"
+
+            self.assertEqual(report["status"], "ok")
+            self.assertIn("mcp_servers.projectmem", codex_config.read_text())
+            self.assertIn("projectmem", json.loads(gemini_config.read_text())["mcpServers"])
+            agents_text = agents.read_text()
+            self.assertIn("Default mode: light", agents_text)
+            self.assertIn("Codebase-Memory:", agents_text)
+            self.assertIn("projectmem:", agents_text)
+
+    def test_extension_manager_sets_up_single_project_tool(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            root = Path(tmp) / "project"
+            codebase_root = Path(tmp) / "codebase-project"
+            home.mkdir()
+            root.mkdir()
+            codebase_root.mkdir()
+            ok = subprocess.CompletedProcess(args=[], returncode=0, stdout="ok", stderr="")
+
+            with patch.object(extension_manager, "_installed_version", return_value="1.0.0"), patch.object(
+                extension_manager, "_projectmem_cli", return_value="/bin/echo"
+            ), patch.object(
+                extension_manager, "_codebase_memory_bin", return_value="/bin/echo"
+            ), patch.object(extension_manager, "_run", return_value=ok):
+                report = extension_manager.setup_project_tool("projectmem", str(root), home=home)
+                codebase_report = extension_manager.setup_project_tool("codebase-memory", str(codebase_root), home=home)
+                unsupported = extension_manager.setup_project_tool("serena", str(root), home=home)
+
+            self.assertEqual(report["status"], "ok")
+            self.assertEqual(report["tool_id"], "projectmem")
+            self.assertIn("mcp_servers.projectmem", (home / ".codex/config.toml").read_text())
+            projectmem_agents = (root / "AGENTS.md").read_text()
+            self.assertIn("projectmem:", projectmem_agents)
+            self.assertNotIn("Codebase-Memory:", projectmem_agents)
+            self.assertEqual(codebase_report["status"], "ok")
+            codebase_agents = (codebase_root / "AGENTS.md").read_text()
+            self.assertIn("Codebase-Memory:", codebase_agents)
+            self.assertNotIn("projectmem:", codebase_agents)
+            self.assertEqual(unsupported["status"], "error")
+            self.assertIn("unsupported_project_tool", unsupported["issues"])
+
+    def test_project_overview_reports_dirty_git_repo(self):
+        tmp, root = self.make_repo()
+        with tmp, tempfile.TemporaryDirectory() as home_tmp:
+            home = Path(home_tmp)
+            other = home / "Daliys/Other"
+            other.mkdir(parents=True)
+            (other / "AGENTS.md").write_text("Other project\n")
+            (home / ".gemini").mkdir()
+            (home / ".gemini/settings.json").write_text(json.dumps({"mcpServers": {"soma": {"command": sys.executable, "args": ["/tmp/soma_mcp_server.py", "--project-root", str(other)], "env": {"SOMA_PROJECT_ROOT": str(other)}}}}))
+            (root / ".gemini").mkdir()
+            (root / ".gemini/settings.json").write_text(json.dumps({"mcpServers": {"soma": {"command": sys.executable, "args": ["/tmp/soma_mcp_server.py", "--project-root", str(root)], "env": {"SOMA_PROJECT_ROOT": str(root)}}}}))
+            subprocess.run(["git", "add", ".gemini/settings.json"], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-m", "config"], cwd=root, check=True, capture_output=True)
+            (root / "scratch.txt").write_text("new\n")
+
+            with patch.object(extension_manager, "_installed_version", return_value="1.0.0"), patch.object(
+                extension_manager, "_latest_version", return_value="1.0.0"
+            ), patch.object(extension_manager, "_codebase_memory_indexed", return_value=True):
+                payload = extension_manager.project_overview(str(root), [], home=home, graph_status={"project_graph_available": True, "stale": False})
+
+        self.assertEqual(payload["git"]["is_repo"], True)
+        self.assertEqual(payload["git"]["changed_count"], 2)
+        self.assertEqual(payload["git"]["untracked_count"], 1)
+        self.assertEqual(payload["memory"]["codebase_memory_indexed"], True)
+        self.assertEqual([item["id"] for item in payload["memory"]["installed_tools"]], ["codebase-memory", "graphify"])
+        self.assertNotIn("tools", payload)
+        self.assertNotIn("known_project_alerts", payload)
+        self.assertEqual([item["project_root"] for item in payload["clients"]], [scout_pipeline.normalize_path(str(root))])
+
+    def test_project_overview_handles_non_git_and_missing_roots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            root = Path(tmp) / "project"
+            missing = Path(tmp) / "missing"
+            home.mkdir()
+            root.mkdir()
+
+            with patch.object(extension_manager, "_installed_version", return_value=None), patch.object(extension_manager, "_latest_version", return_value=None):
+                non_git = extension_manager.project_overview(str(root), [], home=home)
+                missing_payload = extension_manager.project_overview(str(missing), [], home=home)
+
+        self.assertFalse(non_git["git"]["is_repo"])
+        self.assertEqual(non_git["memory"]["status"], "none")
+        self.assertEqual(non_git["memory"]["installed_tools"], [])
+        self.assertEqual(non_git["memory"]["issues"], [])
+        self.assertFalse(missing_payload["git"]["is_repo"])
+        self.assertIn("missing_project_root", missing_payload["issues"])
+
     def test_install_hermes_config_preserves_settings_and_removes_direct_nexus(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = Path(tmp) / "config.yaml"

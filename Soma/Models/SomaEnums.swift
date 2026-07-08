@@ -49,6 +49,7 @@ enum AppRoute: String, Hashable, CaseIterable {
     case tokenCalculator = "Token Calculator"
     case systemStatus = "System Status"
     case extensions = "Extensions"
+    case projectOverview = "Project"
 
     var title: String { rawValue }
 
@@ -65,6 +66,8 @@ enum AppRoute: String, Hashable, CaseIterable {
             return "History"
         case .promptCompiler, .localAI, .tokenCalculator, .systemStatus, .extensions:
             return "Advanced"
+        case .projectOverview:
+            return "Main"
         }
     }
 
@@ -92,6 +95,8 @@ enum AppRoute: String, Hashable, CaseIterable {
             return "Runtime and model diagnostics."
         case .extensions:
             return "Check and update globally-installed tools (Graphify, Ponytail, Serena)."
+        case .projectOverview:
+            return "Monitor the selected project's Git, memory, graph, and client setup."
         }
     }
 
@@ -119,6 +124,8 @@ enum AppRoute: String, Hashable, CaseIterable {
             return "stethoscope"
         case .extensions:
             return "puzzlepiece.extension"
+        case .projectOverview:
+            return "folder.badge.gearshape"
         }
     }
 }

@@ -3,10 +3,12 @@ import SwiftUI
 struct VoiceToTextView: View {
     let somaViewModel: SomaViewModel
     @ObservedObject var ollama: OllamaManager
-    @StateObject private var asr = ASRManager()
-    @StateObject private var prompter = RusToPromptViewModel()
+    @ObservedObject var asr: ASRManager
+    @ObservedObject var prompter: RusToPromptViewModel
+    @ObservedObject var globalVoice: GlobalVoiceController
     @AppStorage("modelKeepLoadedMinutes") private var keepLoadedMinutes = 10
     @AppStorage("voiceMode") private var voiceMode = "prompt"   // text | translate | prompt
+    @AppStorage("globalVoicePasteEnabled") private var globalVoicePasteEnabled = false
     @State private var showSettings = false
     @State private var expandedRecordingURL: URL?
     @State private var expandedTranscript = ""
@@ -38,6 +40,7 @@ struct VoiceToTextView: View {
         .onAppear { asr.refreshRecordings() }
         // Fire the chosen action once a recording is transcribed.
         .onChange(of: asr.completedTranscriptionID) { _, _ in
+            guard asr.lastTranscriptionSource == .inApp else { return }
             runMode(on: asr.transcript)
         }
     }
@@ -343,6 +346,24 @@ struct VoiceToTextView: View {
                 }
                 Text("0 unloads immediately after each transcription. Higher values skip the slow reload on the next request.")
                     .font(.caption).foregroundStyle(.secondary)
+
+                Divider()
+
+                Toggle("Global Right Command paste", isOn: $globalVoicePasteEnabled)
+                    .toggleStyle(.switch)
+                    .help("Hold Right Command to record, release to paste the selected Voice mode into the active app.")
+                Text(globalVoice.status)
+                    .font(.caption)
+                    .foregroundStyle(globalVoice.needsAccessibilityPermission ? .orange : .secondary)
+                if globalVoice.needsAccessibilityPermission {
+                    Button {
+                        globalVoice.openAccessibilitySettings()
+                    } label: {
+                        Label("Open Accessibility Settings", systemImage: "lock.shield")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
             }
             .padding(.top, 8)
             .frame(maxWidth: 640, alignment: .leading)

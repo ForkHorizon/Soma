@@ -12,6 +12,11 @@ struct VoiceRecording: Identifiable, Hashable {
     var id: URL { url }
 }
 
+enum ASRTranscriptionSource {
+    case inApp
+    case global
+}
+
 /// Records mic audio and transcribes it via the warm multi-engine ASR server
 /// (asr_server.py under the engines folder; engine = Whisper large-v3 or GigaAM v2).
 /// The server is launched on first use and kept alive for the app session; it holds
@@ -27,6 +32,7 @@ final class ASRManager: ObservableObject {
     @Published var playingURL: URL?            // which recording is currently playing
     @Published var recordings: [VoiceRecording] = []
     @Published var completedTranscriptionID = 0   // bumped when a recording is FULLY transcribed (final)
+    @Published var lastTranscriptionSource: ASRTranscriptionSource = .inApp
 
     // Settings live in UserDefaults so the view's @AppStorage and this manager share them.
     // ponytail: user's download location is the default; editable in the UI so a move
@@ -59,6 +65,7 @@ final class ASRManager: ObservableObject {
     private var port: Int?            // discovered at runtime (OS-assigned, no collisions)
     private var serverProcess: Process?
     private var activeRecordingURL: URL?
+    private var recordingStartToken = 0
     private var player: AVAudioPlayer?
     private var playbackResetTask: Task<Void, Never>?
     private let portFileURL = FileManager.default.temporaryDirectory.appendingPathComponent("soma_asr.port")
@@ -87,10 +94,41 @@ final class ASRManager: ObservableObject {
         if isRecording { stopRecording() } else { startRecording() }
     }
 
+    func startGlobalRecording() {
+        startRecording()
+    }
+
+    @MainActor
+    func stopGlobalRecording() async -> String? {
+        await stopRecordingAndTranscribe(source: .global)
+    }
+
+    func cancelRecording() {
+        recordingStartToken += 1
+        guard isRecording else { return }
+        engineNode.inputNode.removeTap(onBus: 0)
+        engineNode.stop()
+        isRecording = false
+        isTranscribing = false
+        status = "Recording canceled"
+        let url = activeRecordingURL
+        activeRecordingURL = nil
+        audioQueue.async { [weak self] in
+            guard let self else { return }
+            self.fullFile = nil
+            if let url { try? FileManager.default.removeItem(at: url) }
+            DispatchQueue.main.async { self.refreshRecordings() }
+        }
+    }
+
     private func startRecording() {
+        guard !isRecording, !isTranscribing else { return }
+        recordingStartToken += 1
+        let token = recordingStartToken
         AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
             guard let manager = self else { return }
             Task { @MainActor in
+                guard token == manager.recordingStartToken else { return }
                 guard granted else { manager.status = "Microphone access denied (System Settings → Privacy → Microphone)"; return }
                 manager.beginStreamingRecording()
             }
@@ -148,23 +186,36 @@ final class ASRManager: ObservableObject {
 
     /// Stop the engine, close the WAV, then transcribe it.
     func stopRecording() {
-        guard isRecording else { return }
+        Task { @MainActor in
+            _ = await stopRecordingAndTranscribe(source: .inApp)
+        }
+    }
+
+    @MainActor
+    private func stopRecordingAndTranscribe(source: ASRTranscriptionSource) async -> String? {
+        recordingStartToken += 1
+        guard isRecording else { return nil }
         engineNode.inputNode.removeTap(onBus: 0)
         engineNode.stop()
         isRecording = false
         isTranscribing = true
         status = "Finishing transcription…"
-        let fullURL = activeRecordingURL
-        audioQueue.async { [weak self] in
-            guard let self else { return }
-            self.fullFile = nil        // close the full recording
-            DispatchQueue.main.async {
-                guard let fullURL else { self.isTranscribing = false; return }
-                self.lastRecordingURL = fullURL
-                self.refreshRecordings()
-                Task { [weak self] in await self?.batchTranscribe(fullURL) }
+        let fullURL = await withCheckedContinuation { continuation in
+            let activeURL = activeRecordingURL
+            activeRecordingURL = nil
+            audioQueue.async { [weak self] in
+                guard let self else { continuation.resume(returning: activeURL); return }
+                self.fullFile = nil        // close the full recording
+                continuation.resume(returning: activeURL)
             }
         }
+        guard let fullURL else {
+            isTranscribing = false
+            return nil
+        }
+        lastRecordingURL = fullURL
+        refreshRecordings()
+        return await batchTranscribe(fullURL, source: source)
     }
 
     // MARK: Capture
@@ -193,11 +244,11 @@ final class ASRManager: ObservableObject {
     func transcribe(recording url: URL) {
         guard !isTranscribing, !isRecording else { return }
         lastRecordingURL = url
-        Task { [weak self] in await self?.batchTranscribe(url) }
+        Task { [weak self] in await self?.batchTranscribe(url, source: .inApp) }
     }
 
     @MainActor
-    private func batchTranscribe(_ url: URL) async {
+    private func batchTranscribe(_ url: URL, source: ASRTranscriptionSource) async -> String? {
         isTranscribing = true
         status = "Transcribing…"
         let text = await transcribeFile(url)
@@ -208,7 +259,9 @@ final class ASRManager: ObservableObject {
             try? text.write(to: transcriptURL(for: url), atomically: true, encoding: .utf8)
             refreshRecordings()
         }
+        lastTranscriptionSource = source
         completedTranscriptionID += 1
+        return text
     }
 
     // MARK: Recordings library

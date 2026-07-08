@@ -65,3 +65,9 @@ hater_critique_report.md
 Prompt.txt
 .stress/
 .soma/
+
+.projectmem/events.jsonl
+.projectmem/watch.pid
+.projectmem/watch.log
+
+.projectmem/structure.json

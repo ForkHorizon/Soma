@@ -20,7 +20,7 @@ from gateway.client_config import (
 )
 from gateway.jsonrpc import run_daemon
 from gateway.status import build_status_payload, graphify
-from extension_manager import scan_ai_clients, sync_ai_clients, tool_status, update_tool, verify_ai_clients
+from extension_manager import project_overview, scan_ai_clients, setup_memory_tools, setup_project_tool, sync_ai_clients, sync_project_clients, tool_status, update_tool, verify_ai_clients
 from soma_project_setup import analyze_project_ai_setup, harden_project_ai_setup, rollback_project_ai_setup
 from scout_pipeline import normalize_path
 
@@ -59,10 +59,14 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--graph-storage-json", action="store_true", help="Print managed Graphify storage info and exit")
     parser.add_argument("--check-graphify-tool-json", action="store_true", help="Print installed/latest Graphify tool version info")
     parser.add_argument("--tool-status-json", nargs="?", const="all", default=None, help="Print managed extension tool version info")
-    parser.add_argument("--update-tool", choices=["graphify", "ponytail", "serena"], default=None, help="Update one managed extension tool and verify clients")
+    parser.add_argument("--project-overview-json", action="store_true", help="Print selected project overview for the Soma Projects UI")
+    parser.add_argument("--update-tool", choices=["codebase-memory", "graphify", "ponytail", "serena", "projectmem"], default=None, help="Update one managed extension tool and verify clients")
+    parser.add_argument("--setup-memory-tools", action="store_true", help="Install and initialize Codebase-Memory and projectmem for the selected project")
+    parser.add_argument("--setup-project-tool", choices=["codebase-memory", "projectmem", "graphify"], default=None, help="Install or initialize one extension tool for the selected project")
     parser.add_argument("--scan-ai-clients-json", action="store_true", help="Scan known project/client AI config locations")
     parser.add_argument("--verify-ai-clients-json", action="store_true", help="Verify known AI client configs")
     parser.add_argument("--sync-ai-clients", action="store_true", help="Install/repair known AI client configs for Soma")
+    parser.add_argument("--sync-project-clients", action="store_true", help="Repair only project-local AI client configs for the selected project")
     parser.add_argument("--recent-project-root", action="append", default=[], help="Additional project root to scan/verify")
     parser.add_argument("--migrate-graph", action="store_true", help="Copy a legacy graphify-out into Soma managed graph storage")
     parser.add_argument("--refresh-managed-graph", action="store_true", help="Refresh the selected project's managed Graphify graph without project-root output")
@@ -119,6 +123,10 @@ def _handle_status_commands(args: argparse.Namespace, project_root: str | None) 
     if args.tool_status_json:
         _emit(tool_status(args.tool_status_json))
         return True
+    if args.project_overview_json:
+        _require_project_root(project_root, "project overview")
+        _emit(project_overview(project_root, args.recent_project_root, graph_status=graphify.status(project_root)))
+        return True
     if args.update_tool:
         _emit(update_tool(args.update_tool, project_root, args.recent_project_root))
         return True
@@ -131,7 +139,36 @@ def _handle_status_commands(args: argparse.Namespace, project_root: str | None) 
     if args.sync_ai_clients:
         _emit(sync_ai_clients(project_root, args.recent_project_root))
         return True
+    if args.sync_project_clients:
+        _require_project_root(project_root, "project-local client sync")
+        _emit(sync_project_clients(project_root))
+        return True
+    if args.setup_memory_tools:
+        _require_project_root(project_root, "memory tools setup")
+        _emit(setup_memory_tools(project_root))
+        return True
+    if args.setup_project_tool:
+        _require_project_root(project_root, "project tool setup")
+        if args.setup_project_tool == "graphify":
+            _emit(_setup_graphify_project(project_root))
+        else:
+            _emit(setup_project_tool(args.setup_project_tool, project_root))
+        return True
     return False
+
+
+def _setup_graphify_project(project_root: str | None) -> dict[str, Any]:
+    graph = graphify.storage.refresh_managed_graph(project_root)
+    issues = graph.get("issues") or graph.get("warnings") or ([] if graph.get("status") == "ok" else [graph.get("summary", "graphify_setup_failed")])
+    return {
+        "status": "ok" if graph.get("status") == "ok" and not issues else "degraded",
+        "summary": "Graphify graph is ready for the selected project." if graph.get("status") == "ok" and not issues else graph.get("summary", "Graphify setup finished with issues."),
+        "tool_id": "graphify",
+        "name": "Graphify",
+        "project_root": project_root,
+        "graph": graph,
+        "issues": issues,
+    }
 
 
 def _handle_graph_commands(args: argparse.Namespace, project_root: str | None) -> bool:

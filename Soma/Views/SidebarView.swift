@@ -22,6 +22,7 @@ struct SidebarView: View {
                         ForEach(viewModel.recentProjectRoots, id: \.self) { root in
                             Button {
                                 viewModel.selectProjectRoot(root)
+                                selectedRoute = .projectOverview
                             } label: {
                                 HStack(spacing: 8) {
                                     Image(systemName: root == viewModel.selectedProjectRoot ? "checkmark.circle.fill" : "folder")
@@ -105,5 +106,6 @@ struct SidebarView: View {
         panel.prompt = "Choose Project Root"
         guard panel.runModal() == .OK, let path = panel.url?.path else { return }
         viewModel.selectProjectRoot(path)
+        selectedRoute = .projectOverview
     }
 }
