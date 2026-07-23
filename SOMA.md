@@ -8,7 +8,7 @@ Soma is a personal local-first workbench for testing language models, plus a per
 2. Soma normalizes it to a clean English prompt.
 3. Run it across local (Ollama) and paid (DeepSeek, Gemini, OpenAI) models — Queue / Tests.
 4. Compare output, latency, and token cost — Model Stats / Token Calculator.
-5. Manage the tools wired into each project (Graphify, Serena, Ponytail, MCP configs) — Extensions / System Status.
+5. Manage the tools wired into each project (Graphify, Ponytail, projectmem, MCP configs) — Extensions / System Status.
 
 The near-term goal is comfort and daily use, not more features.
 
@@ -20,7 +20,7 @@ Legacy: the evidence-compiler / packet pipeline (`scout_pipeline_module/`, `gate
 - `Soma/Views/TestsView*.swift`: run prompt cases across models; `.queue` and `.stats` modes back the Queue and Model Stats routes.
 - `Soma/Views/VoiceToTextView.swift`: local speech-to-text (engine picker: Whisper large-v3 / GigaAM v2).
 - `Soma/Views/SystemStatusView.swift`: MCP-config control panel (install/verify Codex/Gemini/Hermes, start server, smoke, benchmark reports).
-- `Soma/Views/ToolVersionsView.swift`: Extensions panel — check/update globally installed tools (Graphify, Ponytail, Serena).
+- `Soma/Views/ToolVersionsView.swift`: Extensions panel — check/update globally installed tools (Graphify, Ponytail, projectmem).
 - `Soma/ViewModels/RusToPromptQueueManager*.swift`: prompt run queue and model execution.
 - `Soma/soma_language_optimizer*.py`: prompt normalization backend.
 - ASR backend lives outside the repo at `AI_Test_PlayGround/asr-engines/asr_server.py` (warm multi-engine server; per-engine venvs `venv-whisper` / `venv-gigaam`; weights in sibling `asr-models/`). Launched by `ASRManager.swift`.
@@ -54,7 +54,7 @@ Check gateway status:
 - Do not add new first-layer features until Soma has been used on at least five real tasks.
 - Before the next feature wave, prove three real tasks with useful packets and at least one live Soma follow-up when context is missing.
 - Keep `Rus to Prompt` and `Tests` as the primary routes.
-- Keep advanced tooling (MCP config, Graphify/Serena, Local AI, logs, benchmarks, token utilities) under the Advanced section / System Status, not the main flow.
+- Keep advanced tooling (MCP config, Graphify/projectmem, Local AI, logs, benchmarks, token utilities) under the Advanced section / System Status, not the main flow.
 - Treat optional systems as optional, not as scary failures.
 - Keep Graphify managed by Soma under `~/.soma/graphs`; use it as project-only ranking hints, not raw packet context. Unity graphs scan `Assets/` only.
 - Prefer changes that make the app calmer, clearer, and faster to use.

@@ -70,13 +70,6 @@ MANAGED_TOOLS = {
         "latest": "https://api.github.com/repos/DietrichGebert/ponytail/releases/latest",
         "command": 'git -C "$HOME/.claude/plugins/marketplaces/ponytail" pull --ff-only',
     },
-    "serena": {
-        "name": "Serena",
-        "kind": "MCP",
-        "detail": "MCP code retrieval server.",
-        "latest": "https://pypi.org/pypi/serena-agent/json",
-        "command": "uv tool upgrade serena-agent",
-    },
     "projectmem": {
         "name": "projectmem",
         "kind": "MCP",
@@ -464,11 +457,6 @@ def _installed_version(tool_id: str, home: Path) -> str | None:
             version = _json_version(path)
             if version:
                 return version
-    if tool_id == "serena":
-        for dist in (home / ".local/share/uv/tools/serena-agent/lib").glob("python*/site-packages/serena_agent-*.dist-info"):
-            return dist.name.removeprefix("serena_agent-").removesuffix(".dist-info")
-        out = _run(["serena", "--version"], timeout=5)
-        return _first_version(out.stdout + out.stderr)
     if tool_id == "projectmem":
         out = _run([sys.executable, "-c", "import importlib.metadata as m; print(m.version('projectmem'))"], timeout=5)
         if out.returncode == 0:
@@ -483,7 +471,7 @@ def _latest_version(tool_id: str) -> str | None:
             data = json.loads(response.read().decode("utf-8"))
     except Exception:
         return None
-    if tool_id in {"graphify", "serena", "projectmem"}:
+    if tool_id in {"graphify", "projectmem"}:
         return data.get("info", {}).get("version")
     tag = data.get("tag_name")
     return tag[1:] if isinstance(tag, str) and tag.startswith("v") else tag

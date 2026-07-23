@@ -1,19 +1,5 @@
 {
   "mcpServers": {
-    "serena": {
-      "command": "/Users/daliys/.local/bin/serena",
-      "args": [
-        "start-mcp-server",
-        "--context",
-        "ide-assistant",
-        "--project",
-        "/Users/daliys/Daliys/Swift/Soma",
-        "--enable-web-dashboard",
-        "false",
-        "--open-web-dashboard",
-        "false"
-      ]
-    },
     "soma": {
       "args": [
         "/Users/daliys/Daliys/Swift/Soma/Soma/soma_mcp_server.py",

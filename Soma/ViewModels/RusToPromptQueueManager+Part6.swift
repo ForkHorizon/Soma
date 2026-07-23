@@ -67,6 +67,7 @@ extension RusToPromptQueueManager {
     func startTimer() {
         // Tick fast for live progress (cheap file read + kill(pid,0)); run the heavier
         // memory/power/queue-advance housekeeping every 5th tick to keep its prior cadence.
+        timer?.invalidate()   // never stack a second 1s timer if called again
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
