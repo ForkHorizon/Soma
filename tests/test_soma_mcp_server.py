@@ -29,6 +29,7 @@ import soma_language_optimizer
 import soma_logger
 import soma_audit
 import soma_project_setup
+import extension_manager
 
 
 class SomaMCPServerTests(unittest.TestCase):
@@ -333,6 +334,208 @@ class SomaMCPServerTests(unittest.TestCase):
         self.assertFalse(payload["project_matches"])
         self.assertIn("direct_nexus_exposed", payload["issues"])
         self.assertIn("project_root_mismatch", payload["issues"])
+
+    def test_extension_manager_repairs_antigravity_json_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            config = home / ".gemini/antigravity-ide/mcp_config.json"
+            config.parent.mkdir(parents=True)
+            config.write_text(
+                json.dumps(
+                    {
+                        "mcpServers": {
+                            "nexus-unity": {"command": "python3", "args": ["nexus_unity_bridge.py"]},
+                            "soma": {
+                                "command": "/usr/bin/python3",
+                                "args": ["/tmp/soma_mcp_server.py", "--project-root", "/tmp/old"],
+                                "env": {"SOMA_PROJECT_ROOT": "/tmp/old"},
+                            },
+                        }
+                    }
+                )
+            )
+
+            before = extension_manager.verify_ai_clients("/tmp/project", [], home=home)
+            synced = extension_manager.sync_ai_clients("/tmp/project", [], home=home)
+            updated = json.loads(config.read_text())
+
+        self.assertEqual(before["status"], "degraded")
+        self.assertNotIn("nexus-unity", updated["mcpServers"])
+        self.assertIn("soma", updated["mcpServers"])
+        self.assertIn("antigravity", {item["client"] for item in synced["clients"]})
+
+    def test_extension_manager_degrades_when_project_root_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "settings.json"
+            config.write_text(json.dumps({"mcpServers": {"soma": {"command": "/usr/bin/python3", "args": ["/tmp/soma_mcp_server.py"]}}}))
+
+            payload = extension_manager._verify_json_config(config, "/tmp/project")
+
+        self.assertEqual(payload["status"], "degraded")
+        self.assertIn("project_root_missing", payload["issues"])
+
+    def test_extension_manager_update_does_not_sync_after_failed_update(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            before = {"tool_id": "graphify", "installed_version": "1.0.0", "latest_version": "1.0.1"}
+            failed = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="failed")
+
+            with patch.object(extension_manager, "_tool_status_one", side_effect=[before, before]), patch.object(extension_manager, "_run_shell", return_value=failed), patch.object(extension_manager, "sync_ai_clients") as sync:
+                payload = extension_manager.update_tool("graphify", "/tmp/project", [], home=home)
+
+        sync.assert_not_called()
+        self.assertEqual(payload["status"], "degraded")
+        self.assertIn("update_command_failed", payload["issues"])
+        self.assertNotIn("smoke_failed", payload["issues"])
+        self.assertEqual(payload["clients"], [])
+
+    def test_extension_manager_backup_names_do_not_collide(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.json"
+            config.write_text("{}")
+            first = extension_manager._backup(config)
+            first.write_text("{}")
+
+            second = extension_manager._backup(config)
+
+        self.assertNotEqual(first, second)
+
+    def test_extension_manager_disables_antigravity_direct_tool_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            direct = home / ".gemini/antigravity/mcp/nexus-unity"
+            direct.mkdir(parents=True)
+            (direct / "unity_wait.json").write_text("{}")
+            (home / ".gemini/antigravity/mcp/soma").mkdir()
+
+            synced = extension_manager.sync_ai_clients(None, [], home=home)
+
+            tool_statuses = [item for item in synced["clients"] if item["client"] == "antigravity" and "antigravity/mcp" in item["config_path"]]
+            self.assertEqual(tool_statuses[0]["status"], "ok")
+            self.assertFalse(direct.exists())
+            self.assertTrue(any(path.name.startswith("nexus-unity.disabled-soma-backup-") for path in direct.parent.iterdir()))
+
+    def test_extension_manager_scans_project_markers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            project = home / "Daliys/App"
+            project.mkdir(parents=True)
+            (project / ".mcp.json").write_text("{}")
+
+            report = extension_manager.scan_ai_clients(None, [], home=home)
+
+        self.assertIn(str(project.resolve()), {item["project_root"] for item in report["projects"]})
+
+    def test_extension_manager_sets_up_memory_tools_for_project(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            root = Path(tmp) / "project"
+            home.mkdir()
+            root.mkdir()
+            ok = subprocess.CompletedProcess(args=[], returncode=0, stdout="ok", stderr="")
+
+            with patch.object(extension_manager, "_installed_version", return_value="1.0.0"), patch.object(
+                extension_manager, "_latest_version", return_value="1.0.0"
+            ), patch.object(
+                extension_manager, "_codebase_memory_bin", return_value="/bin/echo"
+            ), patch.object(
+                extension_manager, "_projectmem_cli", return_value="/bin/echo"
+            ), patch.object(
+                extension_manager, "_run", return_value=ok
+            ):
+                report = extension_manager.setup_memory_tools(str(root), home=home)
+
+            codex_config = home / ".codex/config.toml"
+            gemini_config = home / ".gemini/settings.json"
+            agents = root / "AGENTS.md"
+
+            self.assertEqual(report["status"], "ok")
+            self.assertIn("mcp_servers.projectmem", codex_config.read_text())
+            self.assertIn("projectmem", json.loads(gemini_config.read_text())["mcpServers"])
+            agents_text = agents.read_text()
+            self.assertIn("Default mode: light", agents_text)
+            self.assertIn("Codebase-Memory:", agents_text)
+            self.assertIn("projectmem:", agents_text)
+
+    def test_extension_manager_sets_up_single_project_tool(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            root = Path(tmp) / "project"
+            codebase_root = Path(tmp) / "codebase-project"
+            home.mkdir()
+            root.mkdir()
+            codebase_root.mkdir()
+            ok = subprocess.CompletedProcess(args=[], returncode=0, stdout="ok", stderr="")
+
+            with patch.object(extension_manager, "_installed_version", return_value="1.0.0"), patch.object(
+                extension_manager, "_projectmem_cli", return_value="/bin/echo"
+            ), patch.object(
+                extension_manager, "_codebase_memory_bin", return_value="/bin/echo"
+            ), patch.object(extension_manager, "_run", return_value=ok):
+                report = extension_manager.setup_project_tool("projectmem", str(root), home=home)
+                codebase_report = extension_manager.setup_project_tool("codebase-memory", str(codebase_root), home=home)
+                unsupported = extension_manager.setup_project_tool("serena", str(root), home=home)
+
+            self.assertEqual(report["status"], "ok")
+            self.assertEqual(report["tool_id"], "projectmem")
+            self.assertIn("mcp_servers.projectmem", (home / ".codex/config.toml").read_text())
+            projectmem_agents = (root / "AGENTS.md").read_text()
+            self.assertIn("projectmem:", projectmem_agents)
+            self.assertNotIn("Codebase-Memory:", projectmem_agents)
+            self.assertEqual(codebase_report["status"], "ok")
+            codebase_agents = (codebase_root / "AGENTS.md").read_text()
+            self.assertIn("Codebase-Memory:", codebase_agents)
+            self.assertNotIn("projectmem:", codebase_agents)
+            self.assertEqual(unsupported["status"], "error")
+            self.assertIn("unsupported_project_tool", unsupported["issues"])
+
+    def test_project_overview_reports_dirty_git_repo(self):
+        tmp, root = self.make_repo()
+        with tmp, tempfile.TemporaryDirectory() as home_tmp:
+            home = Path(home_tmp)
+            other = home / "Daliys/Other"
+            other.mkdir(parents=True)
+            (other / "AGENTS.md").write_text("Other project\n")
+            (home / ".gemini").mkdir()
+            (home / ".gemini/settings.json").write_text(json.dumps({"mcpServers": {"soma": {"command": sys.executable, "args": ["/tmp/soma_mcp_server.py", "--project-root", str(other)], "env": {"SOMA_PROJECT_ROOT": str(other)}}}}))
+            (root / ".gemini").mkdir()
+            (root / ".gemini/settings.json").write_text(json.dumps({"mcpServers": {"soma": {"command": sys.executable, "args": ["/tmp/soma_mcp_server.py", "--project-root", str(root)], "env": {"SOMA_PROJECT_ROOT": str(root)}}}}))
+            subprocess.run(["git", "add", ".gemini/settings.json"], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-m", "config"], cwd=root, check=True, capture_output=True)
+            (root / "scratch.txt").write_text("new\n")
+
+            with patch.object(extension_manager, "_installed_version", return_value="1.0.0"), patch.object(
+                extension_manager, "_latest_version", return_value="1.0.0"
+            ), patch.object(extension_manager, "_codebase_memory_indexed", return_value=True):
+                payload = extension_manager.project_overview(str(root), [], home=home, graph_status={"project_graph_available": True, "stale": False})
+
+        self.assertEqual(payload["git"]["is_repo"], True)
+        self.assertEqual(payload["git"]["changed_count"], 2)
+        self.assertEqual(payload["git"]["untracked_count"], 1)
+        self.assertEqual(payload["memory"]["codebase_memory_indexed"], True)
+        self.assertEqual([item["id"] for item in payload["memory"]["installed_tools"]], ["codebase-memory", "graphify"])
+        self.assertNotIn("tools", payload)
+        self.assertNotIn("known_project_alerts", payload)
+        self.assertEqual([item["project_root"] for item in payload["clients"]], [scout_pipeline.normalize_path(str(root))])
+
+    def test_project_overview_handles_non_git_and_missing_roots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            root = Path(tmp) / "project"
+            missing = Path(tmp) / "missing"
+            home.mkdir()
+            root.mkdir()
+
+            with patch.object(extension_manager, "_installed_version", return_value=None), patch.object(extension_manager, "_latest_version", return_value=None):
+                non_git = extension_manager.project_overview(str(root), [], home=home)
+                missing_payload = extension_manager.project_overview(str(missing), [], home=home)
+
+        self.assertFalse(non_git["git"]["is_repo"])
+        self.assertEqual(non_git["memory"]["status"], "none")
+        self.assertEqual(non_git["memory"]["installed_tools"], [])
+        self.assertEqual(non_git["memory"]["issues"], [])
+        self.assertFalse(missing_payload["git"]["is_repo"])
+        self.assertIn("missing_project_root", missing_payload["issues"])
 
     def test_install_hermes_config_preserves_settings_and_removes_direct_nexus(self):
         with tempfile.TemporaryDirectory() as tmp:

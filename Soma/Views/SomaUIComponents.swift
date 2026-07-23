@@ -360,16 +360,23 @@ struct SomaSplitWorkbench<Primary: View, Secondary: View>: View {
     @ViewBuilder let secondary: () -> Secondary
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            VStack(alignment: .leading, spacing: 14) {
-                primary()
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 14) {
+                    primary()
+                }
+                .frame(minWidth: 420, maxWidth: .infinity, alignment: .topLeading)
+
+                VStack(alignment: .leading, spacing: 14) {
+                    secondary()
+                }
+                .frame(width: 320, alignment: .topLeading)
             }
-            .frame(minWidth: 520, maxWidth: .infinity, alignment: .topLeading)
 
             VStack(alignment: .leading, spacing: 14) {
+                primary()
                 secondary()
             }
-            .frame(width: 320, alignment: .topLeading)
         }
     }
 }

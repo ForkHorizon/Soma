@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 import time
+import urllib.request
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -12,11 +15,10 @@ from rus_to_prompt_stress_confidence import (
     confidence_item_id,
     hybrid_escalation_reason,
     score_confidence_batch_with_provider,
+    _api,
     _attach_or_keep_local,
 )
 from rus_to_prompt_stress_models import (
-    DEFAULT_HYBRID_DISAGREEMENT_THRESHOLD,
-    DEFAULT_HYBRID_LOCAL_CONFIDENCE_THRESHOLD,
     DEFAULT_LOCAL_CONFIDENCE_MODELS,
     chunked,
     progress_event_line,
@@ -306,7 +308,98 @@ def confidence_kwargs(args, stage: str) -> dict[str, Any]:
         "hybrid_fallback_provider": args.hybrid_confidence_fallback_referee,
         "hybrid_local_threshold": args.hybrid_confidence_local_threshold,
         "hybrid_disagreement_threshold": args.hybrid_confidence_disagreement_threshold,
+        "disabled_providers": getattr(args, "_dead_confidence_providers", None) or set(),
     }
+
+
+_PREFLIGHT_TIMEOUT = float(os.environ.get("SOMA_PREFLIGHT_TIMEOUT", "20"))
+_PREFLIGHT_SCHEMA = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]}
+_PREFLIGHT_PROMPT = 'Health check. Reply with exactly the JSON object {"ok": true} and nothing else.'
+
+
+def _online_confidence_probe_targets(args) -> list[tuple[str, str]]:
+    ref = args.confidence_referee
+    if ref in {"gemini", "deepseek", "codex"}:
+        return [(ref, args.confidence_model)]
+    if ref == "hybrid":
+        fallback = args.hybrid_confidence_fallback_referee
+        if fallback in {"gemini", "deepseek", "codex"}:
+            return [(fallback, args.hybrid_confidence_online_model or args.confidence_model)]
+    return []
+
+
+def _probe_online_provider(provider: str, model: str, args) -> tuple[bool, str]:
+    api = _api()
+    try:
+        if provider == "gemini":
+            _decoded, meta = api.run_gemini_json(prompt=_PREFLIGHT_PROMPT, schema=_PREFLIGHT_SCHEMA, model=model, timeout=_PREFLIGHT_TIMEOUT, gemini_bin=args.gemini_bin, temp_prefix="soma-preflight-gemini-")
+        elif provider == "deepseek":
+            _decoded, meta = api.run_deepseek_json(prompt=_PREFLIGHT_PROMPT, schema=_PREFLIGHT_SCHEMA, model=model, timeout=_PREFLIGHT_TIMEOUT, temp_prefix="soma-preflight-deepseek-")
+        elif provider == "codex":
+            _decoded, meta = api.run_codex_json(prompt=_PREFLIGHT_PROMPT, schema=_PREFLIGHT_SCHEMA, model=model, timeout=_PREFLIGHT_TIMEOUT, codex_bin=args.codex_bin, temp_prefix="soma-preflight-codex-", reasoning_effort=args.confidence_reasoning_effort)
+        else:
+            return True, ""
+    except Exception as exc:  # defensive: a probe must never crash the run
+        return False, str(exc)
+    if meta.get("status") == "ok":
+        return True, ""
+    return False, str(meta.get("error") or "probe returned no result")
+
+
+def preflight_confidence_providers(args) -> set[str]:
+    """Probe each online confidence provider once before the run. Emits a provider_preflight
+    event per provider and records the dead ones on args so the run skips them up front
+    instead of timing out on every single item."""
+    dead: set[str] = set()
+    args._dead_confidence_providers = dead
+    targets = _online_confidence_probe_targets(args)
+    for provider, model in targets:
+        started = time.monotonic()
+        ok, reason = _probe_online_provider(provider, model, args)
+        print(progress_event_line(event="provider_preflight", stage="preflight", provider_name=provider, confidence_model=model, status="ok" if ok else "failed", reason=None if ok else reason[:200], seconds=round(time.monotonic() - started, 2)), flush=True)
+        if not ok:
+            dead.add(provider)
+    if targets and len(dead) >= len(targets):
+        print(progress_event_line(event="provider_preflight", stage="preflight", status="degraded", reason="All online confidence providers failed preflight; confidence will fail until one is restored."), flush=True)
+    args._dead_confidence_providers = dead
+    return dead
+
+
+def _model_size_hint(name: str) -> float:
+    match = re.search(r"(\d+(?:\.\d+)?)\s*b\b", (name or "").lower())
+    return float(match.group(1)) if match else 999.0
+
+
+def _probe_ollama_generate(model: str, timeout: float) -> tuple[bool, str]:
+    body = {"model": model, "prompt": "ok", "stream": False, "options": {"num_predict": 1}, "keep_alive": "30s"}
+    request = urllib.request.Request("http://127.0.0.1:11434/api/generate", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            json.loads(response.read().decode("utf-8", errors="replace"))
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def preflight_local_backend(translators: list[str], analyzers: list[str]) -> bool:
+    """Probe the Ollama GGUF runner once with the smallest local model. If a 1-token generate
+    doesn't finish in time the runner is wedged (server answers, inference hangs) — set
+    SOMA_OLLAMA_WEDGED so non-mlx local calls fail fast instead of each burning its full stage
+    timeout. MLX models use a different runner and are left running. Returns True if wedged."""
+    os.environ.pop("SOMA_OLLAMA_WEDGED", None)
+    candidates = [m for m in list(translators) + list(analyzers)
+                  if provider_for_stage_model(m, "local") == "local" and "-mlx" not in (m or "").lower()]
+    if not candidates:
+        return False
+    probe_model = min(candidates, key=_model_size_hint)
+    timeout = float(os.environ.get("SOMA_LOCAL_PREFLIGHT_TIMEOUT", "30"))
+    started = time.monotonic()
+    ok, reason = _probe_ollama_generate(probe_model, timeout)
+    print(progress_event_line(event="provider_preflight", stage="preflight", provider_name="ollama", confidence_model=probe_model, status="ok" if ok else "failed", reason=None if ok else reason[:200], seconds=round(time.monotonic() - started, 2)), flush=True)
+    if not ok:
+        os.environ["SOMA_OLLAMA_WEDGED"] = "1"
+        print(progress_event_line(event="provider_preflight", stage="preflight", status="degraded", reason=f"Ollama GGUF runner not responding (probe {probe_model}); non-mlx local models skipped this run. Restart Ollama to recover."), flush=True)
+    return not ok
 
 
 def confidence_timeout(args) -> float:
@@ -314,13 +407,11 @@ def confidence_timeout(args) -> float:
         return args.deepseek_stage_timeout
     if args.confidence_referee == "gemini":
         return args.gemini_stage_timeout
-    if args.confidence_referee == "hybrid":
-        fallback = args.hybrid_confidence_fallback_referee
-        if fallback == "deepseek":
-            return args.deepseek_stage_timeout
-        if fallback == "codex":
-            return args.codex_stage_timeout
-        return args.gemini_stage_timeout
+    # local / hybrid: bound the local judge so a slow heavy model fails fast and (in hybrid)
+    # escalates to the fast online referee. The default online fallback is gemini-flash-lite,
+    # which finishes well within this; raise --local-confidence-timeout for a slow fallback.
+    if args.confidence_referee in {"local", "hybrid"}:
+        return max(5.0, float(getattr(args, "local_confidence_timeout", 60.0)))
     return args.codex_stage_timeout
 
 

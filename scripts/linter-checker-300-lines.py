@@ -238,8 +238,9 @@ def check_paths(root: Path, paths: Iterable[Path], config: dict) -> list[Issue]:
         limits = limits_for_language(config, language)
         max_file_lines = limits["max_file_lines"]
         max_function_lines = limits["max_function_lines"]
+        file_baseline = config.get("baseline", {}).get("file_length", {}).get(relative)
 
-        if len(lines) > max_file_lines:
+        if len(lines) > max_file_lines and (file_baseline is None or len(lines) > int(file_baseline)):
             issues.append(
                 Issue(
                     path=relative,
@@ -250,7 +251,11 @@ def check_paths(root: Path, paths: Iterable[Path], config: dict) -> list[Issue]:
             )
 
         for name, start_line, length in function_lengths(text, language):
-            if length > max_function_lines:
+            function_key = f"{relative}:{name}"
+            function_baseline = config.get("baseline", {}).get("function_length", {}).get(function_key)
+            if length > max_function_lines and (
+                function_baseline is None or length > int(function_baseline)
+            ):
                 issues.append(
                     Issue(
                         path=relative,

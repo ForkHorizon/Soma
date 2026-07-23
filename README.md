@@ -1,6 +1,8 @@
 # Soma
 
-Soma is a universal local-first evidence compiler, agent context backend, and MCP gateway for large coding models. It prepares compact, evidence-backed project packets before Hermes, Codex, Gemini, Claude, or another large model spends context on raw repositories, full diffs, long logs, or verbose plugin tools.
+Soma is a personal, local-first macOS workbench for testing language models. Speak or type a task in Russian, normalize it into a clean English prompt, and run it across local (Ollama) and paid (DeepSeek, Gemini, OpenAI) models to compare output, latency, and token cost. Soma also acts as a per-project control panel for the coding tools and MCP servers you wire into each repo (Graphify, Serena, Hermes, and Codex/Gemini MCP configs).
+
+Legacy capability: Soma also retains an evidence-compiler / MCP gateway that builds compact project packets for coding agents. It is no longer the primary workflow; it lives on as the backend for the MCP-config control panel (System Status). The packet/Prepare-Packet UI was removed in the model-bench cleanup.
 
 Soma works without Unity. Unity/Nexus is an optional plugin path used only when a Unity project and Nexus server are available.
 

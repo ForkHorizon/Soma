@@ -630,6 +630,8 @@ func runSomaFirstSetup() {
             do {
                 let analysisData = try await runSomaHelper(args: ["--analyze-project-ai-setup", "--project-root", selectedProjectRoot])
                 let setupReport = try JSONDecoder().decode(ProjectAISetupReport.self, from: analysisData)
+                let memoryData = try await runSomaHelper(args: ["--setup-memory-tools", "--project-root", selectedProjectRoot])
+                let memoryStatus = (try? JSONSerialization.jsonObject(with: memoryData) as? [String: Any])?["status"] as? String ?? "unknown"
 
                 let codexData = try await runSomaHelper(args: ["--install-codex-config", "--project-root", selectedProjectRoot])
                 let codexInstall = try JSONDecoder().decode(ClientConfigInstallStatus.self, from: codexData)
@@ -703,8 +705,8 @@ func runSomaFirstSetup() {
                     let degraded = smoke.summary?.config_degraded ?? []
                     let packetStatus = packet.error == nil ? "ready" : "degraded"
                     self.mcpInstallStatus = degraded.isEmpty
-                        ? "Soma First setup ready: configs installed, MCP smoke passed, first packet \(packetStatus)."
-                        : "Soma First setup degraded: \(degraded.joined(separator: ", ")). First packet \(packetStatus)."
+                        ? "Soma First setup ready: memory \(memoryStatus), configs installed, MCP smoke passed, first packet \(packetStatus)."
+                        : "Soma First setup degraded: memory \(memoryStatus), \(degraded.joined(separator: ", ")). First packet \(packetStatus)."
                     self.loadStructuredLogs()
                     self.loadAuditReport()
                 }

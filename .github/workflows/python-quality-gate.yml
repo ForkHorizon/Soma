@@ -17,6 +17,30 @@ concurrency:
 
 jobs:
   python-quality-gate:
-    uses: ForkHorizon/ci-gates/.github/workflows/python-quality.yml@main
-    with:
-      runs-on: '["self-hosted", "macOS", "ARM64", "ci-scope"]'
+    name: Python Quality Gate
+    runs-on: [self-hosted, macOS, ARM64, ci-scope]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Ensure Ruff
+        run: command -v ruff >/dev/null || brew install ruff
+
+      - name: Lint changed Python files
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$base" ]; then
+            base="origin/${{ github.event.repository.default_branch }}"
+          fi
+          files=()
+          while IFS= read -r file; do
+            files+=("$file")
+          done < <(git diff --name-only --diff-filter=ACMR "$base"...HEAD -- '*.py')
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No changed Python files."
+            exit 0
+          fi
+          ruff check "${files[@]}"

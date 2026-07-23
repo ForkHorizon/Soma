@@ -3,7 +3,14 @@ import AppKit
 import Foundation
 import Combine
 
+enum TestsViewMode {
+    case full   // the full batch-runner page (separate window)
+    case queue  // queue-only, as a sidebar route
+    case stats  // model-stats-only, as a sidebar route
+}
+
 struct TestsView: View {
+    var mode: TestsViewMode = .full
     let refreshTimer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
     let translatorModelsKey = "tests.rusToPrompt.translatorModels"
@@ -98,38 +105,54 @@ struct TestsView: View {
 
 
     var body: some View {
+        switch mode {
+        case .full:
+            fullBody
+        case .queue:
+            queueSheet
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(SomaDesign.pageBackground)
+                .onAppear {
+                    queueManager.refreshFreeMemory()
+                    queueManager.refreshPowerSource()
+                    queueManager.startNextIfPossible()
+                    ollama.refreshInstalledModels()
+                    loadModelStatsIfNeeded()   // candidate panels show benchmark stats from this
+                }
+                .onChange(of: queueManager.completedCount) { _, _ in loadModelStats() }
+        case .stats:
+            modelStatsSheet
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(SomaDesign.pageBackground)
+                .onAppear { loadModelStats() }
+                .onChange(of: queueManager.completedCount) { _, _ in loadModelStats() }
+        }
+    }
+
+    var fullBody: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
 
             Divider()
 
-            HStack(alignment: .top, spacing: 12) {
-                testCasesPanel
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                modelSelectionPanel(
-                    title: "Models to test (Translator)",
-                    icon: "character.bubble",
-                    role: .translator,
-                    knownPresets: testTranslatorPresets,
-                    selection: $selectedTranslatorModels,
-                    storageKey: translatorModelsKey,
-                    isPresented: $showTranslatorModels,
-                    sort: $translatorModelSort,
-                    customModel: $customTranslatorModel
-                )
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                modelSelectionPanel(
-                    title: "Models to test (Improver)",
-                    icon: "brain",
-                    role: .improver,
-                    knownPresets: testImproverPresets,
-                    selection: $selectedImproverModels,
-                    storageKey: improverModelsKey,
-                    isPresented: $showImproverModels,
-                    sort: $improverModelSort,
-                    customModel: $customImproverModel
-                )
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 12) {
+                    testCasesPanel
+                        .frame(minWidth: 260)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                    testTranslatorPanel
+                        .frame(minWidth: 260)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                    testImproverPanel
+                        .frame(minWidth: 260)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    testCasesPanel
+                    testTranslatorPanel
+                    testImproverPanel
+                }
             }
             .padding(.horizontal, 18)
 
@@ -178,20 +201,48 @@ struct TestsView: View {
         }
         .sheet(isPresented: $showModelStats) {
             modelStatsSheet
-                .frame(minWidth: 1080, minHeight: 720)
+                .frame(minWidth: 900, minHeight: 680)
                 .onAppear {
                     loadModelStats()
                 }
         }
         .sheet(isPresented: $showQueue) {
             queueSheet
-                .frame(minWidth: 1260, minHeight: 740)
+                .frame(minWidth: 900, minHeight: 680)
                 .onAppear {
                     queueManager.refreshFreeMemory()
                     queueManager.refreshPowerSource()
                     queueManager.startNextIfPossible()
                 }
         }
+    }
+
+    var testTranslatorPanel: some View {
+        modelSelectionPanel(
+            title: "Models to test (Translator)",
+            icon: "character.bubble",
+            role: .translator,
+            knownPresets: testTranslatorPresets,
+            selection: $selectedTranslatorModels,
+            storageKey: translatorModelsKey,
+            isPresented: $showTranslatorModels,
+            sort: $translatorModelSort,
+            customModel: $customTranslatorModel
+        )
+    }
+
+    var testImproverPanel: some View {
+        modelSelectionPanel(
+            title: "Models to test (Improver)",
+            icon: "brain",
+            role: .improver,
+            knownPresets: testImproverPresets,
+            selection: $selectedImproverModels,
+            storageKey: improverModelsKey,
+            isPresented: $showImproverModels,
+            sort: $improverModelSort,
+            customModel: $customImproverModel
+        )
     }
 
 }

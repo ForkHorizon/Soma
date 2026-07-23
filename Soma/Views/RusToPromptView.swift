@@ -23,9 +23,18 @@ struct RusToPromptView: View {
         VStack(spacing: 0) {
             topBar
             Divider()
-            HStack(alignment: .top, spacing: 14) {
-                inputPane
-                outputPane
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 14) {
+                    inputPane
+                        .frame(minWidth: 360)
+                    outputPane
+                        .frame(minWidth: 360)
+                }
+
+                VStack(alignment: .leading, spacing: 14) {
+                    inputPane
+                    outputPane
+                }
             }
             .padding(16)
             .frame(maxHeight: .infinity)

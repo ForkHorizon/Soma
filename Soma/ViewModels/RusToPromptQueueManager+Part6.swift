@@ -45,6 +45,13 @@ extension RusToPromptQueueManager {
     func recoverRunningItems() {
         var changed = false
         for index in items.indices where items[index].status == .running {
+            // Child still alive? Re-attach instead of re-spawning — avoids the duplicate
+            // run_start/resume cycles that previously stacked up errors across restarts.
+            if reattachRunningChildIfAlive(index: index) {
+                changed = true
+                continue
+            }
+            items[index].pid = nil
             items[index].status = .queued
             items[index].statusMessage = isPowerPaused ? "Paused on battery; connect power to continue" : (isPaused ? "Paused after restart; resume to continue" : "Recovered after restart")
             items[index].recoveredAfterRestart = true
@@ -58,11 +65,18 @@ extension RusToPromptQueueManager {
 
 
     func startTimer() {
-        timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+        // Tick fast for live progress (cheap file read + kill(pid,0)); run the heavier
+        // memory/power/queue-advance housekeeping every 5th tick to keep its prior cadence.
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             DispatchQueue.main.async { [weak self] in
-                self?.refreshFreeMemory()
-                self?.refreshPowerSource()
-                self?.startNextIfPossible()
+                guard let self else { return }
+                self.pumpProgressLog()        // live progress comes from tailing progress.log
+                self.pollReattachedExit()     // detect exit of a re-attached (Process-less) run
+                self.progressTickCount += 1
+                guard self.progressTickCount % 5 == 0 else { return }
+                self.refreshFreeMemory()
+                self.refreshPowerSource()
+                self.startNextIfPossible()
             }
         }
         refreshFreeMemory()

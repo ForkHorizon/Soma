@@ -13,7 +13,7 @@ extension RusToPromptQueueManager {
     func startNextIfPossible(allowBatteryStart: Bool = false) {
         refreshPowerSourceValue()
         applyPowerGate()
-        guard activeProcess == nil, !isPaused else { return }
+        guard activeProcess == nil, activeReattachedPID == nil, !isPaused else { return }
         guard let index = nextStartableQueueIndex() else {
             isRunning = false
             currentStage = "Idle"
@@ -78,12 +78,14 @@ extension RusToPromptQueueManager {
             batteryStartOverrideItemID = context.item.id
         }
         let process = makeQueueProcess(context: context, translators: translators, improvers: improvers)
-        attachQueueHandlers(to: process)
+        attachQueueHandlers(to: process, runURL: context.runURL)
 
         do {
             try process.run()
             activeProcess = process
-            appendActivity("Started queue run \(context.item.id): \(translators.count) translators, \(improvers.count) improvers.")
+            items[index].pid = process.processIdentifier
+            saveToDisk()
+            appendActivity("Started queue run \(context.item.id) (pid \(process.processIdentifier)): \(translators.count) translators, \(improvers.count) improvers.")
         } catch {
             batteryStartOverrideItemID = nil
             activeProcess = nil
@@ -162,7 +164,7 @@ extension RusToPromptQueueManager {
         currentStage = "Starting"
         currentModel = "-"
         resetModelProgress(itemID: context.item.id, snapshot: context.snapshot)
-        processOutputBuffer = ""
+        armProgressTail(runURL: context.runURL)
         isRunning = true
     }
 
@@ -177,6 +179,7 @@ extension RusToPromptQueueManager {
         environment["PATH"] = Self.searchPath(existing: environment["PATH"])
         LocalModelSettingsStore.apply(to: &environment)
         DeepSeekCredentialStore.apply(to: &environment)
+        GeminiCredentialStore.apply(to: &environment)
         process.environment = environment
         return process
     }
@@ -205,17 +208,20 @@ extension RusToPromptQueueManager {
         return arguments
     }
 
-    func attachQueueHandlers(to process: Process) {
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
-            DispatchQueue.main.async { self?.consumeProcessOutput(text) }
+    func attachQueueHandlers(to process: Process, runURL: URL) {
+        // Detach the child from an app-held pipe: route stdout/stderr to a file so app
+        // quit/crash can't break the pipe (which killed the run) and the orphaned child
+        // keeps running. Live progress is read by tailing progress.log on the timer.
+        let captureURL = runURL.appendingPathComponent("process.out")
+        if !FileManager.default.fileExists(atPath: captureURL.path) {
+            FileManager.default.createFile(atPath: captureURL.path, contents: nil)
+        }
+        if let handle = try? FileHandle(forWritingTo: captureURL) {
+            handle.seekToEndOfFile()
+            process.standardOutput = handle
+            process.standardError = handle
         }
         process.terminationHandler = { [weak self] finishedProcess in
-            pipe.fileHandleForReading.readabilityHandler = nil
             DispatchQueue.main.async { self?.handleProcessFinished(status: finishedProcess.terminationStatus) }
         }
     }
@@ -237,17 +243,21 @@ extension RusToPromptQueueManager {
             let stopped = status != 0 ? await controlFlagFromActiveFileAsync("stop", controlURL: controlURL) : false
 
             await MainActor.run {
+                pumpProgressLog()  // flush any final progress.log lines before tearing down the tail
                 defer {
                     batteryStartOverrideItemID = nil
                     activeProcess = nil
+                    activeReattachedPID = nil
                     activeItemID = nil
                     activeControlFileURL = nil
+                    disarmProgressTail()
                     isRunning = false
                     currentStage = "Idle"
                     currentModel = "-"
                     startNextIfPossible()
                 }
                 guard let itemID = itemID, let index = items.firstIndex(where: { $0.id == itemID }) else { return }
+                items[index].pid = nil
 
                 if status == 0 {
                     let msg = completionMessage ?? "Completed"

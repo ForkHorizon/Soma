@@ -72,7 +72,6 @@ func loadStructuredLogs(date: Date = Date()) {
                     self.latestTokenSavings = latestSavings
                 }
                 self.logsLoading = false
-                self.refreshPacketLiveToolCounts()
             }
         }
     }

@@ -175,11 +175,13 @@ extension TestsView {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
 
-                Button("Close") {
-                    showModelStats = false
+                if mode == .full {
+                    Button("Close") {
+                        showModelStats = false
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
             }
 
             Text(modelStatsHeaderText)

@@ -19,7 +19,7 @@ def _local_ollama_translate(text: str, model: str, timeout: float) -> str:
 def _local_ollama_improve_prompt(text: str, model: str, timeout: float) -> str:
     prompt = _improvement_prompt(text)
     system = "You are a conservative prompt editor. Preserve intent, remove ambiguity, and do not add facts."
-    payload = _ollama_payload(model, prompt, system, 1024, 0.05)
+    payload = _ollama_payload(model, prompt, system, 1024, 0.0)  # was 0.05: pin to greedy so benchmark runs are reproducible
     return _run_ollama_text(payload, timeout, "prompt_improvement", model)
 
 
@@ -76,12 +76,21 @@ def _ollama_payload(model, prompt, system, num_predict, temperature):
         "model": model,
         "think": False,
         "stream": False,
+        # keep_alive holds the model resident between calls so a run of same-model calls loads
+        # it once instead of reloading per call (the real cost the blanket cooldown was dodging).
+        "keep_alive": os.environ.get("SOMA_OLLAMA_KEEP_ALIVE", "10m"),
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
-        "options": {"temperature": temperature, "num_predict": num_predict},
+        # seed pins generation so a single-prompt benchmark is reproducible across runs
+        # (temperature alone doesn't guarantee determinism in Ollama).
+        "options": {"temperature": temperature, "num_predict": num_predict, "seed": int(os.environ.get("SOMA_LOCAL_SEED", "0"))},
     }
 
 
 def _run_ollama_text(payload, timeout, stage, model):
+    # Fast-fail if a preflight probe found the GGUF runner wedged: skip the call instead of
+    # burning the full stage timeout. MLX models use a different runner and are unaffected.
+    if os.environ.get("SOMA_OLLAMA_WEDGED") == "1" and "-mlx" not in (model or "").lower():
+        raise RuntimeError("Ollama GGUF backend unavailable (failed preflight); skipped to avoid a timeout.")
     request = urllib.request.Request("http://127.0.0.1:11434/api/chat", data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"})
     start = time.monotonic()
     response_text = ""

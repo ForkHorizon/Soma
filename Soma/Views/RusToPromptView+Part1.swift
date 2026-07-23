@@ -2,77 +2,94 @@ import SwiftUI
 
 extension RusToPromptView {
     var topBar: some View {
-        HStack(spacing: 12) {
-            Label("Rus to Prompt", systemImage: "character.bubble")
-                .font(.title3.weight(.semibold))
-                .foregroundColor(.primary)
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 12) {
+                Label("Rus to Prompt", systemImage: "character.bubble")
+                    .font(.title3.weight(.semibold))
+                    .foregroundColor(.primary)
 
-            phasePill
+                phasePill
 
-            Spacer(minLength: 12)
+                Spacer(minLength: 12)
 
-            Toggle("Auto benchmark", isOn: Binding(
-                get: { queueManager.settings.autoEnqueueEnabled },
-                set: { queueManager.setAutoEnqueueEnabled($0) }
-            ))
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            .help("After a successful Rus to Prompt transform, enqueue the real Russian prompt for local staged benchmarking.")
-
-            Button {
-                showModels.toggle()
-                if showModels {
-                    loadRusToPromptModelStatsIfNeeded()
-                }
-            } label: {
-                Label("Models", systemImage: "slider.horizontal.3")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .popover(isPresented: $showModels, arrowEdge: .bottom) {
-                modelPopover
+                transformButton
             }
 
-            Button {
-                if ollama.isOllamaRunning {
-                    ollama.refreshInstalledModels()
-                    ollama.checkStatus()
-                } else {
-                    ollama.launchOllama()
-                }
-            } label: {
-                Label(ollama.isOllamaRunning ? "Refresh" : "Launch", systemImage: ollama.isOllamaRunning ? "arrow.clockwise" : "play.circle")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(ollama.isBusy)
+            HStack(spacing: 10) {
+                Toggle("Auto benchmark", isOn: Binding(
+                    get: { queueManager.settings.autoEnqueueEnabled },
+                    set: { queueManager.setAutoEnqueueEnabled($0) }
+                ))
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .help("After a successful Rus to Prompt transform, enqueue the real Russian prompt for local staged benchmarking.")
 
-            Button {
-                copied = false
-                selectedOutput = .improved
-                viewModel.transform(somaViewModel: somaViewModel, ollama: ollama, queueManager: queueManager)
-            } label: {
-                if viewModel.isBusy {
-                    HStack(spacing: 7) {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text(busyButtonTitle)
+                Button {
+                    showModels.toggle()
+                    if showModels {
+                        loadRusToPromptModelStatsIfNeeded()
                     }
-                    .bold()
-                } else {
-                    Label("Transform", systemImage: "wand.and.stars")
-                        .bold()
+                } label: {
+                    Label("Models", systemImage: "slider.horizontal.3")
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .popover(isPresented: $showModels, arrowEdge: .bottom) {
+                    modelPopover
+                }
+
+                Button {
+                    if ollama.isOllamaRunning {
+                        ollama.refreshInstalledModels()
+                        ollama.checkStatus()
+                    } else {
+                        ollama.launchOllama()
+                    }
+                } label: {
+                    Label(ollama.isOllamaRunning ? "Refresh" : "Launch", systemImage: ollama.isOllamaRunning ? "arrow.clockwise" : "play.circle")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(ollama.isBusy)
+
+                Text(phaseDetail)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Spacer(minLength: 0)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
-            .disabled(transformDisabled)
-            .keyboardShortcut(.return, modifiers: .command)
-            .help(transformDisabled ? transformDisabledReason : "Transform prompt")
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
         .background(Color(NSColor.windowBackgroundColor))
+    }
+
+
+    var transformButton: some View {
+        Button {
+            copied = false
+            selectedOutput = .improved
+            viewModel.transform(somaViewModel: somaViewModel, ollama: ollama, queueManager: queueManager)
+        } label: {
+            if viewModel.isBusy {
+                HStack(spacing: 7) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(busyButtonTitle)
+                }
+                .bold()
+            } else {
+                Label("Transform", systemImage: "wand.and.stars")
+                    .bold()
+            }
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.regular)
+        .disabled(transformDisabled)
+        .keyboardShortcut(.return, modifiers: .command)
+        .help(transformDisabled ? transformDisabledReason : "Transform prompt")
     }
 
 
@@ -115,7 +132,7 @@ extension RusToPromptView {
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.20)))
         }
         .padding(14)
-        .frame(minWidth: 460, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: 300, maxHeight: .infinity, alignment: .topLeading)
         .background(SomaDesign.panelBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.12)))
@@ -131,7 +148,7 @@ extension RusToPromptView {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 330)
+                .frame(minWidth: 230, maxWidth: 360)
 
                 Spacer()
 
@@ -139,7 +156,7 @@ extension RusToPromptView {
                     copyToClipboard(viewModel.finalPromptForCopy)
                     copied = true
                 } label: {
-                    Label(copied ? "Copied" : "Copy Improved", systemImage: copied ? "checkmark" : "doc.on.doc")
+                    Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
@@ -151,7 +168,7 @@ extension RusToPromptView {
             outputTextView
         }
         .padding(14)
-        .frame(minWidth: 460, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: 300, maxHeight: .infinity, alignment: .topLeading)
         .background(SomaDesign.panelBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.12)))

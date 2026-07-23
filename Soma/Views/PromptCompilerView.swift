@@ -84,7 +84,7 @@ struct PromptCompilerView: View {
 
     private var disabledReason: String? {
         if somaViewModel.selectedProjectRoot.isEmpty {
-            return "Choose a project in the top bar first."
+            return "Choose a project in the sidebar first."
         }
         if isBusy {
             return "Soma is already building a prompt."

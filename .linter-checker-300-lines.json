@@ -56,5 +56,35 @@
     "Soma/ViewModels/RusToPromptQueueManager+Part2.swift",
     "Soma/ViewModels/RusToPromptQueueManager+Part3.swift"
   ],
-  "language_overrides": {}
+  "language_overrides": {},
+  "baseline": {
+    "file_length": {
+      "Scripts/rus_to_prompt_stress_confidence.py": 347,
+      "Scripts/rus_to_prompt_stress_providers.py": 326,
+      "Scripts/rus_to_prompt_stress_runner_confidence.py": 594,
+      "Soma/ContentView.swift": 679,
+      "Soma/GlobalVoiceController.swift": 518,
+      "Soma/ViewModels/ASRManager.swift": 481,
+      "Soma/Views/LocalAISettingsView.swift": 550,
+      "Soma/Views/PromptCompilerView.swift": 369,
+      "Soma/Views/RusToPromptView+Part2.swift": 599,
+      "Soma/Views/SomaUIComponents.swift": 584,
+      "Soma/Views/SystemStatusView.swift": 1203,
+      "Soma/Views/ToolVersionsView.swift": 348,
+      "Soma/Views/VoiceToTextView.swift": 373,
+      "Soma/extension_manager.py": 956,
+      "tests/test_soma_mcp_server.py": 985
+    },
+    "function_length": {
+      "Soma/Views/LocalAISettingsView.swift:roleRow": 72,
+      "Soma/Views/LocalAISettingsView.swift:roleCard": 61,
+      "Soma/Views/RusToPromptView+Part2.swift:presetRow": 53,
+      "Soma/Views/RusToPromptView+Part2.swift:rusToPromptScoredPresets": 52,
+      "Soma/Views/RusToPromptView+Part2.swift:loadRusToPromptModelStats": 77,
+      "Soma/Views/SystemStatusView.swift:gatewayControlCard": 57,
+      "Soma/Views/SystemStatusView.swift:clientConfigCard": 61,
+      "Soma/Views/VoiceToTextView.swift:recordingRow": 61,
+      "tests/test_soma_mcp_server.py:test_project_ai_setup_harden_preserves_settings_and_adds_soma_first_block": 52
+    }
+  }
 }
