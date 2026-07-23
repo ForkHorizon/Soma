@@ -17,6 +17,27 @@ concurrency:
 
 jobs:
   go-quality-gate:
-    uses: ForkHorizon/ci-gates/.github/workflows/go-quality.yml@main
-    with:
-      runs-on: '["self-hosted", "macOS", "ARM64", "ci-scope"]'
+    name: Go Quality Gate
+    runs-on: [self-hosted, macOS, ARM64, ci-scope]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: No Go module
+        if: ${{ hashFiles('**/go.mod') == '' }}
+        run: echo "No Go module in this repository; skipping Go quality checks."
+
+      - name: Download modules
+        if: ${{ hashFiles('**/go.mod') != '' }}
+        run: go mod download
+
+      - name: go vet
+        if: ${{ hashFiles('**/go.mod') != '' }}
+        run: go vet ./...
+
+      - name: gofmt check
+        if: ${{ hashFiles('**/go.mod') != '' }}
+        run: |
+          unformatted=$(gofmt -l .)
+          test -z "$unformatted" || { echo "$unformatted"; exit 1; }

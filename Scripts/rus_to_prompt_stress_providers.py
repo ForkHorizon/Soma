@@ -20,7 +20,6 @@ from rus_to_prompt_stress_models import (
 )
 
 import soma_language_optimizer as optimizer  # noqa: E402
-from soma_deepseek_api import run_deepseek_json  # noqa: E402
 
 
 def _api() -> Any:

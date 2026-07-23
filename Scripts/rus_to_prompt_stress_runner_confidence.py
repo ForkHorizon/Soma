@@ -19,8 +19,6 @@ from rus_to_prompt_stress_confidence import (
     _attach_or_keep_local,
 )
 from rus_to_prompt_stress_models import (
-    DEFAULT_HYBRID_DISAGREEMENT_THRESHOLD,
-    DEFAULT_HYBRID_LOCAL_CONFIDENCE_THRESHOLD,
     DEFAULT_LOCAL_CONFIDENCE_MODELS,
     chunked,
     progress_event_line,
