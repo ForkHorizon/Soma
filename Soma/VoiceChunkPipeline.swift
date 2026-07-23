@@ -14,7 +14,7 @@ enum VoiceWorkClass: String, Codable, Sendable {
     case background
 }
 
-struct VoiceChunk: Sendable {
+nonisolated struct VoiceChunk: Sendable {
     let index: Int
     let url: URL
     let reason: VoiceChunkReason
