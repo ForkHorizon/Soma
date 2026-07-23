@@ -60,7 +60,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--check-graphify-tool-json", action="store_true", help="Print installed/latest Graphify tool version info")
     parser.add_argument("--tool-status-json", nargs="?", const="all", default=None, help="Print managed extension tool version info")
     parser.add_argument("--project-overview-json", action="store_true", help="Print selected project overview for the Soma Projects UI")
-    parser.add_argument("--update-tool", choices=["codebase-memory", "graphify", "ponytail", "serena", "projectmem"], default=None, help="Update one managed extension tool and verify clients")
+    parser.add_argument("--update-tool", choices=["codebase-memory", "graphify", "ponytail", "projectmem"], default=None, help="Update one managed extension tool and verify clients")
     parser.add_argument("--setup-memory-tools", action="store_true", help="Install and initialize Codebase-Memory and projectmem for the selected project")
     parser.add_argument("--setup-project-tool", choices=["codebase-memory", "projectmem", "graphify"], default=None, help="Install or initialize one extension tool for the selected project")
     parser.add_argument("--scan-ai-clients-json", action="store_true", help="Scan known project/client AI config locations")

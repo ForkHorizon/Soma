@@ -474,7 +474,7 @@ class SomaMCPServerTests(unittest.TestCase):
             ), patch.object(extension_manager, "_run", return_value=ok):
                 report = extension_manager.setup_project_tool("projectmem", str(root), home=home)
                 codebase_report = extension_manager.setup_project_tool("codebase-memory", str(codebase_root), home=home)
-                unsupported = extension_manager.setup_project_tool("serena", str(root), home=home)
+                unsupported = extension_manager.setup_project_tool("graphify", str(root), home=home)
 
             self.assertEqual(report["status"], "ok")
             self.assertEqual(report["tool_id"], "projectmem")

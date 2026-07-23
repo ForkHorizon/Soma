@@ -32,6 +32,7 @@ final class OllamaManager: ObservableObject {
         timer?.invalidate()
     }
     func startPolling() {
+        timer?.invalidate()   // never stack a second poll timer if called again
         timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
             self?.checkStatus()
         }
@@ -173,9 +174,9 @@ final class OllamaManager: ObservableObject {
         }
     }
     /// Idle keep-loaded duration shared with the Voice-to-Text ASR server.
-    /// 0 means unload immediately; default 10 min mirrors Ollama's old behavior.
+    /// 0 means unload immediately; the shared default is the user-selected one hour.
     private var keepAliveSeconds: Int {
-        let minutes = UserDefaults.standard.object(forKey: "modelKeepLoadedMinutes") as? Int ?? 10
+        let minutes = UserDefaults.standard.object(forKey: "modelKeepLoadedMinutes") as? Int ?? 60
         return minutes * 60
     }
     func startModel() { sendKeepAlive(keepAliveSeconds, model: modelName) }

@@ -7,11 +7,12 @@ struct ContentView: View {
     @ObservedObject var viewModel: SomaViewModel
     @ObservedObject var ollama: OllamaManager
     @ObservedObject var rusToPromptQueueManager: RusToPromptQueueManager
+    @ObservedObject var voiceASR: ASRManager
+    @ObservedObject var voicePrompter: RusToPromptViewModel
+    @ObservedObject var globalVoice: GlobalVoiceController
+    @ObservedObject var textPriorityQueue: VoiceTextPriorityQueue
     @StateObject private var promptCompilerViewModel = PromptCompilerViewModel()
     @StateObject private var rusToPromptViewModel = RusToPromptViewModel()
-    @StateObject private var voiceASR = ASRManager()
-    @StateObject private var voicePrompter = RusToPromptViewModel()
-    @StateObject private var globalVoice = GlobalVoiceController()
     @State private var selectedRoute: AppRoute? = .rusToPrompt
     @AppStorage("globalVoicePasteEnabled") private var globalVoicePasteEnabled = false
     @Environment(\.openWindow) private var openWindow
@@ -27,7 +28,7 @@ struct ContentView: View {
                     case .rusToPrompt:
                         RusToPromptView(viewModel: rusToPromptViewModel, somaViewModel: viewModel, ollama: ollama, queueManager: rusToPromptQueueManager)
                     case .voiceToText:
-                        VoiceToTextView(somaViewModel: viewModel, ollama: ollama, asr: voiceASR, prompter: voicePrompter, globalVoice: globalVoice)
+                        VoiceToTextView(somaViewModel: viewModel, ollama: ollama, asr: voiceASR, prompter: voicePrompter, globalVoice: globalVoice, textPriorityQueue: textPriorityQueue)
                     case .queue:
                         TestsView(mode: .queue, ollama: ollama, queueManager: rusToPromptQueueManager)
                     case .modelStats:
@@ -62,7 +63,12 @@ struct ContentView: View {
             viewModel.hydrateProjectRootsIfNeeded()
         }
         .onAppear {
-            globalVoice.configure(asr: voiceASR, somaViewModel: viewModel, ollama: ollama, prompter: voicePrompter)
+            textPriorityQueue.onImportTranslationCompleted = { [weak voiceASR] id, path in
+                voiceASR?.setImportedTranslation(id, path: path)
+            }
+            textPriorityQueue.configure(somaViewModel: viewModel, ollama: ollama, prompter: voicePrompter)
+            voiceASR.configure(textPriorityQueue: textPriorityQueue)
+            globalVoice.configure(asr: voiceASR, somaViewModel: viewModel, ollama: ollama, prompter: voicePrompter, textPriorityQueue: textPriorityQueue)
             globalVoice.setEnabled(globalVoicePasteEnabled)
         }
         .onChange(of: globalVoicePasteEnabled) { _, enabled in
@@ -672,7 +678,6 @@ private struct ProjectToolChooserSheet: View {
         case "projectmem": return "book.closed"
         case "graphify": return "network"
         case "ponytail": return "scissors"
-        case "serena": return "sparkles"
         default: return "wrench.and.screwdriver"
         }
     }

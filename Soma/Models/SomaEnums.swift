@@ -94,7 +94,7 @@ enum AppRoute: String, Hashable, CaseIterable {
         case .systemStatus:
             return "Runtime and model diagnostics."
         case .extensions:
-            return "Check and update globally-installed tools (Graphify, Ponytail, Serena)."
+            return "Check and update globally-installed tools (Graphify, Ponytail, projectmem)."
         case .projectOverview:
             return "Monitor the selected project's Git, memory, graph, and client setup."
         }

@@ -1,6 +1,6 @@
 # Soma
 
-Soma is a personal, local-first macOS workbench for testing language models. Speak or type a task in Russian, normalize it into a clean English prompt, and run it across local (Ollama) and paid (DeepSeek, Gemini, OpenAI) models to compare output, latency, and token cost. Soma also acts as a per-project control panel for the coding tools and MCP servers you wire into each repo (Graphify, Serena, Hermes, and Codex/Gemini MCP configs).
+Soma is a personal, local-first macOS workbench for testing language models. Speak or type a task in Russian, normalize it into a clean English prompt, and run it across local (Ollama) and paid (DeepSeek, Gemini, OpenAI) models to compare output, latency, and token cost. Soma also acts as a per-project control panel for the coding tools and MCP servers you wire into each repo (Graphify, Hermes, and Codex/Gemini MCP configs).
 
 Legacy capability: Soma also retains an evidence-compiler / MCP gateway that builds compact project packets for coding agents. It is no longer the primary workflow; it lives on as the backend for the MCP-config control panel (System Status). The packet/Prepare-Packet UI was removed in the model-bench cleanup.
 
