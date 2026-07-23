@@ -1,0 +1,22 @@
+name: Go Quality Gate
+
+on:
+  pull_request:
+  merge_group:
+    types: [checks_requested]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: go-quality-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go-quality-gate:
+    uses: ForkHorizon/ci-gates/.github/workflows/go-quality.yml@main
+    with:
+      runs-on: '["self-hosted", "macOS", "ARM64", "ci-scope"]'
