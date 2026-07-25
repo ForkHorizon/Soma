@@ -2,7 +2,7 @@
 
 Soma is a personal, local-first macOS workbench for testing language models. Speak or type a task in Russian, normalize it into a clean English prompt, and run it across local (Ollama) and paid (DeepSeek, Gemini, OpenAI) models to compare output, latency, and token cost. Soma also acts as a per-project control panel for the coding tools and MCP servers you wire into each repo (Graphify, Hermes, and Codex/Gemini MCP configs).
 
-Legacy capability: Soma also retains an evidence-compiler / MCP gateway that builds compact project packets for coding agents. It is no longer the primary workflow; it lives on as the backend for the MCP-config control panel (System Status). The packet/Prepare-Packet UI was removed in the model-bench cleanup.
+Legacy capability: Soma also retains an evidence-compiler / MCP gateway that builds compact project packets for coding agents. It is no longer the primary workflow; it lives on as the backend for the MCP-config control panel (System Status) and as a set of `soma_*` MCP tools other agents can call directly. The packet/Prepare-Packet UI was removed in the model-bench cleanup.
 
 Soma works without Unity. Unity/Nexus is an optional plugin path used only when a Unity project and Nexus server are available.
 
@@ -10,16 +10,34 @@ Soma works without Unity. Unity/Nexus is an optional plugin path used only when 
 
 | Area | Status |
 |---|---|
-| MCP gateway | `Soma/soma_mcp_server.py` stable entrypoint |
-| Public tool catalog | 12 `soma_*` tools |
-| Core readiness | Universal verifier passes across fixture project types |
+| Voice / model bench | Primary workflow: Russian voice or text input, translated, compared across Ollama/DeepSeek/Gemini/OpenAI |
+| Per-project control panel | Installs/verifies MCP configs for Codex, Gemini, and Hermes per project |
+| MCP gateway | `Soma/soma_mcp_server.py` stable entrypoint, legacy evidence-compiler backend |
+| Public tool catalog | 12 `soma_*` tools, callable by any MCP client |
 | Deterministic path | Works without Ollama, Unity, or Nexus |
-| Local AI | Optional ranked/analyst stages via Ollama |
-| Unity/Nexus | Optional plugin, skipped by default universal workflow |
+| Unity/Nexus | Optional plugin, skipped by default |
 | Tests | Python suite expected: 125 tests |
 | Swift app | macOS build expected to succeed |
 
-## What Soma Does
+## Voice & Model Bench Workflow
+
+This is the primary reason to run Soma day-to-day:
+
+- Press the configured global hotkey (or use the in-app recorder) to capture voice through `GlobalVoiceController`/`ASRManager`. Speech is transcribed locally or via the optional remote ASR server.
+- Non-English (typically Russian) input is normalized into a clean English task prompt before it reaches any model — see [Prompt Language Optimization](#prompt-language-optimization) below for the same translation pipeline shared with the legacy packet backend.
+- The normalized prompt runs across configured providers — local Ollama models plus paid DeepSeek, Gemini, and OpenAI — so you can compare output, latency, and token cost side by side.
+- A menu bar companion app with a Dynamic Island-style indicator shows recording/processing state without keeping the main window open.
+- ASR can run locally or offload to a dedicated Soma Voice Server on another Mac over Tailscale. See [`docs/voice-server.md`](docs/voice-server.md) for setup (per-engine venvs, LaunchAgent install, Tailscale Serve for a stable HTTPS URL, Keychain-stored bearer token).
+
+## Per-Project Control Panel
+
+For each project Soma manages, the app can install and verify MCP tool configs (Codex, Gemini, Hermes), track which tools are already installed per project, and refresh the project's Graphify graph. See [AI Agent Setup And MCP Smoke](#ai-agent-setup-and-mcp-smoke) and [Generated Data](#generated-data) below — these commands are the CLI surface behind that panel.
+
+## Legacy: Evidence-Compiler / MCP Packet Backend
+
+The sections below describe Soma's original product: a universal local-first evidence compiler and MCP gateway that prepares compact, evidence-backed project packets before Hermes, Codex, Gemini, Claude, or another large model spends context on raw repositories, full diffs, long logs, or verbose plugin tools. The dedicated Prepare-Packet UI was removed, but the underlying `soma_*` MCP tools, CLI entrypoints, and audit trail are all still live and are what the control panel's System Status view runs on.
+
+### What The Legacy Backend Does
 
 Soma builds bounded packets for real coding work:
 
@@ -32,7 +50,7 @@ Soma builds bounded packets for real coding work:
 - Optionally uses local Ollama models after deterministic evidence selection.
 - Optionally calls Nexus Unity through compact Soma tools when Unity/Nexus is online.
 
-## Public MCP Tools
+### Public MCP Tools
 
 Big AI clients should see Soma tools only:
 
@@ -53,7 +71,7 @@ soma_execute
 
 Raw `unity_*` tools should not be exposed in the Soma workflow.
 
-## Quickstart
+### Quickstart
 
 Run status:
 
@@ -79,9 +97,9 @@ PYTHONDONTWRITEBYTECODE=1 \
   '{"goal":"Debug recent changes and prepare compact evidence","budget":"fast","depth":"deterministic"}'
 ```
 
-## Soma Packet Mode V1
+### Soma Packet Mode V1
 
-The first supported AI workflow is packet prompt mode:
+The legacy backend's supported AI workflow is packet prompt mode, now driven entirely through MCP tool calls rather than the removed UI:
 
 1. Run `soma_prepare_context` for the selected project and task.
 2. Pass the returned packet to Hermes, Codex, Gemini, Claude, or another model as compact context.
@@ -89,9 +107,9 @@ The first supported AI workflow is packet prompt mode:
 4. Pass the packet `run_id` and `task_id` into follow-up Soma calls with `client="codex"` and `workflow="live_mcp"` so the app can show whether live tools actually helped.
 5. Compare against a direct-agent baseline with `soma_agent_ab_benchmark.py`.
 
-Packet mode remains the default path for real token-savings validation, but Codex-first live helper mode is the next usefulness loop. Soma does not replace Hermes runtime features such as messaging, cron, delegation, or skills; it supplies the local evidence/context layer those runtimes can call first and audit after the task.
+Soma does not replace Hermes runtime features such as messaging, cron, delegation, or skills; it supplies the local evidence/context layer those runtimes can call first and audit after the task.
 
-## Task Audit Trail
+### Task Audit Trail
 
 Every packet run gets a local audit trace so real AI work can be reviewed after the fact. The trace shows what project and prompt were used, how Soma normalized the prompt, which packet was created, which evidence files were selected, what Soma could not find, which related Soma tools ran, and whether the result was accepted or rejected.
 
@@ -112,9 +130,9 @@ Inspect or mark a run:
 /opt/homebrew/bin/python3 Soma/soma_audit.py --mark <run_id> --status accepted --notes "Matched expected files."
 ```
 
-## Prompt Language Optimization
+### Prompt Language Optimization
 
-Soma optimizes task prompts before evidence selection. English prompts pass through unchanged. Non-English prompts are translated to English when a local translator is available, then the English task is used for intent classification, file matching, Graphify query, and packet `Goal`.
+This is the same normalization pipeline used by the voice/model-bench workflow above. English prompts pass through unchanged. Non-English prompts are translated to English when a local translator is available, then the English task is used for intent classification, file matching, Graphify query, and packet `Goal`.
 
 The original non-English prompt is not copied into the packet by default. Packets only include concise metadata such as original language, translation status, and expected answer language. Source snippets, logs, stack traces, paths, commands, URLs, JSON, and code references are protected and restored exactly.
 
@@ -128,7 +146,7 @@ SOMA_TRANSLATOR_MODEL=gemma4:e4b
 
 If local translation is unavailable, Soma falls back to the original prompt and marks `language_optimization.status` as `failed_fallback`. This does not block deterministic packets. Free cloud translation is opt-in only and requires both `SOMA_TRANSLATION_PROVIDER=free_cloud` and `SOMA_FREE_TRANSLATION_URL`.
 
-## Optional GPT Referee
+### Optional GPT Referee
 
 Soma can run a small cloud referee before the final packet is returned. This does not send source previews or full packets; it sends the task, collection plan, evidence paths, kinds, reasons, symbols, and current quality flags. Use it to catch weak packets such as version/changelog tasks where required evidence is missing.
 
@@ -313,7 +331,9 @@ Soma writes runtime reports and logs under the user home directory:
 
 - `docs/architecture.md`: system design and data flow.
 - `docs/operations.md`: daily use, setup, logs, MCP config, troubleshooting.
+- `docs/voice-server.md`: remote ASR server setup (Tailscale, LaunchAgent, tokens).
 - `docs/testing.md`: test and acceptance commands.
-- `docs/roadmap.md`: current engineering roadmap.
+- `docs/roadmap.md`: engineering roadmap — **currently still written around the legacy evidence-compiler and has not been updated for the model-bench pivot; treat this README as authoritative on product direction until roadmap.md is refreshed.**
 - `docs/ai-development-guide.md`: how an AI/developer should navigate and modify Soma.
+- `docs/ui-ux-direction.md`: UI/UX planning notes — predate the model-bench pivot, kept for history.
 - `docs/history/etap-report.md`: historical implementation summary.
