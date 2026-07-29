@@ -695,18 +695,22 @@ final class ASRManager: ObservableObject {
     private func pruneOldRecordings() {
         let dir = recordingsDir
         let cutoff = Date().addingTimeInterval(-Self.recordingRetention)
-        Task.detached(priority: .utility) { [weak self] in
-            let files = (try? FileManager.default.contentsOfDirectory(
-                at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles])) ?? []
-            for url in files where url.pathExtension.lowercased() == "wav" {
-                let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                guard date < cutoff else { continue }
-                try? FileManager.default.removeItem(at: url)
-                try? FileManager.default.removeItem(at: url.deletingPathExtension().appendingPathExtension("txt"))
-            }
-            await MainActor.run {
-                self?.refreshRecordings()
-            }
+        Task { [weak self, dir, cutoff] in
+            await Task.detached(priority: .utility) {
+                Self.removeRecordingFiles(in: dir, olderThan: cutoff)
+            }.value
+            self?.refreshRecordings()
+        }
+    }
+
+    private nonisolated static func removeRecordingFiles(in dir: URL, olderThan cutoff: Date) {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles])) ?? []
+        for url in files where url.pathExtension.lowercased() == "wav" {
+            let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            guard date < cutoff else { continue }
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: url.deletingPathExtension().appendingPathExtension("txt"))
         }
     }
 
