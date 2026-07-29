@@ -11,11 +11,42 @@ final class MediaImportTests: XCTestCase {
         XCTAssertEqual(MediaImportTools.chunkStart(index: 30), 1_740, accuracy: 0.001)
     }
 
+    func testPauseAwarePlanUsesNearbySilenceAndKeepsForcedOverlapAsFallback() {
+        let chunks = MediaImportTools.planChunks(duration: 180, silenceEnds: [58, 121])
+        XCTAssertEqual(chunks.count, 3)
+        XCTAssertEqual(chunks[0].startSeconds, 0, accuracy: 0.001)
+        XCTAssertEqual(chunks[1].startSeconds, 58, accuracy: 0.001)
+        XCTAssertEqual(chunks[2].startSeconds, 121, accuracy: 0.001)
+        XCTAssertEqual(chunks.map(\.reason), ["pause", "pause", "pause"])
+
+        let fallback = MediaImportTools.planChunks(duration: 130, silenceEnds: [])
+        XCTAssertEqual(fallback[0].startSeconds, 0, accuracy: 0.001)
+        XCTAssertEqual(fallback[0].durationSeconds, 60, accuracy: 0.001)
+        XCTAssertEqual(fallback[0].overlapSeconds, 2, accuracy: 0.001)
+        XCTAssertEqual(fallback[1].startSeconds, 58, accuracy: 0.001)
+    }
+
     func testMergeRemovesWordOverlap() {
         XCTAssertEqual(
             MediaImportTools.mergedText("one two three four", with: "three four five"),
             "one two three four five"
         )
+    }
+
+    func testRepetitionGuardFlagsDecoderLoops() {
+        XCTAssertFalse(MediaImportTools.hasPathologicalRepetition("yes yes yes yes"))
+        XCTAssertTrue(MediaImportTools.hasPathologicalRepetition(String(repeating: "already ", count: 12)))
+        XCTAssertTrue(MediaImportTools.hasPathologicalRepetition(String(repeating: "come back here for a second ", count: 3)))
+        XCTAssertTrue(MediaImportTools.hasPathologicalRepetition(String(repeating: "f sağ ", count: 6)))
+        XCTAssertTrue(MediaImportTools.hasPathologicalRepetition(String(repeating: "... ", count: 8)))
+    }
+
+    func testContextTranscriptIsRemovedAfterRecovery() {
+        XCTAssertEqual(
+            MediaImportTools.removingContextPrefix("previous clip", from: "previous clip recovered current clip"),
+            "recovered current clip"
+        )
+        XCTAssertNil(MediaImportTools.removingContextPrefix("previous clip", from: "different audio"))
     }
 
     func testJobPersistsOnlyMetadataAndSourcePath() throws {

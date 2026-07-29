@@ -84,7 +84,11 @@ def _unload() -> None:
         pass
 
 
-def _transcribe_whisper(audio: str, initial_prompt: str | None = None) -> str:
+def _transcribe_whisper(
+    audio: str,
+    initial_prompt: str | None = None,
+    language: str | None = None,
+) -> str:
     import mlx_whisper
     import numpy as np
     import soundfile as sf
@@ -99,12 +103,15 @@ def _transcribe_whisper(audio: str, initial_prompt: str | None = None) -> str:
             np.arange(len(data)),
             data,
         ).astype(np.float32)
-    result = mlx_whisper.transcribe(
-        np.ascontiguousarray(data),
-        path_or_hf_repo=WHISPER_REPO,
-        language=LANG,
-        initial_prompt=initial_prompt,
-    )
+    options = {
+        "path_or_hf_repo": WHISPER_REPO,
+        "initial_prompt": initial_prompt,
+    }
+    # `None` deliberately omits the parameter: Whisper then identifies the
+    # language from the audio. Normal recordings still arrive as `ru`.
+    if language is not None:
+        options["language"] = language
+    result = mlx_whisper.transcribe(np.ascontiguousarray(data), **options)
     return (result.get("text") or "").strip()
 
 
@@ -149,10 +156,21 @@ def _join_parts(parts: list[str]) -> str:
     return " ".join(words)
 
 
-def _transcribe(audio: str, initial_prompt: str | None = None) -> str:
+def _transcribe(
+    audio: str,
+    initial_prompt: str | None = None,
+    language: str | None = None,
+) -> str:
     if ENGINE == "whisper":
-        return _transcribe_whisper(audio, initial_prompt)
+        return _transcribe_whisper(audio, initial_prompt, language)
     return _transcribe_gigaam(audio)
+
+
+def _requested_language(request: dict) -> str | None:
+    language = request.get("language", LANG)
+    if not isinstance(language, str):
+        raise ValueError("language must be a string or auto")
+    return None if language == "auto" else language
 
 
 class BackendHTTPServer(HTTPServer):
@@ -239,12 +257,20 @@ class Handler(BaseHTTPRequestHandler):
         initial_prompt = req.get("initial_prompt")
         if not isinstance(initial_prompt, str):
             initial_prompt = None
+        # The server's default remains Russian for live dictation. A media
+        # import explicitly sends "auto", which must be forwarded as None so
+        # Whisper uses its language detector instead of that default.
+        try:
+            language = _requested_language(req)
+        except ValueError as exc:
+            self._reply(400, {"error": str(exc)})
+            return
 
         with _lock:
             try:
                 _load()
                 t0 = time.perf_counter()
-                text = _transcribe(audio, initial_prompt)
+                text = _transcribe(audio, initial_prompt, language)
                 elapsed = time.perf_counter() - t0
                 _last_used = time.monotonic()
                 self._reply(200, {"text": text.strip(), "engine": ENGINE, "infer_seconds": round(elapsed, 2)})

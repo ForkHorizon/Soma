@@ -64,9 +64,33 @@ extension RusToPromptQueueManager {
     }
 
 
+    /// Whether the queue has anything that needs the housekeeping timer: an
+    /// active/reattached run, or any item still queued/running/waiting. When this
+    /// is false the app is idle and should poll nothing.
+    var hasLiveQueueWork: Bool {
+        activeProcess != nil || activeReattachedPID != nil || activeItemID != nil
+            || items.contains { $0.status == .queued || $0.status == .running || $0.status == .waitingLocalAI }
+    }
+
+    /// Start the 1s housekeeping timer only when there's live work and it isn't
+    /// already running. Idle → no timer, no 5s RAM/power poll.
+    func startTimerIfNeeded() {
+        guard timer == nil, hasLiveQueueWork else { return }
+        startTimer()
+    }
+
+    /// Stop the timer once the queue drains, so an idle app costs zero polling.
+    func stopTimerIfIdle() {
+        guard !hasLiveQueueWork else { return }
+        timer?.invalidate()
+        timer = nil
+    }
+
     func startTimer() {
         // Tick fast for live progress (cheap file read + kill(pid,0)); run the heavier
         // memory/power/queue-advance housekeeping every 5th tick to keep its prior cadence.
+        // The timer only runs while there is live work (see startTimerIfNeeded); it
+        // stops itself once the queue is idle.
         timer?.invalidate()   // never stack a second 1s timer if called again
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             DispatchQueue.main.async { [weak self] in
@@ -78,6 +102,7 @@ extension RusToPromptQueueManager {
                 self.refreshFreeMemory()
                 self.refreshPowerSource()
                 self.startNextIfPossible()
+                self.stopTimerIfIdle()        // drained → stop polling until new work
             }
         }
         refreshFreeMemory()

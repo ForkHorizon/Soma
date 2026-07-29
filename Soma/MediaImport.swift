@@ -11,6 +11,13 @@ enum MediaImportPhase: String, Codable, Equatable {
     case failed
 }
 
+struct MediaImportChunk: Codable, Equatable {
+    let startSeconds: Double
+    let durationSeconds: Double
+    let reason: String
+    let overlapSeconds: Double
+}
+
 struct MediaImportJob: Identifiable, Codable, Equatable {
     let id: UUID
     var sourcePath: String
@@ -22,6 +29,7 @@ struct MediaImportJob: Identifiable, Codable, Equatable {
     var phase: MediaImportPhase
     var durationSeconds: Double?
     var totalChunks: Int?
+    var plannedChunks: [MediaImportChunk]?
     var nextChunkIndex: Int
     var sessionID: String?
     var sessionRequestID: String
@@ -43,6 +51,7 @@ struct MediaImportJob: Identifiable, Codable, Equatable {
         phase = .queued
         durationSeconds = nil
         totalChunks = nil
+        plannedChunks = nil
         nextChunkIndex = 0
         sessionID = nil
         sessionRequestID = UUID().uuidString
@@ -154,6 +163,41 @@ enum MediaImportTools {
         max(1, Int(ceil(max(0, duration - overlapSeconds) / (chunkSeconds - overlapSeconds))))
     }
 
+    static func planChunks(sourceURL: URL, duration: Double) async throws -> [MediaImportChunk] {
+        guard let ffmpeg = ffmpegURL() else { throw MediaImportError.ffmpegUnavailable }
+        let report = try await run(ffmpeg, [
+            "-hide_banner", "-i", sourceURL.path,
+            "-map", "0:a:0", "-af", "silencedetect=n=-40dB:d=0.65", "-f", "null", "-",
+        ])
+        let silenceEnds = report.split(whereSeparator: \.isNewline).compactMap { line -> Double? in
+            guard let range = line.range(of: "silence_end:") else { return nil }
+            return Double(line[range.upperBound...].split(whereSeparator: { $0 == " " || $0 == "|" }).first ?? "")
+        }
+        return planChunks(duration: duration, silenceEnds: silenceEnds)
+    }
+
+    static func planChunks(duration: Double, silenceEnds: [Double]) -> [MediaImportChunk] {
+        var chunks: [MediaImportChunk] = []
+        var start = 0.0
+        while start < duration {
+            let remaining = duration - start
+            if remaining <= 70 {
+                chunks.append(MediaImportChunk(startSeconds: start, durationSeconds: remaining, reason: VoiceChunkReason.pause.rawValue, overlapSeconds: 0))
+                break
+            }
+            let target = start + 60
+            let boundary = silenceEnds.filter { $0 >= start + 50 && $0 <= start + 70 }.min { abs($0 - target) < abs($1 - target) }
+            if let boundary {
+                chunks.append(MediaImportChunk(startSeconds: start, durationSeconds: boundary - start, reason: VoiceChunkReason.pause.rawValue, overlapSeconds: 0))
+                start = boundary
+            } else {
+                chunks.append(MediaImportChunk(startSeconds: start, durationSeconds: 60, reason: VoiceChunkReason.forced.rawValue, overlapSeconds: overlapSeconds))
+                start += chunkSeconds - overlapSeconds
+            }
+        }
+        return chunks
+    }
+
     static func mergedText(_ text: String, with next: String) -> String {
         let left = text.split(whereSeparator: { $0.isWhitespace })
         let right = next.split(whereSeparator: { $0.isWhitespace })
@@ -164,6 +208,45 @@ enum MediaImportTools {
             }
         }
         return [text, next].filter { !$0.isEmpty }.joined(separator: " ")
+    }
+
+    static func hasPathologicalRepetition(_ text: String, threshold: Int = 12) -> Bool {
+        var punctuationRun = 0
+        var previousPunctuation = ""
+        for token in text.split(whereSeparator: { $0.isWhitespace }) {
+            let word = token.lowercased().filter { $0.isLetter || $0.isNumber }
+            let punctuation = token.filter { !$0.isLetter && !$0.isNumber && !$0.isWhitespace }
+            if word.isEmpty && !punctuation.isEmpty {
+                punctuationRun = punctuation == previousPunctuation ? punctuationRun + 1 : 1
+                if punctuationRun >= 8 { return true }
+            } else {
+                punctuationRun = 0
+            }
+            previousPunctuation = punctuation
+        }
+        let words = text.split(whereSeparator: { $0.isWhitespace }).map {
+            $0.lowercased().filter { $0.isLetter || $0.isNumber }
+        }.filter { !$0.isEmpty }
+        guard words.count >= 3 else { return false }
+        for unitLength in 1...min(8, words.count / 3) {
+            let minimumLength = max(threshold, unitLength * 3)
+            guard words.count >= minimumLength else { continue }
+            for start in 0...(words.count - minimumLength) {
+                let repeats = (unitLength..<minimumLength).allSatisfy {
+                    words[start + $0] == words[start + $0 % unitLength]
+                }
+                if repeats { return true }
+            }
+        }
+        return false
+    }
+
+    static func removingContextPrefix(_ context: String, from text: String) -> String? {
+        let contextWords = context.split(whereSeparator: { $0.isWhitespace })
+        let words = text.split(whereSeparator: { $0.isWhitespace })
+        guard !contextWords.isEmpty, words.count > contextWords.count else { return nil }
+        guard words.prefix(contextWords.count).map(normalize) == contextWords.map(normalize) else { return nil }
+        return words.dropFirst(contextWords.count).joined(separator: " ")
     }
 
     nonisolated private static func normalize(_ value: Substring) -> String {

@@ -13,7 +13,7 @@ struct VoiceRecording: Identifiable, Hashable {
     var id: URL { url }
 }
 
-private struct RecordingIndexEntry {
+private struct RecordingIndexEntry: Sendable {
     let url: URL
     let date: Date
     let hasTranscript: Bool
@@ -123,7 +123,7 @@ final class ASRManager: ObservableObject {
         (enginesRoot as NSString).deletingLastPathComponent + "/asr-models"
     }
     private var keepLoadedMinutes: Int {
-        UserDefaults.standard.object(forKey: "modelKeepLoadedMinutes") as? Int ?? 60
+        UserDefaults.standard.object(forKey: "modelKeepLoadedMinutes") as? Int ?? 15
     }
     private var backend: String {
         UserDefaults.standard.string(forKey: "asrBackend") ?? "local"
@@ -217,22 +217,44 @@ final class ASRManager: ObservableObject {
     private var importHistoryURL: URL { importsDir.appendingPathComponent("history.json") }
 
     init() {
-        migrateVoiceModelRetentionToOneHour()
+        migrateVoiceModelRetentionToFifteenMinutes()
         restoreImportQueue()
         connectivityMonitor.start(queue: connectivityMonitorQueue)
+        pruneOldRecordings()
+        installMemoryPressureUnload()
     }
 
     deinit {
         connectivityMonitor.cancel()
+        memoryPressureSource?.cancel()
     }
 
-    /// The old remote default was fifteen minutes. Apply the user's requested
-    /// one-hour retention once, while preserving any later explicit choice.
-    private func migrateVoiceModelRetentionToOneHour() {
-        let migrationKey = "voiceModelRetentionOneHourMigrationV1"
+    /// One hour was far too long on a RAM-bound box — a multi-GB model held for
+    /// an hour after each use pushes the whole system into swap. Force 15 min
+    /// once (supersedes the old one-hour migration), then honour later user edits.
+    private func migrateVoiceModelRetentionToFifteenMinutes() {
+        let migrationKey = "voiceModelRetentionFifteenMinMigrationV1"
         guard !UserDefaults.standard.bool(forKey: migrationKey) else { return }
-        UserDefaults.standard.set(60, forKey: "modelKeepLoadedMinutes")
+        UserDefaults.standard.set(15, forKey: "modelKeepLoadedMinutes")
         UserDefaults.standard.set(true, forKey: migrationKey)
+    }
+
+    /// Free the local ASR model when the OS reports memory pressure and nothing
+    /// is in flight, so Soma can't be the process that tips a tight box into
+    /// swap thrash. Remote mode has no local model, so this is a no-op there.
+    private var memoryPressureSource: DispatchSourceMemoryPressure?
+    private func installMemoryPressureUnload() {
+        let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
+        source.setEventHandler { [weak self] in
+            let critical = source.data.contains(.critical)
+            MainActor.assumeIsolated {
+                ResourceSampler.shared.mark(critical ? "mem_pressure_critical/asr" : "mem_pressure_warning/asr")
+                guard let self, !self.usesRemoteServer, !self.isRecording, !self.isTranscribing else { return }
+                self.teardownServer()
+            }
+        }
+        source.resume()
+        memoryPressureSource = source
     }
 
     // MARK: Record toggle
@@ -335,6 +357,7 @@ final class ASRManager: ObservableObject {
 
     @MainActor
     private func beginStreamingRecording(allowWhileTranscribing: Bool, useChunkedRemoteCapture: Bool) {
+        ResourceSampler.shared.mark("record_start")
         stopPlayback()
         engineNode.stop()
         engineNode = AVAudioEngine()
@@ -535,7 +558,9 @@ final class ASRManager: ObservableObject {
                 smoothedInputLevel = smoothedInputLevel * 0.72 + normalized * 0.28
 
                 let now = ProcessInfo.processInfo.systemUptime
-                if now - lastInputLevelPublishTime >= 0.066 {
+                // Ten UI updates per second keep the meter responsive without
+                // continuously restarting a longer SwiftUI interpolation.
+                if now - lastInputLevelPublishTime >= 0.10 {
                     lastInputLevelPublishTime = now
                     let level = smoothedInputLevel
                     DispatchQueue.main.async { [weak self] in
@@ -663,20 +688,52 @@ final class ASRManager: ObservableObject {
 
     // MARK: Recordings library
 
-    func refreshRecordings() {
-        let keys: [URLResourceKey] = [.contentModificationDateKey]
-        let files = (try? FileManager.default.contentsOfDirectory(
-            at: recordingsDir, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
-        recordingIndex = files
-            .filter { $0.pathExtension.lowercased() == "wav" }
-            .map { url in
+    /// Retention: drop saved recordings (and their transcripts) older than 14
+    /// days so the VoiceRecordings cache can't grow without bound. Runs once at
+    /// launch, off the main thread.
+    private static let recordingRetention: TimeInterval = 14 * 24 * 60 * 60
+    private func pruneOldRecordings() {
+        let dir = recordingsDir
+        let cutoff = Date().addingTimeInterval(-Self.recordingRetention)
+        Task.detached(priority: .utility) { [weak self] in
+            let files = (try? FileManager.default.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles])) ?? []
+            for url in files where url.pathExtension.lowercased() == "wav" {
                 let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                return RecordingIndexEntry(url: url, date: date, hasTranscript: hasTranscript(for: url))
+                guard date < cutoff else { continue }
+                try? FileManager.default.removeItem(at: url)
+                try? FileManager.default.removeItem(at: url.deletingPathExtension().appendingPathExtension("txt"))
             }
-            .sorted { $0.date > $1.date }
-        recordingsTotal = recordingIndex.count
-        recordings = []
-        loadMoreRecordings(limit: initialRecordingsLimit)
+            self?.refreshRecordings()
+        }
+    }
+
+    func refreshRecordings() {
+        // Scan off the main thread. This runs after *every* recording (incl. each
+        // global paste), and the directory grows unbounded — a synchronous stat of
+        // hundreds/thousands of files here hitched the UI/island animation and got
+        // slower the longer the library grew.
+        let dir = recordingsDir
+        Task.detached(priority: .utility) { [weak self] in
+            let keys: [URLResourceKey] = [.contentModificationDateKey]
+            let files = (try? FileManager.default.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
+            let index = files
+                .filter { $0.pathExtension.lowercased() == "wav" }
+                .map { url -> RecordingIndexEntry in
+                    let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                    let transcript = url.deletingPathExtension().appendingPathExtension("txt")
+                    return RecordingIndexEntry(url: url, date: date, hasTranscript: FileManager.default.fileExists(atPath: transcript.path))
+                }
+                .sorted { $0.date > $1.date }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.recordingIndex = index
+                self.recordingsTotal = index.count
+                self.recordings = []
+                self.loadMoreRecordings(limit: self.initialRecordingsLimit)
+            }
+        }
     }
 
     var hasMoreRecordings: Bool { recordings.count < recordingsTotal }
@@ -908,12 +965,24 @@ final class ASRManager: ObservableObject {
             return
         }
         do {
-            if job.durationSeconds == nil {
+            if job.durationSeconds == nil || job.plannedChunks == nil {
                 updateImport(id, phase: .probing)
-                let duration = try await MediaImportTools.probeDuration(job.sourceURL)
+                let duration: Double
+                if let knownDuration = job.durationSeconds {
+                    duration = knownDuration
+                } else {
+                    duration = try await MediaImportTools.probeDuration(job.sourceURL)
+                }
+                let chunks = try await MediaImportTools.planChunks(sourceURL: job.sourceURL, duration: duration)
                 job = currentImport(id) ?? job
                 job.durationSeconds = duration
-                job.totalChunks = MediaImportTools.chunkCount(for: duration)
+                job.plannedChunks = chunks
+                job.totalChunks = chunks.count
+                if job.nextChunkIndex > 0 || job.sessionID != nil {
+                    job.nextChunkIndex = 0
+                    job.sessionID = nil
+                    job.localFragments = []
+                }
                 replaceImport(job)
             }
             let text = job.backend == "remote"
@@ -946,23 +1015,51 @@ final class ASRManager: ObservableObject {
                     job.sessionID = sessionID
                     replaceImport(job)
                 }
-                guard let sessionID = job.sessionID, let total = job.totalChunks, let duration = job.durationSeconds else {
+                guard let sessionID = job.sessionID, let chunks = job.plannedChunks else {
                     throw SomaError("Import session could not be prepared.")
                 }
+                let total = chunks.count
                 while job.nextChunkIndex < total {
                     let index = job.nextChunkIndex
-                    let start = MediaImportTools.chunkStart(index: index)
-                    let chunkDuration = min(MediaImportTools.chunkSeconds, duration - start)
-                    guard chunkDuration > 0 else { break }
+                    let chunk = chunks[index]
+                    let start = chunk.startSeconds
+                    let chunkDuration = chunk.durationSeconds
                     updateImport(id, phase: .converting)
                     let chunkURL = importChunkURL(for: job, index: index)
                     try await MediaImportTools.exportChunk(sourceURL: job.sourceURL, startSeconds: start, durationSeconds: chunkDuration, to: chunkURL)
                     try ensureImportActive(id)
                     defer { try? FileManager.default.removeItem(at: chunkURL) }
                     updateImport(id, phase: .uploading)
-                    let reason: VoiceChunkReason = index + 1 == total ? .final : .forced
-                    try await retryImportRequest(id) {
-                        try await self.uploadImportedChunk(base: base, token: token, clientID: clientID, sessionID: sessionID, job: job, index: index, chunkURL: chunkURL, reason: reason, overlapMilliseconds: index == 0 ? 0 : Int(MediaImportTools.overlapSeconds * 1_000), durationMilliseconds: Int(chunkDuration * 1_000))
+                    let reason = VoiceChunkReason(rawValue: chunk.reason) ?? .forced
+                    let overlapMilliseconds = Int(chunk.overlapSeconds * 1_000)
+                    var jobID = try await retryImportRequest(id) {
+                        try await self.uploadImportedChunk(base: base, token: token, clientID: clientID, sessionID: sessionID, job: job, index: index, attempt: 0, chunkURL: chunkURL, reason: reason, overlapMilliseconds: overlapMilliseconds, durationMilliseconds: Int(chunkDuration * 1_000))
+                    }
+                    do {
+                        _ = try await retryImportRequest(id) {
+                            try await self.waitForImportedChunk(base: base, token: token, clientID: clientID, jobID: jobID)
+                        }
+                    } catch let error as VoiceServerRemoteError where error.code == "pathological_repetition" {
+                        jobID = try await retryImportRequest(id) {
+                            try await self.uploadImportedChunk(base: base, token: token, clientID: clientID, sessionID: sessionID, job: job, index: index, attempt: 1, chunkURL: chunkURL, reason: reason, overlapMilliseconds: overlapMilliseconds, durationMilliseconds: Int(chunkDuration * 1_000), retryFailedChunk: true)
+                        }
+                        do {
+                            _ = try await retryImportRequest(id) {
+                                try await self.waitForImportedChunk(base: base, token: token, clientID: clientID, jobID: jobID)
+                            }
+                        } catch let retryError as VoiceServerRemoteError where retryError.code == "pathological_repetition" {
+                            guard index > 0 else { throw retryError }
+                            let contextURL = importWorkDirectory(for: job).appendingPathComponent(String(format: "chunk-%05d-context.flac", index))
+                            defer { try? FileManager.default.removeItem(at: contextURL) }
+                            let contextStart = chunks[index - 1].startSeconds
+                            try await MediaImportTools.exportChunk(sourceURL: job.sourceURL, startSeconds: contextStart, durationSeconds: start + chunkDuration - contextStart, to: contextURL)
+                            jobID = try await retryImportRequest(id) {
+                                try await self.uploadImportedChunk(base: base, token: token, clientID: clientID, sessionID: sessionID, job: job, index: index, attempt: 2, chunkURL: contextURL, reason: reason, overlapMilliseconds: overlapMilliseconds, durationMilliseconds: Int(chunkDuration * 1_000), retryFailedChunk: true, contextChunkIndex: index - 1)
+                            }
+                            _ = try await retryImportRequest(id) {
+                                try await self.waitForImportedChunk(base: base, token: token, clientID: clientID, jobID: jobID)
+                            }
+                        }
                     }
                     try ensureImportActive(id)
                     job = currentImport(id) ?? job
@@ -986,20 +1083,38 @@ final class ASRManager: ObservableObject {
 
     @MainActor
     private func transcribeImportedLocally(_ id: UUID) async throws -> String {
-        guard var job = currentImport(id), let total = job.totalChunks, let duration = job.durationSeconds else { throw SomaError("Import was not prepared.") }
+        guard var job = currentImport(id), let chunks = job.plannedChunks else { throw SomaError("Import was not prepared.") }
+        let total = chunks.count
         let localPort = try await ensureServerReady()
         while job.nextChunkIndex < total {
             let index = job.nextChunkIndex
-            let start = MediaImportTools.chunkStart(index: index)
-            let chunkDuration = min(MediaImportTools.chunkSeconds, duration - start)
-            guard chunkDuration > 0 else { break }
+            let chunk = chunks[index]
+            let start = chunk.startSeconds
+            let chunkDuration = chunk.durationSeconds
             updateImport(id, phase: .converting)
             let chunkURL = importChunkURL(for: job, index: index)
             try await MediaImportTools.exportChunk(sourceURL: job.sourceURL, startSeconds: start, durationSeconds: chunkDuration, to: chunkURL)
             try ensureImportActive(id)
             defer { try? FileManager.default.removeItem(at: chunkURL) }
             updateImport(id, phase: .transcribing)
-            let fragment = try await transcribeImportedChunkLocally(chunkURL, port: localPort)
+            var fragment = try await transcribeImportedChunkLocally(chunkURL, port: localPort)
+            if MediaImportTools.hasPathologicalRepetition(fragment) {
+                fragment = try await transcribeImportedChunkLocally(chunkURL, port: localPort)
+                if MediaImportTools.hasPathologicalRepetition(fragment) {
+                    guard index > 0, let previous = job.localFragments.last else {
+                        throw SomaError("The first media segment repeated itself excessively. Retry the import.")
+                    }
+                    let contextURL = importWorkDirectory(for: job).appendingPathComponent(String(format: "chunk-%05d-context.flac", index))
+                    defer { try? FileManager.default.removeItem(at: contextURL) }
+                    let contextStart = chunks[index - 1].startSeconds
+                    try await MediaImportTools.exportChunk(sourceURL: job.sourceURL, startSeconds: contextStart, durationSeconds: start + chunkDuration - contextStart, to: contextURL)
+                    let combined = try await transcribeImportedChunkLocally(contextURL, port: localPort)
+                    guard !MediaImportTools.hasPathologicalRepetition(combined), let currentOnly = MediaImportTools.removingContextPrefix(previous, from: combined) else {
+                        throw SomaError("A media segment could not be recovered safely. Retry the import.")
+                    }
+                    fragment = currentOnly
+                }
+            }
             try ensureImportActive(id)
             job = currentImport(id) ?? job
             job.localFragments.append(fragment)
@@ -1066,6 +1181,7 @@ final class ASRManager: ObservableObject {
             try ensureImportActive(id)
             do { return try await operation() }
             catch is ImportedSessionLost { throw ImportedSessionLost() }
+            catch let error as VoiceServerRemoteError where error.code == "pathological_repetition" { throw error }
             catch let error as VoiceServerRemoteError where !error.retryable { throw error }
             catch {
                 attempt += 1
@@ -1113,6 +1229,7 @@ final class ASRManager: ObservableObject {
         request.httpMethod = "POST"
         request.setValue(job.sessionRequestID, forHTTPHeaderField: "X-Soma-Request-ID")
         request.setValue(String(keepLoadedMinutes * 60), forHTTPHeaderField: "X-Soma-Idle-Seconds")
+        request.setValue("auto", forHTTPHeaderField: "X-Soma-Language")
         request.timeoutInterval = 30
         let (data, response) = try await URLSession.shared.data(for: request)
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -1122,20 +1239,48 @@ final class ASRManager: ObservableObject {
         return id
     }
 
-    private func uploadImportedChunk(base: URL, token: String, clientID: String, sessionID: String, job: MediaImportJob, index: Int, chunkURL: URL, reason: VoiceChunkReason, overlapMilliseconds: Int, durationMilliseconds: Int) async throws {
+    private func uploadImportedChunk(base: URL, token: String, clientID: String, sessionID: String, job: MediaImportJob, index: Int, attempt: Int, chunkURL: URL, reason: VoiceChunkReason, overlapMilliseconds: Int, durationMilliseconds: Int, retryFailedChunk: Bool = false, contextChunkIndex: Int? = nil) async throws -> String {
         var request = importRemoteRequest(base.appendingPathComponent("v1/sessions/\(sessionID)/chunks/\(index)"), token: token, clientID: clientID, engine: job.engine)
         request.httpMethod = "PUT"
         request.setValue("audio/flac", forHTTPHeaderField: "Content-Type")
         request.setValue(VoiceWorkClass.background.rawValue, forHTTPHeaderField: "X-Soma-Work-Class")
-        request.setValue("\(job.id.uuidString)-\(index)", forHTTPHeaderField: "X-Soma-Request-ID")
+        request.setValue("client-v1", forHTTPHeaderField: "X-Soma-Chunk-Recovery")
+        request.setValue("\(job.id.uuidString)-\(index)-\(attempt)", forHTTPHeaderField: "X-Soma-Request-ID")
         request.setValue(reason.rawValue, forHTTPHeaderField: "X-Soma-Chunk-Reason")
         request.setValue("\(overlapMilliseconds)", forHTTPHeaderField: "X-Soma-Overlap-Milliseconds")
         request.setValue("\(durationMilliseconds)", forHTTPHeaderField: "X-Soma-Chunk-Duration-Milliseconds")
+        if retryFailedChunk { request.setValue("1", forHTTPHeaderField: "X-Soma-Retry-Failed-Chunk") }
+        if let contextChunkIndex { request.setValue("\(contextChunkIndex)", forHTTPHeaderField: "X-Soma-Context-Chunk-Index") }
         request.timeoutInterval = 90
         let (data, response) = try await URLSession.shared.upload(for: request, fromFile: chunkURL)
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
         if code == 404 { throw ImportedSessionLost() }
-        guard code == 202 else { throw remoteError(data, fallback: "Import chunk upload failed (HTTP \(code)).", retryable: code >= 500 || code == 408 || code == 429) }
+        guard code == 202, let payload = try? JSONDecoder().decode(VoiceServerJobResponse.self, from: data), let jobID = payload.job_id else {
+            throw remoteError(data, fallback: "Import chunk upload failed (HTTP \(code)).", retryable: code >= 500 || code == 408 || code == 429)
+        }
+        return jobID
+    }
+
+    private func waitForImportedChunk(base: URL, token: String, clientID: String, jobID: String) async throws -> String {
+        while true {
+            var components = URLComponents(url: base.appendingPathComponent("v1/transcriptions/\(jobID)"), resolvingAgainstBaseURL: false)!
+            components.queryItems = [URLQueryItem(name: "wait", value: "25")]
+            var request = importRemoteRequest(components.url!, token: token, clientID: clientID)
+            request.timeoutInterval = 35
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if code == 404 { throw ImportedSessionLost() }
+            guard code == 200, let payload = try? JSONDecoder().decode(VoiceServerJobResponse.self, from: data) else {
+                throw remoteError(data, fallback: "Import chunk polling failed (HTTP \(code)).", retryable: code >= 500 || code == 408)
+            }
+            switch payload.status {
+            case "done": return payload.text ?? ""
+            case "failed":
+                let detail = payload.error
+                throw VoiceServerRemoteError(code: detail?.code ?? "transcription_failed", message: detail?.message ?? "Import chunk failed.", retryable: detail?.retryable ?? true)
+            default: continue
+            }
+        }
     }
 
     private func finalizeImportedSession(base: URL, token: String, sessionID: String) async throws {
@@ -1169,7 +1314,11 @@ final class ASRManager: ObservableObject {
     }
 
     private func transcribeImportedChunkLocally(_ url: URL, port: Int) async throws -> String {
-        let payload: [String: Any] = ["audio": url.path, "idle_seconds": keepLoadedMinutes * 60]
+        let payload: [String: Any] = [
+            "audio": url.path,
+            "idle_seconds": keepLoadedMinutes * 60,
+            "language": "auto",
+        ]
         var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/transcribe")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

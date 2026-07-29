@@ -11,6 +11,7 @@ struct RusToPromptQueueRunContext {
 
 extension RusToPromptQueueManager {
     func startNextIfPossible(allowBatteryStart: Bool = false) {
+        startTimerIfNeeded()   // any start path (UI, enqueue, resume) revives the housekeeping timer
         refreshPowerSourceValue()
         applyPowerGate()
         guard activeProcess == nil, activeReattachedPID == nil, !isPaused else { return }

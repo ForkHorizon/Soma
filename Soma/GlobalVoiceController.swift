@@ -76,16 +76,16 @@ nonisolated final class RightCommandModeKeyCapture: @unchecked Sendable {
     private let lock = NSLock()
     private var rightCommandDown = false
 
-    func toggleRightCommand() {
-        lock.lock()
-        rightCommandDown.toggle()
-        lock.unlock()
-    }
-
     func setRightCommandDown(_ isDown: Bool) {
         lock.lock()
         rightCommandDown = isDown
         lock.unlock()
+    }
+
+    func isRightCommandDown() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return rightCommandDown
     }
 
     func shouldConsume(type: CGEventType, keyCode: Int) -> Bool {
@@ -93,6 +93,59 @@ nonisolated final class RightCommandModeKeyCapture: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return rightCommandDown
+    }
+}
+
+/// Runs the CGEvent tap on its OWN thread/runloop, never the main one. An active
+/// session tap whose callback is served by a busy main thread freezes ALL system
+/// input until the OS times the tap out — which also looked like a random
+/// "Canceled" mid-recording. On a dedicated thread the callback is always served
+/// promptly regardless of UI/system load.
+private final class EventTapRunner: @unchecked Sendable {
+    private var thread: Thread?
+    private var runLoop: CFRunLoop?
+    private var tap: CFMachPort?
+
+    nonisolated init() {}
+
+    private func adoptRunLoop(_ rl: CFRunLoop) { runLoop = rl }
+
+    func start(tap: CFMachPort) {
+        stop()
+        self.tap = tap
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        let runner = self
+        let worker = Thread {
+            guard let rl = CFRunLoopGetCurrent() else { return }
+            runner.adoptRunLoop(rl)
+            CFRunLoopAddSource(rl, source, .commonModes)
+            CGEvent.tapEnable(tap: tap, enable: true)
+            while !Thread.current.isCancelled {
+                _ = autoreleasepool {
+                    CFRunLoopRunInMode(.defaultMode, 0.5, false)
+                }
+            }
+            CFRunLoopRemoveSource(rl, source, .commonModes)
+            CGEvent.tapEnable(tap: tap, enable: false)
+        }
+        worker.name = "com.soma.global-voice-tap"
+        worker.stackSize = 512 * 1024
+        thread = worker
+        worker.start()
+    }
+
+    /// Re-enable after the OS disabled the tap (timeout / user input). Touches no
+    /// app state, so recovering the tap can never cancel a recording.
+    func reenable() {
+        if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
+    }
+
+    func stop() {
+        thread?.cancel()
+        if let runLoop { CFRunLoopStop(runLoop) }
+        thread = nil
+        runLoop = nil
+        tap = nil
     }
 }
 
@@ -146,11 +199,12 @@ final class GlobalVoiceController: ObservableObject {
     private weak var prompter: RusToPromptViewModel?
     private weak var textPriorityQueue: VoiceTextPriorityQueue?
     private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
     private var holdTask: Task<Void, Never>?
     private var captureTask: Task<Void, Never>?
     private var queueTask: Task<Void, Never>?
+    private var watchdogTask: Task<Void, Never>?
     private var permissionRetryTask: Task<Void, Never>?
+    private var systemStateObserversRegistered = false
     private var audioLevelCancellable: AnyCancellable?
     private var rightCommandDown = false
     private var comboUsed = false
@@ -161,10 +215,15 @@ final class GlobalVoiceController: ObservableObject {
     private var queuedJobs = GlobalVoiceFIFO<GlobalVoiceJob>()
     private let overlay = GlobalVoiceOverlay()
     nonisolated private let keyCapture = RightCommandModeKeyCapture()
+    nonisolated private let tapRunner = EventTapRunner()
 
     private let rightCommandKeyCode = 54
     private let escapeKeyCode = 53
     private let pasteKeyCode: CGKeyCode = 9
+
+    /// Device-dependent flag bit set only while the *right* Command key is down
+    /// (NX_DEVICERCMDKEYMASK). Reading it makes key tracking level-based.
+    nonisolated static let rightCommandDeviceMask: UInt64 = 0x0000_0010
 
     func configure(asr: ASRManager, somaViewModel: SomaViewModel, ollama: OllamaManager, prompter: RusToPromptViewModel, textPriorityQueue: VoiceTextPriorityQueue) {
         self.asr = asr
@@ -172,6 +231,7 @@ final class GlobalVoiceController: ObservableObject {
         self.ollama = ollama
         self.prompter = prompter
         self.textPriorityQueue = textPriorityQueue
+        registerSystemStateObservers()
         audioLevelCancellable = asr.$inputLevel
             .receive(on: RunLoop.main)
             .sink { [weak self] level in
@@ -202,6 +262,21 @@ final class GlobalVoiceController: ObservableObject {
     func openAccessibilitySettings() {
         let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
         NSWorkspace.shared.open(url)
+    }
+
+    /// Sleep/wake scramble global event-tap modifier state (a key-up can arrive
+    /// while the tap is suspended). Resync on wake so we never resume with a
+    /// phantom "still recording" island. Controller is app-lifetime, so the
+    /// observers are never removed. ponytail: no teardown for a singleton.
+    private func registerSystemStateObservers() {
+        guard !systemStateObserversRegistered else { return }
+        systemStateObserversRegistered = true
+        let center = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.willSleepNotification, NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification] {
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.resyncModifierState() }
+            }
+        }
     }
 
     private func accessibilityTrusted(prompt: Bool) -> Bool {
@@ -256,11 +331,31 @@ final class GlobalVoiceController: ObservableObject {
             callback: { _, type, event, refcon in
                 guard let refcon else { return Unmanaged.passUnretained(event) }
                 let controller = Unmanaged<GlobalVoiceController>.fromOpaque(refcon).takeUnretainedValue()
+                // Recover the tap right here on the tap thread — never depend on the
+                // main thread (which may be what stalled us) to re-enable it, and
+                // never let a timeout cancel an in-progress recording.
+                if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                    controller.tapRunner.reenable()
+                    return nil
+                }
                 let rawType = type.rawValue
                 let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
-                let consumeEvent = controller.captureEvent(type: type, keyCode: keyCode)
-                Task { @MainActor in
-                    controller.handleTapEvent(rawType: rawType, keyCode: keyCode, modeKeyWasCaptured: consumeEvent)
+                // Level-based: read whether the right Command key is *actually* down
+                // from the event's device flags, instead of toggling a parity bit.
+                // A dropped flagsChanged (tap timeout / sleep) then can't invert the
+                // state and strand a phantom recording.
+                let rightCommandIsDown = (event.flags.rawValue & GlobalVoiceController.rightCommandDeviceMask) != 0
+                let consumeEvent = controller.captureEvent(type: type, keyCode: keyCode, rightCommandIsDown: rightCommandIsDown)
+
+                // The event tap sees every global keystroke. Only hop to the main
+                // actor for an event that can change Soma's state; posting a Task
+                // for ordinary typing creates needless main-queue churn all day.
+                let needsMainActor = (type == .flagsChanged && keyCode == 54)
+                    || (type == .keyDown && (consumeEvent || controller.keyCapture.isRightCommandDown()))
+                if needsMainActor {
+                    Task { @MainActor in
+                        controller.handleTapEvent(rawType: rawType, keyCode: keyCode, rightCommandIsDown: rightCommandIsDown, modeKeyWasCaptured: consumeEvent)
+                    }
                 }
                 return consumeEvent ? nil : Unmanaged.passUnretained(event)
             },
@@ -271,11 +366,7 @@ final class GlobalVoiceController: ObservableObject {
             return
         }
         eventTap = tap
-        runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        if let runLoopSource {
-            CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
-        }
-        CGEvent.tapEnable(tap: tap, enable: true)
+        tapRunner.start(tap: tap)   // runs on its own thread, off the main runloop
         overlay.prepare()
         status = "Hold Right Command to record, release to paste."
     }
@@ -286,34 +377,26 @@ final class GlobalVoiceController: ObservableObject {
         if recording || asr?.isRecording == true {
             cancel()
         }
-        if let runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
-        }
-        runLoopSource = nil
-        if let eventTap {
-            CGEvent.tapEnable(tap: eventTap, enable: false)
-        }
+        tapRunner.stop()
         eventTap = nil
         keyCapture.setRightCommandDown(false)
         rightCommandDown = false
         comboUsed = false
     }
 
-    nonisolated private func captureEvent(type: CGEventType, keyCode: Int) -> Bool {
+    nonisolated private func captureEvent(type: CGEventType, keyCode: Int, rightCommandIsDown: Bool) -> Bool {
         if type == .flagsChanged, keyCode == 54 {
-            keyCapture.toggleRightCommand()
+            keyCapture.setRightCommandDown(rightCommandIsDown)
             return false
         }
         return keyCapture.shouldConsume(type: type, keyCode: keyCode)
     }
 
-    private func handleTapEvent(rawType: UInt32, keyCode: Int, modeKeyWasCaptured: Bool) {
-        if rawType == CGEventType.tapDisabledByTimeout.rawValue || rawType == CGEventType.tapDisabledByUserInput.rawValue {
-            if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: true) }
-            return
-        }
+    private func handleTapEvent(rawType: UInt32, keyCode: Int, rightCommandIsDown: Bool, modeKeyWasCaptured: Bool) {
+        // tapDisabled events are recovered on the tap thread (see the callback) and
+        // never reach here — deliberately: re-enabling must not cancel a recording.
         if rawType == CGEventType.flagsChanged.rawValue, keyCode == rightCommandKeyCode {
-            rightCommandDown ? rightCommandUp() : rightCommandDownEvent()
+            setRightCommand(down: rightCommandIsDown)
             return
         }
         guard rawType == CGEventType.keyDown.rawValue else { return }
@@ -344,9 +427,37 @@ final class GlobalVoiceController: ObservableObject {
         rightCommandDown = false
         holdTask?.cancel()
         holdTask = nil
+        watchdogTask?.cancel()
+        watchdogTask = nil
         guard recording else { return }
         recording = false
+        // Closing the audio file happens on the serial audio queue and can take a
+        // moment. Do not leave the island claiming that it is still recording
+        // while that work completes: the key release has already been handled.
+        show("Finishing…", image: "waveform", busy: true, mode: recordingMode)
         finishAndPaste(using: recordingMode)
+    }
+
+    /// Drive the key transition from the real, level-based flag state. Repeated
+    /// same-state events (key-repeat, left+right combos) are ignored.
+    private func setRightCommand(down: Bool) {
+        guard down != rightCommandDown else { return }
+        down ? rightCommandDownEvent() : rightCommandUp()
+    }
+
+    /// Force key state back to "released" and tear down any in-flight recording.
+    /// Called when the tap re-enables after a timeout and on system wake, where
+    /// dropped events would otherwise desync tracking and strand the island.
+    private func resyncModifierState() {
+        keyCapture.setRightCommandDown(false)
+        holdTask?.cancel()
+        holdTask = nil
+        comboUsed = false
+        if recording || asr?.isRecording == true {
+            cancel()
+        } else {
+            rightCommandDown = false
+        }
     }
 
     private func startRecordingIfStillHeld() {
@@ -356,6 +467,19 @@ final class GlobalVoiceController: ObservableObject {
         recording = true
         refreshOverlay()
         asr.startGlobalRecording()
+        scheduleRecordingWatchdog()
+    }
+
+    /// Hard ceiling: even if every other guard fails, a stuck key can't keep the
+    /// recorder — and the island's animated glow — alive for more than a few
+    /// minutes. Normal hold-to-talk lasts seconds, so this never bites real use.
+    private func scheduleRecordingWatchdog() {
+        watchdogTask?.cancel()
+        watchdogTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 180_000_000_000)   // 3 min
+            guard let self, !Task.isCancelled, self.recording else { return }
+            self.cancel()
+        }
     }
 
     private func selectOutputMode(_ mode: VoiceOutputMode) {
@@ -480,6 +604,8 @@ final class GlobalVoiceController: ObservableObject {
     private func cancel() {
         holdTask?.cancel()
         holdTask = nil
+        watchdogTask?.cancel()
+        watchdogTask = nil
         rightCommandDown = false
         comboUsed = false
         recording = false
@@ -732,6 +858,10 @@ private final class GlobalVoiceOverlay {
         panel.ignoresMouseEvents = true
         panel.minSize = Self.panelSize
         panel.maxSize = Self.panelSize
+        // Keep one hosting tree for the app lifetime. Rebuilding a complete
+        // SwiftUI tree for every dictation steadily grew Observation state over
+        // long sessions. LiquidGlassSurface itself stops all motion once the
+        // island is collapsed, so keeping this host costs no idle animation.
         let host = NSHostingController(rootView: DynamicIslandView(model: model))
         host.sizingOptions = []
         panel.contentViewController = host
@@ -751,11 +881,22 @@ private final class GlobalVoiceOverlay {
             model.notchWidth = 180                       // no notch: floating top pill
         }
         let full = screen.frame
-        let size = window.frame.size
         // Notch Macs: flush to the top bezel so it merges with the camera cutout.
         // No-notch Macs: drop just below the menu bar as a floating pill.
         let topEdge = model.hasNotch ? full.maxY : screen.visibleFrame.maxY - 6
-        window.setFrameOrigin(NSPoint(x: full.midX - size.width / 2, y: topEdge - size.height))
+        // A newly attached NSHostingController can briefly report its intrinsic
+        // width. The panel itself is always fixed-size; centering from that
+        // transient width makes the first reveal appear shifted until AppKit
+        // applies the real frame on a later update.
+        window.setFrame(
+            NSRect(
+                x: full.midX - Self.panelSize.width / 2,
+                y: topEdge - Self.panelSize.height,
+                width: Self.panelSize.width,
+                height: Self.panelSize.height
+            ),
+            display: window.isVisible
+        )
     }
 }
 
@@ -853,6 +994,9 @@ private struct LiquidGlassSurface: View, Animatable {
     var echoActivity: Double
     var processing: Bool
     var animating: Bool
+    @State private var driftPhase: CGFloat = 0
+    @State private var bobPhase: CGFloat = 0
+    @State private var breathPhase: CGFloat = 0
 
     var animatableData: AnimatablePair<
         AnimatablePair<AnimatablePair<Double, Double>, AnimatablePair<Double, Double>>,
@@ -886,31 +1030,31 @@ private struct LiquidGlassSurface: View, Animatable {
 
     var body: some View {
         let shape = NotchIsland(topRadius: topRadius, bottomRadius: bottomRadius)
-        // Only drive the per-frame display link while the island is actually on
-        // screen. Collapsed into the notch the glow is invisible, so animating it
-        // there just relaid out the whole hosting tree every frame forever (idle
-        // main-thread burn that starved real frames the longer the app ran). A
-        // static render while hidden costs nothing.
-        if animating {
-            TimelineView(.animation) { timeline in
-                surface(shape, t: timeline.date.timeIntervalSinceReferenceDate)
-            }
-        } else {
-            surface(shape, t: 0)
+        // Do not use TimelineView here: it re-runs this entire SwiftUI body for
+        // every display frame. These repeat-forever values are interpolated by
+        // SwiftUI's animation system instead, and reset to a static surface when
+        // the panel is hidden.
+        surface(
+            shape,
+            drift: animating ? driftPhase : 0,
+            bob: animating ? bobPhase : 0,
+            breath: animating && processing ? breathPhase : 0
+        )
+        .drawingGroup()
+        .onAppear { updateMotion(isActive: animating) }
+        .onChange(of: animating) { _, isActive in
+            updateMotion(isActive: isActive)
         }
     }
 
     @ViewBuilder
-    private func surface(_ shape: NotchIsland, t: TimeInterval) -> some View {
-        let drift = CGFloat(sin(t * 0.9))            // slow left/right sweep, -1…1
-        let bob = CGFloat(sin(t * 1.3 + 1))          // gentle vertical shimmer
+    private func surface(_ shape: NotchIsland, drift: CGFloat, bob: CGFloat, breath: CGFloat) -> some View {
         let voice = CGFloat(min(max(activity, 0), 1))
         // Speech normally lands near the middle of the metered range. A curved
         // response makes that clearly visible while keeping silence at zero.
         let voiceResponse = pow(voice, 0.65)
         let echoVoice = CGFloat(min(max(echoActivity, 0), 1))
         let echoResponse = pow(echoVoice, 0.7)
-        let breath = processing ? CGFloat(0.5 + 0.5 * sin(t * 2.15)) : 0
         let energy = min(voiceResponse * 0.9 + breath * 0.16, 1)
         GeometryReader { geo in
                 let w = geo.size.width, h = geo.size.height
@@ -941,6 +1085,34 @@ private struct LiquidGlassSurface: View, Animatable {
                 .clipShape(shape)
             }
     }
+
+    private func updateMotion(isActive: Bool) {
+        guard isActive else {
+            withAnimation(nil) {
+                driftPhase = 0
+                bobPhase = 0
+                breathPhase = 0
+            }
+            return
+        }
+
+        withAnimation(nil) {
+            driftPhase = -1
+            bobPhase = -1
+            breathPhase = 0
+        }
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
+                driftPhase = 1
+            }
+            withAnimation(.easeInOut(duration: 1.65).repeatForever(autoreverses: true)) {
+                bobPhase = 1
+            }
+            withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
+                breathPhase = 1
+            }
+        }
+    }
 }
 
 private struct DynamicIslandView: View {
@@ -953,7 +1125,6 @@ private struct DynamicIslandView: View {
     @State private var displayedMessage = ""
     @State private var messageOpacity = 1.0
     @State private var messageOffset: CGFloat = 0
-    @State private var echoLevel = 0.0
 
     private var iconColor: Color {
         switch model.image {
@@ -1083,11 +1254,6 @@ private struct DynamicIslandView: View {
                 messageOffset = 0
             }
         }
-        .task(id: model.audioLevel) {
-            withAnimation(.easeOut(duration: 0.24)) {
-                echoLevel = model.audioLevel
-            }
-        }
         .task(id: model.queueItems.map(\.id)) {
             guard !model.queueItems.isEmpty else {
                 queueIsRevealed = false
@@ -1138,12 +1304,15 @@ private struct DynamicIslandView: View {
             echoRed: glowPalette.echo.red,
             echoGreen: glowPalette.echo.green,
             echoBlue: glowPalette.echo.blue,
-            echoActivity: echoLevel,
+            // The meter arrives at 10 Hz. Keeping both glows in the same short
+            // transaction prevents a new 0.24 s animation from constantly
+            // overtaking the previous value and then jumping ahead.
+            echoActivity: model.audioLevel,
             processing: model.busy,
             animating: model.expanded
         )
         .animation(OverlayModel.glowTransition, value: glowPalette)
-        .animation(.linear(duration: 0.10), value: model.audioLevel)
+        .animation(.linear(duration: 0.08), value: model.audioLevel)
     }
 
     private var content: some View {
