@@ -251,46 +251,59 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._reply(404, {"error": "not found"})
 
+    def _request_body(self) -> dict:
+        return json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+
     def do_POST(self) -> None:
-        global _idle_seconds, _last_used
-        if self.path == "/configure":
-            try:
-                req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
-                if "idle_seconds" in req:
-                    _idle_seconds = max(0.0, float(req["idle_seconds"]))
-                    if _idle_seconds == 0:
-                        _submit(_unload)
-                self._reply(200, _health())
-            except Exception as exc:
-                self._reply(400, {"error": f"bad request: {exc}"})
-            return
-        if self.path == "/warmup":
-            try:
-                req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
-                if "idle_seconds" in req:
-                    _idle_seconds = max(0.0, float(req["idle_seconds"]))
-                if _loaded:
-                    # Record-start fires this on every recording. A warm model
-                    # must answer immediately, never behind an in-flight decode.
-                    _last_used = time.monotonic()
-                    self._reply(200, {
-                        "ok": True,
-                        "engine": ENGINE,
-                        "loaded": True,
-                        "already_loaded": True,
-                        "load_seconds": 0.0,
-                    })
-                    return
-                self._reply(200, _on_model_thread(_warm_job))
-            except Exception as exc:
-                traceback.print_exc()
-                self._reply(500, {"error": str(exc), "engine": ENGINE})
-            return
-        if self.path != "/transcribe":
+        route = {
+            "/configure": self._post_configure,
+            "/warmup": self._post_warmup,
+            "/transcribe": self._post_transcribe,
+        }.get(self.path)
+        if route is None:
             self._reply(404, {"error": "not found"})
             return
+        route()
+
+    def _post_configure(self) -> None:
+        global _idle_seconds
         try:
-            req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+            req = self._request_body()
+            if "idle_seconds" in req:
+                _idle_seconds = max(0.0, float(req["idle_seconds"]))
+                if _idle_seconds == 0:
+                    _submit(_unload)
+            self._reply(200, _health())
+        except Exception as exc:
+            self._reply(400, {"error": f"bad request: {exc}"})
+
+    def _post_warmup(self) -> None:
+        global _idle_seconds, _last_used
+        try:
+            req = self._request_body()
+            if "idle_seconds" in req:
+                _idle_seconds = max(0.0, float(req["idle_seconds"]))
+            if _loaded:
+                # Record-start fires this on every recording. A warm model must
+                # answer immediately, never behind an in-flight decode.
+                _last_used = time.monotonic()
+                self._reply(200, {
+                    "ok": True,
+                    "engine": ENGINE,
+                    "loaded": True,
+                    "already_loaded": True,
+                    "load_seconds": 0.0,
+                })
+                return
+            self._reply(200, _on_model_thread(_warm_job))
+        except Exception as exc:
+            traceback.print_exc()
+            self._reply(500, {"error": str(exc), "engine": ENGINE})
+
+    def _post_transcribe(self) -> None:
+        global _idle_seconds
+        try:
+            req = self._request_body()
         except Exception as exc:
             self._reply(400, {"error": f"bad request: {exc}"})
             return
