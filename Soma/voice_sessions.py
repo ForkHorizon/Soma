@@ -12,6 +12,7 @@ import time
 import uuid
 from typing import TYPE_CHECKING, Any
 
+import voice_jobs
 import voice_session_view
 from voice_models import SessionChunk, VoiceSession
 
@@ -20,7 +21,6 @@ if TYPE_CHECKING:  # annotations stay lazy, so this cannot cycle at runtime
 
 
 def create(state, headers: dict[str, str]) -> tuple[int, dict[str, Any]]:
-    state._prune()
     client_id, request_id, engine, idle_seconds = state._request_options(headers)
     if engine is None:
         return state.error(400, "unknown_engine", "Unknown ASR engine.", retryable=False)
@@ -109,16 +109,15 @@ def _existing_chunk_reply(state, session, index: int, request: dict[str, Any]):
     return None
 
 
-def _store_chunk_locked(state, session, index: int, request: dict[str, Any], body: bytes) -> tuple[int, dict[str, Any]]:
+def _store_chunk_locked(state, session, index: int, request: dict[str, Any], audio_path: str) -> tuple[int, dict[str, Any]]:
     job = state._new_job(
         session.client_id,
         request["request_id"],
         session.engine,
         session.language,
         session.idle_seconds,
-        body,
+        audio_path,
         request["work_class"],
-        request["suffix"],
         request["client_managed_recovery"],
     )
     job.session_id = session.id
@@ -142,38 +141,47 @@ def _store_chunk_locked(state, session, index: int, request: dict[str, Any], bod
 
 
 def submit_chunk(state, session_id: str, index: int, headers: dict[str, str], body: bytes) -> tuple[int, dict[str, Any]]:
-    state._prune()
     if len(body) > state.max_audio_bytes:
         return state.error(413, "audio_too_large", "Audio file is too large.", retryable=False)
     request, error = _parse_chunk_request(state, index, headers)
     if error:
         return error
-
-    with state.changed:
-        session = state.sessions.get(session_id)
-        if not session:
-            return state.error(404, "session_not_found", "Voice session was not found or expired.", retryable=False)
-        if session.client_id != request["client_id"]:
-            return state.error(403, "session_client_mismatch", "Voice session belongs to another client.", retryable=False)
-        if session.canceled:
-            return state.error(409, "session_canceled", "Voice session was canceled.", retryable=False)
-        existing = session.chunks.get(index)
-        if session.finalized and not existing:
-            return state.error(409, "session_finalized", "Voice session has already been finalized.", retryable=False)
-        if replay := _existing_chunk_reply(state, session, index, request):
-            return replay
-        if not existing and index != session.next_chunk_index:
-            return 409, {
-                "error": {
-                    "code": "chunk_out_of_order",
-                    "message": "Chunk index must be the next expected index.",
-                    "retryable": True,
-                },
-                "expected_chunk_index": session.next_chunk_index,
-            }
-        if error := state._queue_error_locked(request["work_class"]):
-            return error
-        return _store_chunk_locked(state, session, index, request, body)
+    # Spill the audio before taking the lock. Every millisecond the lock is held
+    # here delays the next chunk reaching the queue, which is exactly the gap
+    # between "chunk received" and "decode starts" that we are trying to close.
+    audio_path = voice_jobs.spill_audio(body, request["suffix"])
+    accepted = False
+    try:
+        with state.changed:
+            session = state.sessions.get(session_id)
+            if not session:
+                return state.error(404, "session_not_found", "Voice session was not found or expired.", retryable=False)
+            if session.client_id != request["client_id"]:
+                return state.error(403, "session_client_mismatch", "Voice session belongs to another client.", retryable=False)
+            if session.canceled:
+                return state.error(409, "session_canceled", "Voice session was canceled.", retryable=False)
+            existing = session.chunks.get(index)
+            if session.finalized and not existing:
+                return state.error(409, "session_finalized", "Voice session has already been finalized.", retryable=False)
+            if replay := _existing_chunk_reply(state, session, index, request):
+                return replay
+            if not existing and index != session.next_chunk_index:
+                return 409, {
+                    "error": {
+                        "code": "chunk_out_of_order",
+                        "message": "Chunk index must be the next expected index.",
+                        "retryable": True,
+                    },
+                    "expected_chunk_index": session.next_chunk_index,
+                }
+            if error := state._queue_error_locked(request["work_class"]):
+                return error
+            reply = _store_chunk_locked(state, session, index, request, audio_path)
+            accepted = True
+            return reply
+    finally:
+        if not accepted:
+            voice_jobs.discard_audio(audio_path)
 
 
 def finalize(state, session_id: str, headers: dict[str, str]) -> tuple[int, dict[str, Any]]:

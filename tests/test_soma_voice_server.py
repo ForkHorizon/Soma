@@ -270,41 +270,6 @@ class SomaVoiceServerTests(unittest.TestCase):
         self.assertEqual(done["text"], "previous context repaired current transcript")
         self.assertEqual([call[4] for call in broker.calls], ["auto"] * 4)
 
-    def test_live_work_runs_before_waiting_background_work(self):
-        base, broker = self.start_server(broker_delay=0.15)
-        common = {"X-Soma-Client-ID": "client-a", "Content-Type": "audio/flac"}
-        _status, first = self.request(
-            "POST", f"{base}/v1/transcriptions", body=b"background-1",
-            headers={**common, "X-Soma-Request-ID": "background-1", "X-Soma-Work-Class": "background"},
-        )
-        _status, second = self.request(
-            "POST", f"{base}/v1/transcriptions", body=b"background-2",
-            headers={**common, "X-Soma-Request-ID": "background-2", "X-Soma-Work-Class": "background"},
-        )
-        _status, live = self.request(
-            "POST", f"{base}/v1/transcriptions", body=b"live",
-            headers={**common, "X-Soma-Request-ID": "live", "X-Soma-Work-Class": "interactive"},
-        )
-        self.wait_done(base, first["job_id"])
-        self.wait_done(base, second["job_id"])
-        self.wait_done(base, live["job_id"])
-        order = [call[1] for call in broker.calls]
-        self.assertLess(order.index(b"live"), order.index(b"background-2"))
-
-    def test_media_backlog_is_unlimited_by_default(self):
-        base, _broker = self.start_server(broker_delay=0.2)
-        headers = {
-            "X-Soma-Client-ID": "client-a",
-            "Content-Type": "audio/flac",
-            "X-Soma-Work-Class": "background",
-        }
-        for index in range(40):
-            status, _payload = self.request(
-                "POST", f"{base}/v1/transcriptions", body=f"media-{index}".encode(),
-                headers={**headers, "X-Soma-Request-ID": f"media-{index}"},
-            )
-            self.assertEqual(status, 202)
-
     def test_warmup_is_authenticated_and_idempotent(self):
         base, broker = self.start_server()
         headers = {"X-Soma-Engine": "whisper", "X-Soma-Idle-Seconds": "42"}

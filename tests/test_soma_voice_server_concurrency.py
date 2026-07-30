@@ -9,6 +9,7 @@ import time
 import types
 import unittest
 from unittest import mock
+import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path

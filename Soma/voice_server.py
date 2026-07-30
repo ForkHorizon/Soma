@@ -88,6 +88,7 @@ class VoiceServerState:
         self.changed = threading.Condition(self.lock)
         self.worker = threading.Thread(target=lambda: voice_jobs.work_loop(self), daemon=True)
         self.worker.start()
+        self.pruner = voice_jobs.start_pruner(self)
 
     def _request_options(self, headers: dict[str, str]) -> tuple[str, str, str, int] | tuple[None, None, None, None]:
         client_id = headers.get("x-soma-client-id", "unknown").strip() or "unknown"
@@ -128,9 +129,12 @@ class VoiceServerState:
     def _queue_error_locked(self, work_class: str) -> tuple[int, dict[str, Any]] | None:
         if self.pending.full():
             return self.error(429, "queue_full", "Soma Voice Server queue is full.", retryable=True)
-        if work_class == "background":
+        # The count is an O(jobs) scan under the lock, and `jobs` now retains
+        # everything until the timed sweep. Only walk it when a limit is set;
+        # zero means unlimited, which is the default.
+        if work_class == "background" and self.max_background_queue:
             waiting_background = sum(1 for job in self.jobs.values() if job.status == "queued" and job.work_class == "background")
-            if self.max_background_queue and waiting_background >= self.max_background_queue:
+            if waiting_background >= self.max_background_queue:
                 return self.error(429, "background_queue_full", "Background media queue is full; live dictation is reserved.", retryable=True)
         return None
 
@@ -140,34 +144,7 @@ class VoiceServerState:
         self.pending.put((priority, self.next_sequence, job.id))
 
     def submit(self, headers: dict[str, str], body: bytes) -> tuple[int, dict[str, Any]]:
-        self._prune()
-        if len(body) > self.max_audio_bytes:
-            return self.error(413, "audio_too_large", "Audio file is too large.", retryable=False)
-        client_id, request_id, engine, idle_seconds = self._request_options(headers)
-        if engine is None:
-            return self.error(400, "unknown_engine", "Unknown ASR engine.", retryable=False)
-        work_class = self._work_class(headers)
-        if work_class is None:
-            return self.error(400, "bad_work_class", "Work class must be interactive or background.", retryable=False)
-        language = self._language(headers)
-        if language is None:
-            return self.error(400, "bad_language", "ASR language must be auto or an ISO language code.", retryable=False)
-        suffix = self._audio_suffix(headers)
-        if suffix is None:
-            return self.error(415, "unsupported_audio", "Only WAV and FLAC audio are accepted.", retryable=False)
-        key = (client_id, request_id)
-        with self.changed:
-            existing = self.idempotency.get(key)
-            if existing and existing in self.jobs:
-                return 202, self.jobs[existing].public()
-            if error := self._queue_error_locked(work_class):
-                return error
-            job = self._new_job(client_id, request_id, engine, language, idle_seconds, body, work_class, suffix)
-            self.jobs[job.id] = job
-            self.idempotency[key] = job.id
-            self._enqueue_locked(job)
-            self.changed.notify_all()
-            return 202, job.public()
+        return voice_jobs.submit(self, headers, body)
 
     def warm(self, headers: dict[str, str]) -> tuple[int, dict[str, Any]]:
         _client_id, _request_id, engine, idle_seconds = self._request_options(headers)
@@ -194,7 +171,6 @@ class VoiceServerState:
         return voice_sessions.cancel(self, session_id, headers)
 
     def get(self, job_id: str, wait_seconds: float = 0) -> tuple[int, dict[str, Any]]:
-        self._prune()
         with self.changed:
             job = self.jobs.get(job_id)
             if not job:
@@ -208,7 +184,6 @@ class VoiceServerState:
             return 200, job.public()
 
     def get_session(self, session_id: str, headers: dict[str, str], wait_seconds: float = 0) -> tuple[int, dict[str, Any]]:
-        self._prune()
         client_id = headers.get("x-soma-client-id", "unknown").strip() or "unknown"
         with self.changed:
             session = self.sessions.get(session_id)
@@ -289,8 +264,8 @@ class VoiceServerState:
     def _prune(self) -> None:
         voice_jobs.prune(self)
 
-    def _new_job(self, client_id: str, request_id: str, engine: str, language: str, idle_seconds: int, body: bytes, work_class: str, suffix: str, client_managed_recovery: bool = False) -> Job:
-        return voice_jobs.new_job(self, client_id, request_id, engine, language, idle_seconds, body, work_class, suffix, client_managed_recovery)
+    def _new_job(self, client_id: str, request_id: str, engine: str, language: str, idle_seconds: int, audio_path: str, work_class: str, client_managed_recovery: bool = False) -> Job:
+        return voice_jobs.new_job(self, client_id, request_id, engine, language, idle_seconds, audio_path, work_class, client_managed_recovery)
 
     @staticmethod
     def error(code: int, error_code: str, message: str, retryable: bool) -> tuple[int, dict[str, Any]]:
