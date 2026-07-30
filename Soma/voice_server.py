@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import voice_jobs
+import voice_session_view
 import voice_sessions
 
 # Re-exported so callers and tests keep importing these from voice_server.
@@ -221,7 +222,7 @@ class VoiceServerState:
                 if remaining <= 0:
                     break
                 self.changed.wait(remaining)
-            return 200, voice_sessions.public_locked(self, session)
+            return 200, voice_session_view.public_locked(self, session)
 
     def health(self) -> dict[str, Any]:
         with self.lock:

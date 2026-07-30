@@ -16,7 +16,7 @@ import time
 import uuid
 from typing import TYPE_CHECKING
 
-import voice_sessions
+import voice_session_view
 import voice_transcript_merge as merge
 from voice_models import Job, PathologicalRepetitionError
 
@@ -39,55 +39,77 @@ def new_job(state, client_id: str, request_id: str, engine: str, language: str, 
         client_managed_recovery=client_managed_recovery,
     )
 
+def _decode(state, job: Job, initial_prompt: str | None) -> tuple[str, dict]:
+    """Decode one job. Background work gets one retry without the text prompt
+    before a decoder loop is treated as fatal."""
+    result = state.broker.transcribe(job.engine, job.audio_path, job.idle_seconds, initial_prompt, job.language)
+    text = str(result.get("text") or "").strip()
+    if job.work_class != "background" or not merge.has_pathological_repetition(text):
+        return text, result
+    if job.client_managed_recovery:
+        raise PathologicalRepetitionError("pathological_repetition")
+    result = state.broker.transcribe(job.engine, job.audio_path, job.idle_seconds, None, job.language)
+    text = str(result.get("text") or "").strip()
+    if merge.has_pathological_repetition(text):
+        raise PathologicalRepetitionError("pathological_repetition")
+    return text, result
+
+
+def _start_locked(state, job_id: str) -> tuple[Job, str | None] | None:
+    job = state.jobs.get(job_id)
+    if not job or job.status == "canceled":
+        return None
+    job.status = "running"
+    job.started_at = time.time()
+    job.queued_seconds = round(job.started_at - job.created_at, 2)
+    initial_prompt = voice_session_view.prompt_locked(state, job)
+    state.changed.notify_all()
+    return job, initial_prompt
+
+
+def _finish_locked(state, job: Job, text: str, result: dict) -> None:
+    session = state.sessions.get(job.session_id) if job.session_id else None
+    if job.status == "canceled" or (session and session.canceled):
+        job.status = "canceled"
+    else:
+        job.text = text
+        job.infer_seconds = result.get("infer_seconds")
+        job.status = "done"
+    job.finished_at = time.time()
+    if session:
+        voice_session_view.refresh_locked(state, session)
+    state.changed.notify_all()
+
+
+def _fail_locked(state, job: Job | None, exc: Exception) -> None:
+    if job:
+        session = state.sessions.get(job.session_id) if job.session_id else None
+        if job.status != "canceled" and not (session and session.canceled):
+            job.status = "failed"
+            code = "pathological_repetition" if isinstance(exc, PathologicalRepetitionError) else "transcription_failed"
+            job.error = {"code": code, "message": str(exc), "retryable": True}
+        job.finished_at = time.time()
+        if session:
+            voice_session_view.refresh_locked(state, session)
+    state.changed.notify_all()
+
+
 def work_loop(state) -> None:
     while True:
         _priority, _sequence, job_id = state.pending.get()
         job: Job | None = None
-        initial_prompt: str | None = None
         try:
             with state.changed:
-                job = state.jobs.get(job_id)
-                if not job or job.status == "canceled":
+                started = _start_locked(state, job_id)
+                if started is None:
                     continue
-                job.status = "running"
-                job.started_at = time.time()
-                job.queued_seconds = round(job.started_at - job.created_at, 2)
-                initial_prompt = voice_sessions.prompt_locked(state, job)
-                state.changed.notify_all()
-            result = state.broker.transcribe(job.engine, job.audio_path, job.idle_seconds, initial_prompt, job.language)
-            text = str(result.get("text") or "").strip()
-            if job.work_class == "background" and merge.has_pathological_repetition(text):
-                if not job.client_managed_recovery:
-                    result = state.broker.transcribe(job.engine, job.audio_path, job.idle_seconds, None, job.language)
-                    text = str(result.get("text") or "").strip()
-                    if merge.has_pathological_repetition(text):
-                        raise PathologicalRepetitionError("pathological_repetition")
-                else:
-                    raise PathologicalRepetitionError("pathological_repetition")
+                job, initial_prompt = started
+            text, result = _decode(state, job, initial_prompt)
             with state.changed:
-                session = state.sessions.get(job.session_id) if job.session_id else None
-                if job.status == "canceled" or (session and session.canceled):
-                    job.status = "canceled"
-                else:
-                    job.text = text
-                    job.infer_seconds = result.get("infer_seconds")
-                    job.status = "done"
-                job.finished_at = time.time()
-                if session:
-                    voice_sessions.refresh_locked(state, session)
-                state.changed.notify_all()
+                _finish_locked(state, job, text, result)
         except Exception as exc:
             with state.changed:
-                if job:
-                    session = state.sessions.get(job.session_id) if job.session_id else None
-                    if job.status != "canceled" and not (session and session.canceled):
-                        job.status = "failed"
-                        error_code = "pathological_repetition" if isinstance(exc, PathologicalRepetitionError) else "transcription_failed"
-                        job.error = {"code": error_code, "message": str(exc), "retryable": True}
-                    job.finished_at = time.time()
-                    if session:
-                        voice_sessions.refresh_locked(state, session)
-                state.changed.notify_all()
+                _fail_locked(state, job, exc)
         finally:
             if job:
                 try:
@@ -95,6 +117,7 @@ def work_loop(state) -> None:
                 except FileNotFoundError:
                     pass
             state.pending.task_done()
+
 
 def prune(state) -> None:
     cutoff = time.time() - state.completed_ttl

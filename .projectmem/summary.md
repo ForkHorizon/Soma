@@ -67,6 +67,7 @@ Soma is a local-first macOS SwiftUI workbench for comparing language-model outpu
 - Soma is a SwiftUI macOS application with separate Python MCP and voice-server entry points; UI state is not owned by either Python process.
 - SomaApp owns one shared ASRManager and GlobalVoiceController so recording state survives individual WindowGroup windows.
 - Refactor: refactor: split voice backend concerns to satisfy the readability ratchet [Soma/voice_asr_backend.py]
+- Refactor: refactor: split voice_server into labelled modules; make the ratchet ratchet [.linter-checker-300-lines.json]
 
 ## Notes
 - Cleanup: remove evidence-compiler UI (Prepare Packet, packets, projects, diagnostics, scout)

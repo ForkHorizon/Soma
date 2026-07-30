@@ -17,7 +17,7 @@
       "Soma/VoiceChunkPipeline.swift": 686,
       "Soma/extension_manager.py": 944,
       "tests/test_soma_mcp_server.py": 985,
-      "tests/test_soma_voice_server.py": 695
+      "tests/test_soma_voice_server.py": 679
     },
     "function_length": {
       "Soma/GlobalVoiceController.swift:startEventTap": 56,
