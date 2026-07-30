@@ -69,6 +69,7 @@ Soma is a local-first macOS SwiftUI workbench for comparing language-model outpu
 - Refactor: refactor: split voice backend concerns to satisfy the readability ratchet [Soma/voice_asr_backend.py]
 - Refactor: refactor: split voice_server into labelled modules; make the ratchet ratchet [.linter-checker-300-lines.json]
 - Refactor: refactor: bring every moved function under the readability limits [.linter-checker-300-lines.json]
+- Refactor: refactor: split the voice client files the ratchet caught [.linter-checker-300-lines.json]
 
 ## Notes
 - Cleanup: remove evidence-compiler UI (Prepare Packet, packets, projects, diagnostics, scout)
