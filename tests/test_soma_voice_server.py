@@ -738,7 +738,7 @@ class SomaVoiceServerTests(unittest.TestCase):
         broker = voice_server.BackendBroker(Path("."), Path("."), idle_seconds=600)
         broker.engine = "whisper"
         broker.port = port
-        broker.process = types.SimpleNamespace(poll=lambda: None)
+        broker.process = types.SimpleNamespace(poll=lambda: None, terminate=lambda: None, wait=lambda timeout=None: 0)
         # Stop the health refresher from polling a bogus port for the rest of the run.
         self.addCleanup(lambda: setattr(broker, "process", None))
         return broker
@@ -766,6 +766,31 @@ class SomaVoiceServerTests(unittest.TestCase):
             self.assertTrue(latest["backend_loaded"], "background refresh never populated the snapshot")
             self.assertTrue(latest["backend_busy"])
             self.assertIsNotNone(latest["backend_health_age_seconds"])
+
+    def test_health_refresher_stops_when_idle_and_restarts_on_demand(self):
+        broker = self.stub_broker(4325)
+        payload = b'{"loaded": true, "busy": false, "idle_seconds": 600}'
+        with mock.patch("urllib.request.urlopen", side_effect=lambda *_a, **_k: contextlib.nullcontext(io.BytesIO(payload))), \
+             mock.patch.object(voice_server, "BACKEND_HEALTH_IDLE_STOP_SECONDS", 0.0), \
+             mock.patch.object(voice_server, "BACKEND_HEALTH_REFRESH_SECONDS", 0.01):
+            broker.health()
+            for _ in range(50):
+                time.sleep(0.02)
+                with broker._health_lock:
+                    if broker._health_thread is None:
+                        break
+            else:
+                self.fail("refresher kept polling with nobody asking")
+
+            broker.health()
+            with broker._health_lock:
+                self.assertIsNotNone(broker._health_thread, "refresher did not restart on demand")
+
+    def test_backend_swap_wakes_the_health_refresher(self):
+        broker = self.stub_broker(4326)
+        broker._health_wake.clear()
+        broker.stop()
+        self.assertTrue(broker._health_wake.is_set(), "a backend swap must invalidate the cached snapshot now")
 
     def test_broker_health_ignores_a_snapshot_from_another_backend(self):
         broker = self.stub_broker(4323)

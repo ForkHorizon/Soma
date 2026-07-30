@@ -133,6 +133,7 @@ class VoiceSession:
 
 
 BACKEND_HEALTH_REFRESH_SECONDS = 2.0
+BACKEND_HEALTH_IDLE_STOP_SECONDS = 60.0
 BACKEND_WARMUP_TIMEOUT_SECONDS = 90
 
 
@@ -152,6 +153,8 @@ class BackendBroker:
         self._health_taken_at = 0.0
         self._health_key: tuple[str | None, int | None] = (None, None)
         self._health_thread: threading.Thread | None = None
+        self._health_wake = threading.Event()
+        self._health_wanted_at = 0.0
 
     def health(self) -> dict[str, Any]:
         """Never performs backend I/O. A request thread must not be able to
@@ -181,34 +184,44 @@ class BackendBroker:
 
     def _start_health_refresh(self) -> None:
         with self._health_lock:
-            if self._health_thread and self._health_thread.is_alive():
+            self._health_wanted_at = time.monotonic()
+            if self._health_thread is not None:
                 return
             self._health_thread = threading.Thread(target=self._health_loop, name="backend-health", daemon=True)
             self._health_thread.start()
 
     def _health_loop(self) -> None:
-        while True:
-            engine, port = self.engine, self.port
-            running = bool(self.process and self.process.poll() is None)
-            snapshot: dict[str, Any] = {}
-            if running and port:
-                try:
-                    with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=5) as response:
-                        health = json.loads(response.read().decode())
-                    snapshot = {
-                        "backend_loaded": bool(health.get("loaded")),
-                        "backend_busy": bool(health.get("busy")),
-                        "backend_queue_depth": health.get("queue_depth"),
-                        "backend_idle_seconds": health.get("idle_seconds"),
-                        "backend_last_used_seconds_ago": health.get("last_used_seconds_ago"),
-                    }
-                except Exception as exc:
-                    snapshot = {"backend_error": str(exc)}
+        # Starting and stopping are both decided under _health_lock, so a caller
+        # can never observe a live thread that is about to exit.
+        try:
+            while True:
+                engine, port = self.engine, self.port
+                running = bool(self.process and self.process.poll() is None)
+                snapshot: dict[str, Any] = {}
+                if running and port:
+                    try:
+                        with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=5) as response:
+                            health = json.loads(response.read().decode())
+                        snapshot = {
+                            "backend_loaded": bool(health.get("loaded")),
+                            "backend_busy": bool(health.get("busy")),
+                            "backend_queue_depth": health.get("queue_depth"),
+                            "backend_idle_seconds": health.get("idle_seconds"),
+                            "backend_last_used_seconds_ago": health.get("last_used_seconds_ago"),
+                        }
+                    except Exception as exc:
+                        snapshot = {"backend_error": str(exc)}
+                with self._health_lock:
+                    self._health_snapshot = snapshot
+                    self._health_taken_at = time.monotonic()
+                    self._health_key = (engine, port)
+                    if time.monotonic() - self._health_wanted_at > BACKEND_HEALTH_IDLE_STOP_SECONDS:
+                        return
+                self._health_wake.wait(BACKEND_HEALTH_REFRESH_SECONDS)
+                self._health_wake.clear()
+        finally:
             with self._health_lock:
-                self._health_snapshot = snapshot
-                self._health_taken_at = time.monotonic()
-                self._health_key = (engine, port)
-            time.sleep(BACKEND_HEALTH_REFRESH_SECONDS)
+                self._health_thread = None
 
     def _running_port(self, engine: str) -> int | None:
         if self.engine == engine and self.port and self.process and self.process.poll() is None:
@@ -332,6 +345,7 @@ class BackendBroker:
                 value = port_file.read_text(encoding="utf-8").strip()
                 if value.isdigit():
                     self.port = int(value)
+                    self._health_wake.set()
                     return self.port
             time.sleep(0.25)
         raise RuntimeError(f"ASR backend did not start for {engine}; see {log_file}")
@@ -346,6 +360,7 @@ class BackendBroker:
         self.process = None
         self.engine = None
         self.port = None
+        self._health_wake.set()
 
 
 class VoiceServerState:
