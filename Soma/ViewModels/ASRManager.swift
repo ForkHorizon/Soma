@@ -346,8 +346,10 @@ final class ASRManager: ObservableObject {
                 idleSeconds: keepLoadedMinutes * 60,
                 workClass: .interactive,
                 capabilityHint: capabilityHint,
-                onCapabilities: { [weak self] health in
-                    Task { @MainActor in self?.applyRemoteCapabilities(health) }
+                onCapabilities: { health in
+                    // Re-capture weakly on the inner task: referencing the outer
+                    // closure's captured `self` var is an error in Swift 6.
+                    Task { @MainActor [weak self] in self?.applyRemoteCapabilities(health) }
                 }
             )
             activeChunkPipeline = pipeline
