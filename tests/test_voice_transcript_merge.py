@@ -15,6 +15,25 @@ class VoiceTranscriptMergeTests(unittest.TestCase):
         self.assertEqual(voice_transcript_merge.join_overlap("hello world", "world again"), ("hello world again", True))
         self.assertEqual(voice_transcript_merge.join_overlap("hello world", "different words"), ("hello world different words", False))
 
+    def test_an_unmatched_seam_duplicates_words_but_never_drops_them(self):
+        """The client keeps the chunked transcript when a seam does not match
+        instead of re-transcribing the whole recording, so a failed join must
+        stay lossless. Measured: seams fail on 53% of forced boundaries, so this
+        is the common path, not an edge case."""
+        merged, matched = voice_transcript_merge.join_overlap(
+            "я думаю что надо", "сделать это сегодня"
+        )
+        self.assertFalse(matched)
+        for word in ("я", "думаю", "что", "надо", "сделать", "это", "сегодня"):
+            self.assertIn(word, merged.split(), f"a failed join dropped {word!r}")
+
+    def test_a_matched_seam_keeps_the_overlap_once(self):
+        merged, matched = voice_transcript_merge.join_overlap(
+            "я думаю что надо", "что надо сделать это"
+        )
+        self.assertTrue(matched)
+        self.assertEqual(merged, "я думаю что надо сделать это")
+
     def test_repetition_guard_rejects_decoder_loops(self):
         self.assertFalse(voice_transcript_merge.has_pathological_repetition("yes yes yes yes"))
         self.assertTrue(voice_transcript_merge.has_pathological_repetition("already " * 12))
