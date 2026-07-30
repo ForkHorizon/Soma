@@ -73,7 +73,6 @@ Soma is a local-first macOS SwiftUI workbench for comparing language-model outpu
 - Refactor: refactor: split what task 3 pushed over the readability limits [.linter-checker-300-lines.json]
 
 ## Notes
-- Cleanup: remove evidence-compiler UI (Prepare Packet, packets, projects, diagnostics, scout)
 - docs: reframe SOMA as local model bench + per-project control panel
 - Improve Soma extension updates and app layout
 - New feature: Add project overview memory tools and global voice paste [.gemini/settings.json.soma-backup-20260708-014730]
@@ -83,6 +82,7 @@ Soma is a local-first macOS SwiftUI workbench for comparing language-model outpu
 - M1 has one visible Soma Voice Server launcher app at /Applications/Soma Voice Server.app using SomaServer.icns; it checks/starts LaunchAgent com.daliys.soma.voice-server without restarting a healthy server. [M1 /Applications/Soma Voice Server.app]
 - Implementing the native menu bar Soma Voice Server as a separate Xcode target in the same repo; main Soma keeps SomaIcon, server app uses SomaServer and controls the LaunchAgent. [Soma Voice Server native app]
 - projectmem MCP is bound to the unrelated Soma project while the active checkout is ForkHorizon/NexusUnity; do not use it to log NexusUnity work.
+- Merge: Voice: get the audio write and the retention sweep off the state lock (#54)
 
 ## Key files
 - `Scripts/generate_app_icon.swift`

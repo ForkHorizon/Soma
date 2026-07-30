@@ -19,6 +19,22 @@ def transcribe_whisper(
     initial_prompt: str | None = None,
     language: str | None = None,
 ) -> str:
+    # mlx_whisper's decode defaults are deliberately left alone. They look like
+    # obvious latency wins — a six-temperature fallback that re-decodes a window
+    # up to six times, plus cross-window text conditioning — but measuring them
+    # on 80 real recordings (Scripts/whisper_decode_bench.py) says otherwise:
+    #
+    #   temperature=0.0              median speedup 1.00x; the fallback fires on
+    #                                only 2% of recordings, and on exactly those
+    #                                it is measurably worse than what the app
+    #                                delivered (+0.247 and +0.045 WER).
+    #   condition_on_previous_text   no effect on live dictation at all: chunks
+    #     =False                     are <=10s, so they are always a single 30s
+    #                                window with nothing to condition on. Only
+    #                                long imports change, 23% of them, for
+    #                                accuracy nobody asked to trade away.
+    #
+    # Re-run the bench before revisiting this, especially after a model change.
     import mlx_whisper
     import numpy as np
     import soundfile as sf
