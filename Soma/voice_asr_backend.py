@@ -9,15 +9,16 @@ from __future__ import annotations
 import gc
 import json
 import os
-import queue
 import sys
-import tempfile
-import threading
 import time
 import traceback
-from concurrent.futures import Future
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+import voice_asr_engines
+import voice_asr_worker
+from voice_asr_engines import join_parts as _join_parts  # noqa: F401  (re-exported for tests)
+from voice_asr_worker import run as _on_model_thread, submit as _submit
 
 ENGINE = (os.environ.get("ASR_ENGINE") or "whisper").strip().lower()
 LANG = os.environ.get("ASR_LANG", "ru")
@@ -27,53 +28,17 @@ GIGAAM_MODEL = os.environ.get("ASR_GIGAAM_MODEL", "rnnt")
 
 _model = None
 _loaded = False
-_busy = False
 _last_used = time.monotonic()
 _idle_seconds = max(0.0, float(os.environ.get("ASR_IDLE_SECONDS", "3600")))
 
-# Every MLX operation runs on this one thread; HTTP handler threads only submit
-# work to it. MLX streams are thread-affine, so load/decode/unload must share a
-# thread — but nothing else has to wait behind them.
-_MODEL_TICK_SECONDS = 1.0
-_work: queue.Queue = queue.Queue()
-_worker_lock = threading.Lock()
-_worker: threading.Thread | None = None
+
+def _unload_when_idle() -> None:
+    """Runs on the model thread between jobs, so the unload stays thread-affine."""
+    if _loaded and _idle_seconds > 0 and (time.monotonic() - _last_used) > _idle_seconds:
+        _unload()
 
 
-def _model_loop() -> None:
-    global _busy
-    while True:
-        try:
-            job, future = _work.get(timeout=_MODEL_TICK_SECONDS)
-        except queue.Empty:
-            if _loaded and _idle_seconds > 0 and (time.monotonic() - _last_used) > _idle_seconds:
-                _unload()
-            continue
-        if not future.set_running_or_notify_cancel():
-            continue
-        _busy = True
-        try:
-            future.set_result(job())
-        except Exception as exc:
-            future.set_exception(exc)
-        finally:
-            _busy = False
-
-
-def _submit(job) -> Future:
-    """Queue `job` for the model thread, starting that thread on first use."""
-    global _worker
-    with _worker_lock:
-        if _worker is None or not _worker.is_alive():
-            _worker = threading.Thread(target=_model_loop, name="asr-model", daemon=True)
-            _worker.start()
-    future: Future = Future()
-    _work.put((job, future))
-    return future
-
-
-def _on_model_thread(job):
-    return _submit(job).result()
+voice_asr_worker.configure(_unload_when_idle)
 
 
 def _health() -> dict:
@@ -81,8 +46,8 @@ def _health() -> dict:
         "ok": True,
         "engine": ENGINE,
         "loaded": _loaded,
-        "busy": _busy,
-        "queue_depth": _work.qsize(),
+        "busy": voice_asr_worker.busy(),
+        "queue_depth": voice_asr_worker.depth(),
         "idle_seconds": _idle_seconds,
         "last_used_seconds_ago": round(time.monotonic() - _last_used, 1) if _loaded else None,
     }
@@ -132,86 +97,14 @@ def _unload() -> None:
         pass
 
 
-def _transcribe_whisper(
-    audio: str,
-    initial_prompt: str | None = None,
-    language: str | None = None,
-) -> str:
-    import mlx_whisper
-    import numpy as np
-    import soundfile as sf
-
-    data, sr = sf.read(audio, dtype="float32")
-    if getattr(data, "ndim", 1) > 1:
-        data = data.mean(axis=1)
-    if sr != 16000:
-        n = int(round(len(data) * 16000 / sr))
-        data = np.interp(
-            np.linspace(0, len(data), n, endpoint=False),
-            np.arange(len(data)),
-            data,
-        ).astype(np.float32)
-    options = {
-        "path_or_hf_repo": WHISPER_REPO,
-        "initial_prompt": initial_prompt,
-    }
-    # `None` deliberately omits the parameter: Whisper then identifies the
-    # language from the audio. Normal recordings still arrive as `ru`.
-    if language is not None:
-        options["language"] = language
-    result = mlx_whisper.transcribe(np.ascontiguousarray(data), **options)
-    return (result.get("text") or "").strip()
-
-
-def _transcribe_gigaam(audio: str) -> str:
-    import soundfile as sf
-
-    data, sr = sf.read(audio)
-    if getattr(data, "ndim", 1) > 1:
-        data = data.mean(axis=1)
-    dur = len(data) / sr
-    if dur <= 20.0:
-        return (_model.transcribe(audio) or "").strip()
-
-    win, overlap = int(20.0 * sr), int(1.0 * sr)
-    step, parts, start = win - overlap, [], 0
-    while start < len(data):
-        seg = data[start : start + win]
-        if len(seg) < sr * 0.3:
-            break
-        with tempfile.NamedTemporaryFile(suffix=".wav") as tmp:
-            sf.write(tmp.name, seg, sr)
-            parts.append(_model.transcribe(tmp.name))
-        if start + win >= len(data):
-            break
-        start += step
-    return _join_parts(parts)
-
-
-def _join_parts(parts: list[str]) -> str:
-    words: list[str] = []
-    for part in parts:
-        incoming = part.strip().split()
-        if not incoming:
-            continue
-        max_overlap = min(len(words), len(incoming), 12)
-        overlap = 0
-        for count in range(max_overlap, 0, -1):
-            if words[-count:] == incoming[:count]:
-                overlap = count
-                break
-        words.extend(incoming[overlap:])
-    return " ".join(words)
-
-
 def _transcribe(
     audio: str,
     initial_prompt: str | None = None,
     language: str | None = None,
 ) -> str:
     if ENGINE == "whisper":
-        return _transcribe_whisper(audio, initial_prompt, language)
-    return _transcribe_gigaam(audio)
+        return voice_asr_engines.transcribe_whisper(audio, WHISPER_REPO, initial_prompt, language)
+    return voice_asr_engines.transcribe_gigaam(audio, _model)
 
 
 def _requested_language(request: dict) -> str | None:
