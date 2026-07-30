@@ -132,6 +132,10 @@ class VoiceSession:
     chunks: dict[int, SessionChunk] = field(default_factory=dict)
 
 
+BACKEND_HEALTH_REFRESH_SECONDS = 2.0
+BACKEND_WARMUP_TIMEOUT_SECONDS = 90
+
+
 class BackendBroker:
     def __init__(self, asr_root: Path, runtime_dir: Path, idle_seconds: int, models_root: Path | None = None):
         self.asr_root = asr_root.expanduser()
@@ -143,26 +147,73 @@ class BackendBroker:
         self.engine: str | None = None
         self.port: int | None = None
         self.lock = threading.Lock()
+        self._health_lock = threading.Lock()
+        self._health_snapshot: dict[str, Any] = {}
+        self._health_taken_at = 0.0
+        self._health_key: tuple[str | None, int | None] = (None, None)
+        self._health_thread: threading.Thread | None = None
 
     def health(self) -> dict[str, Any]:
+        """Never performs backend I/O. A request thread must not be able to
+        block behind a decode just to report status."""
+        engine, port = self.engine, self.port
+        running = bool(self.process and self.process.poll() is None)
         data: dict[str, Any] = {
-            "active_engine": self.engine,
-            "active_port": self.port,
-            "backend_running": bool(self.process and self.process.poll() is None),
+            "active_engine": engine,
+            "active_port": port,
+            "backend_running": running,
             "backend_loaded": False,
             "backend_idle_seconds": None,
             "backend_last_used_seconds_ago": None,
+            "backend_health_age_seconds": None,
         }
-        if data["backend_running"] and self.port:
-            try:
-                with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/health", timeout=2) as response:
-                    health = json.loads(response.read().decode())
-                data["backend_loaded"] = bool(health.get("loaded"))
-                data["backend_idle_seconds"] = health.get("idle_seconds")
-                data["backend_last_used_seconds_ago"] = health.get("last_used_seconds_ago")
-            except Exception as exc:
-                data["backend_error"] = str(exc)
+        if not (running and port):
+            return data
+        self._start_health_refresh()
+        with self._health_lock:
+            fresh = self._health_key == (engine, port)
+            snapshot = dict(self._health_snapshot) if fresh else {}
+            taken_at = self._health_taken_at
+        if snapshot:
+            data.update(snapshot)
+            data["backend_health_age_seconds"] = round(time.monotonic() - taken_at, 1)
         return data
+
+    def _start_health_refresh(self) -> None:
+        with self._health_lock:
+            if self._health_thread and self._health_thread.is_alive():
+                return
+            self._health_thread = threading.Thread(target=self._health_loop, name="backend-health", daemon=True)
+            self._health_thread.start()
+
+    def _health_loop(self) -> None:
+        while True:
+            engine, port = self.engine, self.port
+            running = bool(self.process and self.process.poll() is None)
+            snapshot: dict[str, Any] = {}
+            if running and port:
+                try:
+                    with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=5) as response:
+                        health = json.loads(response.read().decode())
+                    snapshot = {
+                        "backend_loaded": bool(health.get("loaded")),
+                        "backend_busy": bool(health.get("busy")),
+                        "backend_queue_depth": health.get("queue_depth"),
+                        "backend_idle_seconds": health.get("idle_seconds"),
+                        "backend_last_used_seconds_ago": health.get("last_used_seconds_ago"),
+                    }
+                except Exception as exc:
+                    snapshot = {"backend_error": str(exc)}
+            with self._health_lock:
+                self._health_snapshot = snapshot
+                self._health_taken_at = time.monotonic()
+                self._health_key = (engine, port)
+            time.sleep(BACKEND_HEALTH_REFRESH_SECONDS)
+
+    def _running_port(self, engine: str) -> int | None:
+        if self.engine == engine and self.port and self.process and self.process.poll() is None:
+            return self.port
+        return None
 
     def configure(self, idle_seconds: int) -> None:
         self.idle_seconds = max(0, int(idle_seconds))
@@ -181,10 +232,17 @@ class BackendBroker:
     def warm(self, engine: str, idle_seconds: int | None = None) -> dict[str, Any]:
         if engine not in ENGINES:
             raise RuntimeError(f"unknown_engine:{engine}")
+        effective_idle = self.idle_seconds if idle_seconds is None else idle_seconds
+        payload = {"idle_seconds": effective_idle}
+        # Record-start fires warmup on every recording. When the backend for this
+        # engine is already up, skip self.lock entirely: an in-flight transcribe
+        # holds it for its whole decode, and the backend answers an already-warm
+        # /warmup off its model thread.
+        if port := self._running_port(engine):
+            return self._post_backend(port, "/warmup", payload, timeout=BACKEND_WARMUP_TIMEOUT_SECONDS)
         with self.lock:
-            effective_idle = self.idle_seconds if idle_seconds is None else idle_seconds
             port = self._ensure_backend(engine, effective_idle)
-            return self._post_backend(port, "/warmup", {"idle_seconds": effective_idle})
+            return self._post_backend(port, "/warmup", payload, timeout=BACKEND_WARMUP_TIMEOUT_SECONDS)
 
     def transcribe(
         self,

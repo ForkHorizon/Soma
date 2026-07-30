@@ -9,12 +9,14 @@ from __future__ import annotations
 import gc
 import json
 import os
+import queue
 import sys
 import tempfile
 import threading
 import time
 import traceback
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from concurrent.futures import Future
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 ENGINE = (os.environ.get("ASR_ENGINE") or "whisper").strip().lower()
@@ -23,11 +25,55 @@ WHISPER_REPO = os.environ.get("ASR_WHISPER_REPO", "mlx-community/whisper-large-v
 GIGAAM_ROOT = os.environ.get("ASR_GIGAAM_ROOT", "")
 GIGAAM_MODEL = os.environ.get("ASR_GIGAAM_MODEL", "rnnt")
 
-_lock = threading.Lock()
 _model = None
 _loaded = False
+_busy = False
 _last_used = time.monotonic()
 _idle_seconds = max(0.0, float(os.environ.get("ASR_IDLE_SECONDS", "3600")))
+
+# Every MLX operation runs on this one thread; HTTP handler threads only submit
+# work to it. MLX streams are thread-affine, so load/decode/unload must share a
+# thread — but nothing else has to wait behind them.
+_MODEL_TICK_SECONDS = 1.0
+_work: queue.Queue = queue.Queue()
+_worker_lock = threading.Lock()
+_worker: threading.Thread | None = None
+
+
+def _model_loop() -> None:
+    global _busy
+    while True:
+        try:
+            job, future = _work.get(timeout=_MODEL_TICK_SECONDS)
+        except queue.Empty:
+            if _loaded and _idle_seconds > 0 and (time.monotonic() - _last_used) > _idle_seconds:
+                _unload()
+            continue
+        if not future.set_running_or_notify_cancel():
+            continue
+        _busy = True
+        try:
+            future.set_result(job())
+        except Exception as exc:
+            future.set_exception(exc)
+        finally:
+            _busy = False
+
+
+def _submit(job) -> Future:
+    """Queue `job` for the model thread, starting that thread on first use."""
+    global _worker
+    with _worker_lock:
+        if _worker is None or not _worker.is_alive():
+            _worker = threading.Thread(target=_model_loop, name="asr-model", daemon=True)
+            _worker.start()
+    future: Future = Future()
+    _work.put((job, future))
+    return future
+
+
+def _on_model_thread(job):
+    return _submit(job).result()
 
 
 def _health() -> dict:
@@ -35,6 +81,8 @@ def _health() -> dict:
         "ok": True,
         "engine": ENGINE,
         "loaded": _loaded,
+        "busy": _busy,
+        "queue_depth": _work.qsize(),
         "idle_seconds": _idle_seconds,
         "last_used_seconds_ago": round(time.monotonic() - _last_used, 1) if _loaded else None,
     }
@@ -173,19 +221,19 @@ def _requested_language(request: dict) -> str | None:
     return None if language == "auto" else language
 
 
-class BackendHTTPServer(HTTPServer):
-    """Keep all MLX model operations on the server's one request thread.
-
-    MLX streams are thread-affine. A threaded HTTP server can load the model for
-    `/warmup` on one worker and decode `/transcribe` on another, leaving the
-    cached model attached to the wrong stream. `service_actions` also performs
-    idle unloads on that same thread.
-    """
-
-    def service_actions(self) -> None:
-        with _lock:
-            if _loaded and _idle_seconds > 0 and (time.monotonic() - _last_used) > _idle_seconds:
-                _unload()
+def _warm_job() -> dict:
+    global _last_used
+    already_loaded = _loaded
+    t0 = time.perf_counter()
+    _load()
+    _last_used = time.monotonic()
+    return {
+        "ok": True,
+        "engine": ENGINE,
+        "loaded": True,
+        "already_loaded": already_loaded,
+        "load_seconds": round(time.perf_counter() - t0, 2),
+    }
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -211,8 +259,7 @@ class Handler(BaseHTTPRequestHandler):
                 if "idle_seconds" in req:
                     _idle_seconds = max(0.0, float(req["idle_seconds"]))
                     if _idle_seconds == 0:
-                        with _lock:
-                            _unload()
+                        _submit(_unload)
                 self._reply(200, _health())
             except Exception as exc:
                 self._reply(400, {"error": f"bad request: {exc}"})
@@ -222,19 +269,19 @@ class Handler(BaseHTTPRequestHandler):
                 req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
                 if "idle_seconds" in req:
                     _idle_seconds = max(0.0, float(req["idle_seconds"]))
-                with _lock:
-                    already_loaded = _loaded
-                    t0 = time.perf_counter()
-                    _load()
-                    load_seconds = time.perf_counter() - t0
+                if _loaded:
+                    # Record-start fires this on every recording. A warm model
+                    # must answer immediately, never behind an in-flight decode.
                     _last_used = time.monotonic()
-                self._reply(200, {
-                    "ok": True,
-                    "engine": ENGINE,
-                    "loaded": True,
-                    "already_loaded": already_loaded,
-                    "load_seconds": round(load_seconds, 2),
-                })
+                    self._reply(200, {
+                        "ok": True,
+                        "engine": ENGINE,
+                        "loaded": True,
+                        "already_loaded": True,
+                        "load_seconds": 0.0,
+                    })
+                    return
+                self._reply(200, _on_model_thread(_warm_job))
             except Exception as exc:
                 traceback.print_exc()
                 self._reply(500, {"error": str(exc), "engine": ENGINE})
@@ -266,19 +313,24 @@ class Handler(BaseHTTPRequestHandler):
             self._reply(400, {"error": str(exc)})
             return
 
-        with _lock:
-            try:
-                _load()
-                t0 = time.perf_counter()
-                text = _transcribe(audio, initial_prompt, language)
-                elapsed = time.perf_counter() - t0
-                _last_used = time.monotonic()
-                self._reply(200, {"text": text.strip(), "engine": ENGINE, "infer_seconds": round(elapsed, 2)})
-                if _idle_seconds == 0:
-                    _unload()
-            except Exception as exc:
-                traceback.print_exc()
-                self._reply(500, {"error": str(exc), "engine": ENGINE})
+        def job() -> dict:
+            global _last_used
+            _load()
+            t0 = time.perf_counter()
+            text = _transcribe(audio, initial_prompt, language)
+            elapsed = time.perf_counter() - t0
+            _last_used = time.monotonic()
+            return {"text": text.strip(), "engine": ENGINE, "infer_seconds": round(elapsed, 2)}
+
+        try:
+            result = _on_model_thread(job)
+        except Exception as exc:
+            traceback.print_exc()
+            self._reply(500, {"error": str(exc), "engine": ENGINE})
+            return
+        self._reply(200, result)
+        if _idle_seconds == 0:
+            _submit(_unload)
 
     def log_message(self, *_args) -> None:
         pass
@@ -289,7 +341,7 @@ def main() -> None:
         print(f"[soma-voice-backend] unknown ASR_ENGINE={ENGINE!r}", flush=True)
         sys.exit(2)
     port = int(os.environ.get("ASR_PORT", "0"))
-    server = BackendHTTPServer(("127.0.0.1", port), Handler)
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     actual = server.server_address[1]
     port_file = os.environ.get("ASR_PORT_FILE")
     if port_file:
