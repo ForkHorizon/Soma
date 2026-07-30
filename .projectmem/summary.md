@@ -1,6 +1,6 @@
 # projectmem - Soma
 
-_Last updated: 2026-07-15_
+_Last updated: 2026-07-29_
 
 ## Project purpose
 Soma is a local-first macOS SwiftUI workbench for comparing language-model output and managing per-project coding-tool/MCP configuration. Its bundled Python services provide the MCP gateway and optional voice transcription server.
