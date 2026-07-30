@@ -10,12 +10,15 @@ import gc
 import json
 import os
 import sys
-import tempfile
-import threading
 import time
 import traceback
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+import voice_asr_engines
+import voice_asr_worker
+from voice_asr_engines import join_parts as _join_parts  # noqa: F401  (re-exported for tests)
+from voice_asr_worker import run as _on_model_thread, submit as _submit
 
 ENGINE = (os.environ.get("ASR_ENGINE") or "whisper").strip().lower()
 LANG = os.environ.get("ASR_LANG", "ru")
@@ -23,11 +26,19 @@ WHISPER_REPO = os.environ.get("ASR_WHISPER_REPO", "mlx-community/whisper-large-v
 GIGAAM_ROOT = os.environ.get("ASR_GIGAAM_ROOT", "")
 GIGAAM_MODEL = os.environ.get("ASR_GIGAAM_MODEL", "rnnt")
 
-_lock = threading.Lock()
 _model = None
 _loaded = False
 _last_used = time.monotonic()
 _idle_seconds = max(0.0, float(os.environ.get("ASR_IDLE_SECONDS", "3600")))
+
+
+def _unload_when_idle() -> None:
+    """Runs on the model thread between jobs, so the unload stays thread-affine."""
+    if _loaded and _idle_seconds > 0 and (time.monotonic() - _last_used) > _idle_seconds:
+        _unload()
+
+
+voice_asr_worker.configure(_unload_when_idle)
 
 
 def _health() -> dict:
@@ -35,6 +46,8 @@ def _health() -> dict:
         "ok": True,
         "engine": ENGINE,
         "loaded": _loaded,
+        "busy": voice_asr_worker.busy(),
+        "queue_depth": voice_asr_worker.depth(),
         "idle_seconds": _idle_seconds,
         "last_used_seconds_ago": round(time.monotonic() - _last_used, 1) if _loaded else None,
     }
@@ -84,86 +97,14 @@ def _unload() -> None:
         pass
 
 
-def _transcribe_whisper(
-    audio: str,
-    initial_prompt: str | None = None,
-    language: str | None = None,
-) -> str:
-    import mlx_whisper
-    import numpy as np
-    import soundfile as sf
-
-    data, sr = sf.read(audio, dtype="float32")
-    if getattr(data, "ndim", 1) > 1:
-        data = data.mean(axis=1)
-    if sr != 16000:
-        n = int(round(len(data) * 16000 / sr))
-        data = np.interp(
-            np.linspace(0, len(data), n, endpoint=False),
-            np.arange(len(data)),
-            data,
-        ).astype(np.float32)
-    options = {
-        "path_or_hf_repo": WHISPER_REPO,
-        "initial_prompt": initial_prompt,
-    }
-    # `None` deliberately omits the parameter: Whisper then identifies the
-    # language from the audio. Normal recordings still arrive as `ru`.
-    if language is not None:
-        options["language"] = language
-    result = mlx_whisper.transcribe(np.ascontiguousarray(data), **options)
-    return (result.get("text") or "").strip()
-
-
-def _transcribe_gigaam(audio: str) -> str:
-    import soundfile as sf
-
-    data, sr = sf.read(audio)
-    if getattr(data, "ndim", 1) > 1:
-        data = data.mean(axis=1)
-    dur = len(data) / sr
-    if dur <= 20.0:
-        return (_model.transcribe(audio) or "").strip()
-
-    win, overlap = int(20.0 * sr), int(1.0 * sr)
-    step, parts, start = win - overlap, [], 0
-    while start < len(data):
-        seg = data[start : start + win]
-        if len(seg) < sr * 0.3:
-            break
-        with tempfile.NamedTemporaryFile(suffix=".wav") as tmp:
-            sf.write(tmp.name, seg, sr)
-            parts.append(_model.transcribe(tmp.name))
-        if start + win >= len(data):
-            break
-        start += step
-    return _join_parts(parts)
-
-
-def _join_parts(parts: list[str]) -> str:
-    words: list[str] = []
-    for part in parts:
-        incoming = part.strip().split()
-        if not incoming:
-            continue
-        max_overlap = min(len(words), len(incoming), 12)
-        overlap = 0
-        for count in range(max_overlap, 0, -1):
-            if words[-count:] == incoming[:count]:
-                overlap = count
-                break
-        words.extend(incoming[overlap:])
-    return " ".join(words)
-
-
 def _transcribe(
     audio: str,
     initial_prompt: str | None = None,
     language: str | None = None,
 ) -> str:
     if ENGINE == "whisper":
-        return _transcribe_whisper(audio, initial_prompt, language)
-    return _transcribe_gigaam(audio)
+        return voice_asr_engines.transcribe_whisper(audio, WHISPER_REPO, initial_prompt, language)
+    return voice_asr_engines.transcribe_gigaam(audio, _model)
 
 
 def _requested_language(request: dict) -> str | None:
@@ -173,19 +114,19 @@ def _requested_language(request: dict) -> str | None:
     return None if language == "auto" else language
 
 
-class BackendHTTPServer(HTTPServer):
-    """Keep all MLX model operations on the server's one request thread.
-
-    MLX streams are thread-affine. A threaded HTTP server can load the model for
-    `/warmup` on one worker and decode `/transcribe` on another, leaving the
-    cached model attached to the wrong stream. `service_actions` also performs
-    idle unloads on that same thread.
-    """
-
-    def service_actions(self) -> None:
-        with _lock:
-            if _loaded and _idle_seconds > 0 and (time.monotonic() - _last_used) > _idle_seconds:
-                _unload()
+def _warm_job() -> dict:
+    global _last_used
+    already_loaded = _loaded
+    t0 = time.perf_counter()
+    _load()
+    _last_used = time.monotonic()
+    return {
+        "ok": True,
+        "engine": ENGINE,
+        "loaded": True,
+        "already_loaded": already_loaded,
+        "load_seconds": round(time.perf_counter() - t0, 2),
+    }
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -203,47 +144,59 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._reply(404, {"error": "not found"})
 
+    def _request_body(self) -> dict:
+        return json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+
     def do_POST(self) -> None:
-        global _idle_seconds, _last_used
-        if self.path == "/configure":
-            try:
-                req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
-                if "idle_seconds" in req:
-                    _idle_seconds = max(0.0, float(req["idle_seconds"]))
-                    if _idle_seconds == 0:
-                        with _lock:
-                            _unload()
-                self._reply(200, _health())
-            except Exception as exc:
-                self._reply(400, {"error": f"bad request: {exc}"})
+        route = {
+            "/configure": self._post_configure,
+            "/warmup": self._post_warmup,
+            "/transcribe": self._post_transcribe,
+        }.get(self.path)
+        if route is None:
+            self._reply(404, {"error": "not found"})
             return
-        if self.path == "/warmup":
-            try:
-                req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
-                if "idle_seconds" in req:
-                    _idle_seconds = max(0.0, float(req["idle_seconds"]))
-                with _lock:
-                    already_loaded = _loaded
-                    t0 = time.perf_counter()
-                    _load()
-                    load_seconds = time.perf_counter() - t0
-                    _last_used = time.monotonic()
+        route()
+
+    def _post_configure(self) -> None:
+        global _idle_seconds
+        try:
+            req = self._request_body()
+            if "idle_seconds" in req:
+                _idle_seconds = max(0.0, float(req["idle_seconds"]))
+                if _idle_seconds == 0:
+                    _submit(_unload)
+            self._reply(200, _health())
+        except Exception as exc:
+            self._reply(400, {"error": f"bad request: {exc}"})
+
+    def _post_warmup(self) -> None:
+        global _idle_seconds, _last_used
+        try:
+            req = self._request_body()
+            if "idle_seconds" in req:
+                _idle_seconds = max(0.0, float(req["idle_seconds"]))
+            if _loaded:
+                # Record-start fires this on every recording. A warm model must
+                # answer immediately, never behind an in-flight decode.
+                _last_used = time.monotonic()
                 self._reply(200, {
                     "ok": True,
                     "engine": ENGINE,
                     "loaded": True,
-                    "already_loaded": already_loaded,
-                    "load_seconds": round(load_seconds, 2),
+                    "already_loaded": True,
+                    "load_seconds": 0.0,
                 })
-            except Exception as exc:
-                traceback.print_exc()
-                self._reply(500, {"error": str(exc), "engine": ENGINE})
-            return
-        if self.path != "/transcribe":
-            self._reply(404, {"error": "not found"})
-            return
+                return
+            self._reply(200, _on_model_thread(_warm_job))
+        except Exception as exc:
+            traceback.print_exc()
+            self._reply(500, {"error": str(exc), "engine": ENGINE})
+
+    def _post_transcribe(self) -> None:
+        global _idle_seconds
         try:
-            req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+            req = self._request_body()
         except Exception as exc:
             self._reply(400, {"error": f"bad request: {exc}"})
             return
@@ -266,19 +219,24 @@ class Handler(BaseHTTPRequestHandler):
             self._reply(400, {"error": str(exc)})
             return
 
-        with _lock:
-            try:
-                _load()
-                t0 = time.perf_counter()
-                text = _transcribe(audio, initial_prompt, language)
-                elapsed = time.perf_counter() - t0
-                _last_used = time.monotonic()
-                self._reply(200, {"text": text.strip(), "engine": ENGINE, "infer_seconds": round(elapsed, 2)})
-                if _idle_seconds == 0:
-                    _unload()
-            except Exception as exc:
-                traceback.print_exc()
-                self._reply(500, {"error": str(exc), "engine": ENGINE})
+        def job() -> dict:
+            global _last_used
+            _load()
+            t0 = time.perf_counter()
+            text = _transcribe(audio, initial_prompt, language)
+            elapsed = time.perf_counter() - t0
+            _last_used = time.monotonic()
+            return {"text": text.strip(), "engine": ENGINE, "infer_seconds": round(elapsed, 2)}
+
+        try:
+            result = _on_model_thread(job)
+        except Exception as exc:
+            traceback.print_exc()
+            self._reply(500, {"error": str(exc), "engine": ENGINE})
+            return
+        self._reply(200, result)
+        if _idle_seconds == 0:
+            _submit(_unload)
 
     def log_message(self, *_args) -> None:
         pass
@@ -289,7 +247,7 @@ def main() -> None:
         print(f"[soma-voice-backend] unknown ASR_ENGINE={ENGINE!r}", flush=True)
         sys.exit(2)
     port = int(os.environ.get("ASR_PORT", "0"))
-    server = BackendHTTPServer(("127.0.0.1", port), Handler)
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     actual = server.server_address[1]
     port_file = os.environ.get("ASR_PORT_FILE")
     if port_file:
