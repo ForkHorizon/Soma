@@ -1,6 +1,6 @@
 # projectmem - Soma
 
-_Last updated: 2026-07-29_
+_Last updated: 2026-07-30_
 
 ## Project purpose
 Soma is a local-first macOS SwiftUI workbench for comparing language-model output and managing per-project coding-tool/MCP configuration. Its bundled Python services provide the MCP gateway and optional voice transcription server.
@@ -66,6 +66,7 @@ Soma is a local-first macOS SwiftUI workbench for comparing language-model outpu
 - Soma Voice Server omits DELETE/cancel job API until a real client caller needs it; clients submit and poll only. [Soma/voice_server.py; Soma/ViewModels/ASRManager.swift]
 - Soma is a SwiftUI macOS application with separate Python MCP and voice-server entry points; UI state is not owned by either Python process.
 - SomaApp owns one shared ASRManager and GlobalVoiceController so recording state survives individual WindowGroup windows.
+- Refactor: refactor: split voice backend concerns to satisfy the readability ratchet [Soma/voice_asr_backend.py]
 
 ## Notes
 - Cleanup: remove evidence-compiler UI (Prepare Packet, packets, projects, diagnostics, scout)
