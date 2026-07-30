@@ -1,369 +1,4 @@
-import AVFoundation
 import Foundation
-
-enum VoiceChunkReason: String, Sendable {
-    case pause
-    case forced
-    case final
-}
-
-/// Interactive dictation always runs before queued media imports. A currently
-/// running MLX inference is deliberately never interrupted.
-enum VoiceWorkClass: String, Codable, Sendable {
-    case interactive
-    case background
-}
-
-nonisolated struct VoiceChunk: Sendable {
-    let index: Int
-    let url: URL
-    let reason: VoiceChunkReason
-    let overlapMilliseconds: Int
-    let durationMilliseconds: Int
-
-    var contentType: String {
-        url.pathExtension.lowercased() == "flac" ? "audio/flac" : "audio/wav"
-    }
-}
-
-enum VoicePauseEvent {
-    case none
-    case speechStarted
-    case pauseBoundary
-    case forcedBoundary
-}
-
-/// Lightweight energy-based VAD. It deliberately runs on the serial audio queue,
-/// never in AVAudioEngine's real-time tap callback.
-final class VoicePauseDetector {
-    private let sampleRate: Double
-    private var noiseFloorDB: Double = -60
-    private var speechBuffers = 0
-    private var active = false
-    private var activeFrames = 0
-    private var speechFrames = 0
-    private var silenceFrames = 0
-
-    init(sampleRate: Double) {
-        self.sampleRate = sampleRate
-    }
-
-    func observe(dbfs: Double, frames: Int) -> VoicePauseEvent {
-        let threshold = min(-30, max(-48, noiseFloorDB + 12))
-        let speech = dbfs >= threshold
-        if !active {
-            if speech {
-                speechBuffers += 1
-                if speechBuffers >= 2 {
-                    active = true
-                    activeFrames = frames * speechBuffers
-                    speechFrames = activeFrames
-                    silenceFrames = 0
-                    return .speechStarted
-                }
-            } else {
-                speechBuffers = 0
-                noiseFloorDB = max(-80, min(-20, noiseFloorDB * 0.95 + dbfs * 0.05))
-            }
-            return .none
-        }
-
-        activeFrames += frames
-        if speech {
-            speechFrames += frames
-            silenceFrames = 0
-        } else {
-            silenceFrames += frames
-        }
-        if activeFrames >= Int(sampleRate * 10) {
-            reset()
-            return .forcedBoundary
-        }
-        if activeFrames >= Int(sampleRate * 2.5), silenceFrames >= Int(sampleRate * 0.65) {
-            reset()
-            return .pauseBoundary
-        }
-        return .none
-    }
-
-    var hasEnoughFinalSpeech: Bool {
-        active && speechFrames >= Int(sampleRate * 0.25)
-    }
-
-    func beginForcedOverlap() {
-        active = true
-        speechBuffers = 2
-        activeFrames = Int(sampleRate * 0.75)
-        // The replayed overlap is context, not newly detected speech. A final
-        // tail must still contain at least 250 ms of fresh speech.
-        speechFrames = 0
-        silenceFrames = 0
-    }
-
-    func reset() {
-        speechBuffers = 0
-        active = false
-        activeFrames = 0
-        speechFrames = 0
-        silenceFrames = 0
-    }
-}
-
-/// Splits the existing converted 16 kHz PCM stream into short transport files while
-/// retaining the complete recording in ASRManager for history and fallback.
-final class VoiceChunkCapture {
-    private struct BufferedAudio {
-        let buffer: AVAudioPCMBuffer
-        let seconds: Double
-    }
-
-    private let settings: [String: Any]
-    private let fileExtension: String
-    private let directory: URL
-    private let onChunk: (VoiceChunk) -> Void
-    private var detector: VoicePauseDetector?
-    private var ring: [BufferedAudio] = []
-    private var ringSeconds = 0.0
-    private var file: AVAudioFile?
-    private var fileURL: URL?
-    private var writtenFrames = 0
-    private var nextIndex = 0
-    private var reason: VoiceChunkReason = .pause
-    private var overlapMilliseconds = 0
-
-    init(settings: [String: Any], fileExtension: String = "wav", onChunk: @escaping (VoiceChunk) -> Void) {
-        self.settings = settings
-        self.fileExtension = fileExtension
-        self.onChunk = onChunk
-        self.directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("soma-voice-chunks", isDirectory: true)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    }
-
-    func consume(_ buffer: AVAudioPCMBuffer) {
-        guard buffer.frameLength > 0 else { return }
-        if detector == nil {
-            detector = VoicePauseDetector(sampleRate: buffer.format.sampleRate)
-        }
-        remember(buffer)
-        let event = detector?.observe(dbfs: levelDBFS(buffer), frames: Int(buffer.frameLength)) ?? .none
-        var wroteCurrentThroughReplay = false
-        if case .speechStarted = event {
-            startChunk(replaySeconds: 0.25, reason: .pause, overlapMilliseconds: 0)
-            wroteCurrentThroughReplay = true
-        }
-        if file != nil && !wroteCurrentThroughReplay {
-            write(buffer)
-        }
-        switch event {
-        case .pauseBoundary:
-            seal(reason: .pause)
-        case .forcedBoundary:
-            seal(reason: .forced)
-            startChunk(replaySeconds: 0.75, reason: .forced, overlapMilliseconds: 750)
-            detector?.beginForcedOverlap()
-        case .none, .speechStarted:
-            break
-        }
-    }
-
-    func finish() -> Int {
-        if detector?.hasEnoughFinalSpeech == true {
-            seal(reason: .final)
-        } else {
-            discardOpenChunk()
-        }
-        detector?.reset()
-        return nextIndex
-    }
-
-    func cancel() {
-        discardOpenChunk()
-        detector?.reset()
-        ring.removeAll()
-        ringSeconds = 0
-    }
-
-    private func startChunk(replaySeconds: Double, reason: VoiceChunkReason, overlapMilliseconds: Int) {
-        guard file == nil else { return }
-        let url = directory.appendingPathComponent("chunk-\(UUID().uuidString).\(fileExtension)")
-        do {
-            file = try AVAudioFile(forWriting: url, settings: settings)
-            fileURL = url
-            writtenFrames = 0
-            self.reason = reason
-            self.overlapMilliseconds = overlapMilliseconds
-            for retained in buffersForLast(replaySeconds) {
-                write(retained)
-            }
-        } catch {
-            file = nil
-            fileURL = nil
-        }
-    }
-
-    private func seal(reason: VoiceChunkReason) {
-        guard let url = fileURL, file != nil, writtenFrames > 0 else {
-            discardOpenChunk()
-            return
-        }
-        file = nil
-        fileURL = nil
-        let sampleRate = settings[AVSampleRateKey] as? Double ?? 16_000
-        let durationMilliseconds = Int((Double(writtenFrames) / sampleRate * 1_000).rounded())
-        let chunk = VoiceChunk(
-            index: nextIndex,
-            url: url,
-            reason: reason == .pause ? self.reason : reason,
-            overlapMilliseconds: self.overlapMilliseconds,
-            durationMilliseconds: durationMilliseconds
-        )
-        nextIndex += 1
-        onChunk(chunk)
-    }
-
-    private func discardOpenChunk() {
-        file = nil
-        if let fileURL { try? FileManager.default.removeItem(at: fileURL) }
-        fileURL = nil
-        writtenFrames = 0
-    }
-
-    private func write(_ buffer: AVAudioPCMBuffer) {
-        guard let file else { return }
-        try? file.write(from: buffer)
-        writtenFrames += Int(buffer.frameLength)
-    }
-
-    private func remember(_ buffer: AVAudioPCMBuffer) {
-        guard let copy = copied(buffer) else { return }
-        let seconds = Double(copy.frameLength) / copy.format.sampleRate
-        ring.append(BufferedAudio(buffer: copy, seconds: seconds))
-        ringSeconds += seconds
-        while ringSeconds > 0.9, let removed = ring.first {
-            ring.removeFirst()
-            ringSeconds -= removed.seconds
-        }
-    }
-
-    private func buffersForLast(_ seconds: Double) -> [AVAudioPCMBuffer] {
-        var remaining = seconds
-        var selected: [AVAudioPCMBuffer] = []
-        for retained in ring.reversed() {
-            selected.append(retained.buffer)
-            remaining -= retained.seconds
-            if remaining <= 0 { break }
-        }
-        return selected.reversed()
-    }
-
-    private func levelDBFS(_ buffer: AVAudioPCMBuffer) -> Double {
-        let count = Int(buffer.frameLength)
-        guard count > 0 else { return -80 }
-        var sum = 0.0
-        if let samples = buffer.floatChannelData?[0] {
-            for index in 0..<count {
-                let value = Double(samples[index])
-                sum += value * value
-            }
-        } else if let samples = buffer.int16ChannelData?[0] {
-            for index in 0..<count {
-                let value = Double(samples[index]) / Double(Int16.max)
-                sum += value * value
-            }
-        } else {
-            return -80
-        }
-        return max(-80, 20 * log10(max(sqrt(sum / Double(count)), 0.000_000_1)))
-    }
-
-    private func copied(_ source: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
-        guard let copy = AVAudioPCMBuffer(pcmFormat: source.format, frameCapacity: source.frameLength) else { return nil }
-        copy.frameLength = source.frameLength
-        let frames = Int(source.frameLength)
-        let channels = Int(source.format.channelCount)
-        if let sourceData = source.floatChannelData, let copyData = copy.floatChannelData {
-            for channel in 0..<channels {
-                copyData[channel].update(from: sourceData[channel], count: frames)
-            }
-            return copy
-        }
-        if let sourceData = source.int16ChannelData, let copyData = copy.int16ChannelData {
-            for channel in 0..<channels {
-                copyData[channel].update(from: sourceData[channel], count: frames)
-            }
-            return copy
-        }
-        return nil
-    }
-}
-
-enum VoiceChunkPipelineError: LocalizedError {
-    case unsupported
-    case missingSession
-    case missingChunk(Int)
-    case server(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .unsupported: "Soma Voice Server does not support chunk sessions."
-        case .missingSession: "Voice session was not created."
-        case .missingChunk(let index): "Voice chunk \(index) was not uploaded."
-        case .server(let message): message
-        }
-    }
-}
-
-struct VoiceChunkPipelineResult: Sendable {
-    let text: String
-    let mergeSafe: Bool
-    let inferSeconds: Double?
-}
-
-nonisolated struct VoiceServerHealth: Decodable, Sendable {
-    let version: Int?
-    let capabilities: [String]?
-}
-
-nonisolated struct VoiceServerWarmupResponse: Decodable, Sendable {
-    let already_loaded: Bool?
-    let load_seconds: Double?
-}
-
-nonisolated struct VoiceServerSessionResponse: Decodable, Sendable {
-    let session_id: String?
-    let status: String?
-    let text: String?
-    let merge_safe: Bool?
-    let accepted_chunks: Int?
-    let completed_chunks: Int?
-    let metrics: VoiceServerSessionMetrics?
-    let error: VoiceServerPipelineError?
-}
-
-nonisolated struct VoiceServerSessionMetrics: Decodable, Sendable {
-    let queued_seconds: Double?
-    let infer_seconds: Double?
-    let duration_milliseconds: Int?
-}
-
-nonisolated struct VoiceServerPipelineError: Decodable, Sendable {
-    let message: String?
-}
-
-/// Emits timing-only, privacy-preserving diagnostics. Transcript text and audio
-/// never appear in these events.
-nonisolated enum VoiceMetrics {
-    static func log(_ event: String, _ fields: [String: String] = [:]) {
-        var payload = fields
-        payload["event"] = event
-        payload["timestamp_milliseconds"] = "\(Int(Date().timeIntervalSince1970 * 1_000))"
-        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
-              let text = String(data: data, encoding: .utf8)
-        else { return }
-        print("[soma.voice] \(text)")
-    }
-}
 
 /// Serializes session creation and file-backed uploads. Recording can continue
 /// while this actor uploads and the server decodes completed phrase chunks.
@@ -375,11 +10,13 @@ actor VoiceChunkPipeline {
     private let idleSeconds: Int
     private let workClass: VoiceWorkClass
     private let capabilityHint: Bool?
+    private let onCapabilities: (@Sendable (VoiceServerHealth?) -> Void)?
     private let sessionRequestID = UUID().uuidString
     private var sessionID: String?
     private var started = false
     private var cancelled = false
     private var warmupTask: Task<Void, Never>?
+    private var capabilityTask: Task<VoiceServerHealth?, Never>?
     private var pending: [Int: VoiceChunk] = [:]
     private var uploaded: Set<Int> = []
     private var failure: Error?
@@ -394,7 +31,8 @@ actor VoiceChunkPipeline {
         engine: String,
         idleSeconds: Int,
         workClass: VoiceWorkClass = .interactive,
-        capabilityHint: Bool? = nil
+        capabilityHint: Bool? = nil,
+        onCapabilities: (@Sendable (VoiceServerHealth?) -> Void)? = nil
     ) {
         self.base = base
         self.token = token
@@ -403,46 +41,27 @@ actor VoiceChunkPipeline {
         self.idleSeconds = idleSeconds
         self.workClass = workClass
         self.capabilityHint = capabilityHint
+        self.onCapabilities = onCapabilities
     }
 
     func start() async {
         guard !started, !cancelled else { return }
         started = true
+        guard capabilityHint != false else {
+            failure = VoiceChunkPipelineError.unsupported
+            log("session_unavailable", ["error": "chunk sessions are known to be unsupported"])
+            return
+        }
+        // Warm before anything else and without awaiting: a cold model load is
+        // tens of seconds and depends on nothing here, so every round trip it
+        // waits behind is added straight to the user's tail latency.
+        startWarmup()
+        // Creating the session is itself the capability probe — an older server
+        // 404s it — so capabilities are fetched alongside rather than ahead of
+        // it. Their only other job is deciding whether the final chunk can
+        // carry the finalize header, which is not needed until that chunk.
+        startCapabilityFetch()
         do {
-            guard capabilityHint != false else { throw VoiceChunkPipelineError.unsupported }
-            // Fetch capabilities for every new recording. This happens while
-            // recording, lets rolling M1 upgrades take effect immediately, and
-            // avoids guessing whether final-chunk finalization is available.
-            let health = try await requestHealth()
-            let capabilities = Set(health.capabilities ?? [])
-            guard (health.version ?? 0) >= 2, capabilities.isSuperset(of: ["warmup", "chunk_sessions", "long_poll"]) else {
-                throw VoiceChunkPipelineError.unsupported
-            }
-            supportsFinalChunkFinalize = capabilities.contains("final_chunk_finalize")
-            guard !cancelled else { return }
-            warmupTask = Task { [base, token, clientID, engine, idleSeconds] in
-                let warmStartedAt = Date()
-                do {
-                    let result = try await Self.warm(
-                        base: base,
-                        token: token,
-                        clientID: clientID,
-                        engine: engine,
-                        idleSeconds: idleSeconds
-                    )
-                    VoiceMetrics.log("warmup_finished", [
-                        "engine": engine,
-                        "already_loaded": "\(result.already_loaded ?? false)",
-                        "load_seconds": "\(result.load_seconds ?? 0)",
-                        "request_milliseconds": "\(Int(Date().timeIntervalSince(warmStartedAt) * 1_000))",
-                    ])
-                } catch {
-                    VoiceMetrics.log("warmup_failed", [
-                        "engine": engine,
-                        "request_milliseconds": "\(Int(Date().timeIntervalSince(warmStartedAt) * 1_000))",
-                    ])
-                }
-            }
             let createdSessionID = try await createSession()
             guard !cancelled else {
                 await deleteSession(createdSessionID)
@@ -461,24 +80,60 @@ actor VoiceChunkPipeline {
         }
     }
 
-    func enqueue(_ chunk: VoiceChunk) async {
-        guard !cancelled else {
-            try? FileManager.default.removeItem(at: chunk.url)
-            return
+    private func startWarmup() {
+        warmupTask = Task { [base, token, clientID, engine, idleSeconds] in
+            let warmStartedAt = Date()
+            do {
+                let result = try await Self.warm(
+                    base: base,
+                    token: token,
+                    clientID: clientID,
+                    engine: engine,
+                    idleSeconds: idleSeconds
+                )
+                VoiceMetrics.log("warmup_finished", [
+                    "engine": engine,
+                    "already_loaded": "\(result.already_loaded ?? false)",
+                    "load_seconds": "\(result.load_seconds ?? 0)",
+                    "request_milliseconds": "\(Int(Date().timeIntervalSince(warmStartedAt) * 1_000))",
+                ])
+            } catch {
+                VoiceMetrics.log("warmup_failed", [
+                    "engine": engine,
+                    "request_milliseconds": "\(Int(Date().timeIntervalSince(warmStartedAt) * 1_000))",
+                ])
+            }
         }
-        allChunkURLs.append(chunk.url)
-        pending[chunk.index] = chunk
-        await drain()
     }
 
-    func finalize(expectedChunkCount: Int) async throws -> VoiceChunkPipelineResult {
-        if !started { await start() }
-        let releasedAt = Date()
-        log("recording_released", [
-            "expected_chunks": "\(expectedChunkCount)",
-            "acknowledged_chunks": "\(uploaded.count)",
-            "pending_chunks": "\(max(0, expectedChunkCount - uploaded.count))",
-        ])
+    private func startCapabilityFetch() {
+        capabilityTask = Task { [base, token, clientID, engine, idleSeconds] in
+            await Self.health(base: base, token: token, clientID: clientID, engine: engine, idleSeconds: idleSeconds)
+        }
+    }
+
+    /// Awaits the concurrent capability fetch. Called only where the answer is
+    /// actually used, so it never sits on the record-start path.
+    private func resolveCapabilities() async {
+        guard let capabilityTask else { return }
+        self.capabilityTask = nil
+        let health = await capabilityTask.value
+        let capabilities = Set(health?.capabilities ?? [])
+        let supported = (health?.version ?? 0) >= 2
+            && capabilities.isSuperset(of: ["warmup", "chunk_sessions", "long_poll"])
+        supportsFinalChunkFinalize = supported && capabilities.contains("final_chunk_finalize")
+        // Only a server that answered and said "no" invalidates the session. If
+        // the probe itself failed we keep going: the session is demonstrably
+        // working, and an explicit finalize request covers the missing flag.
+        if health != nil, !supported, failure == nil {
+            failure = VoiceChunkPipelineError.unsupported
+        }
+        onCapabilities?(health)
+    }
+
+    /// Waits for every sealed chunk to be acknowledged, then hands back the
+    /// session that is ready to finalize.
+    private func drainRemainingChunks(expectedChunkCount: Int) async throws -> String {
         let deadline = Date().addingTimeInterval(90)
         while uploaded.count < expectedChunkCount && failure == nil && Date() < deadline {
             await drain()
@@ -495,6 +150,31 @@ actor VoiceChunkPipeline {
             cleanup()
             throw VoiceChunkPipelineError.missingSession
         }
+        return sessionID
+    }
+
+    func enqueue(_ chunk: VoiceChunk) async {
+        guard !cancelled else {
+            try? FileManager.default.removeItem(at: chunk.url)
+            return
+        }
+        allChunkURLs.append(chunk.url)
+        pending[chunk.index] = chunk
+        await drain()
+    }
+
+    func finalize(expectedChunkCount: Int) async throws -> VoiceChunkPipelineResult {
+        if !started { await start() }
+        // Backstop for a session with no final chunk: the capability answer is
+        // long since in, and the client still wants it for its cache.
+        await resolveCapabilities()
+        let releasedAt = Date()
+        log("recording_released", [
+            "expected_chunks": "\(expectedChunkCount)",
+            "acknowledged_chunks": "\(uploaded.count)",
+            "pending_chunks": "\(max(0, expectedChunkCount - uploaded.count))",
+        ])
+        let sessionID = try await drainRemainingChunks(expectedChunkCount: expectedChunkCount)
         do {
             if !supportsFinalChunkFinalize || !sentFinalChunk {
                 try await finalizeSession(sessionID)
@@ -529,6 +209,8 @@ actor VoiceChunkPipeline {
         cancelled = true
         warmupTask?.cancel()
         warmupTask = nil
+        capabilityTask?.cancel()
+        capabilityTask = nil
         let activeSessionID = sessionID
         sessionID = nil
         cleanup()
@@ -540,6 +222,12 @@ actor VoiceChunkPipeline {
     private func drain() async {
         guard failure == nil, let sessionID else { return }
         while let next = pending.keys.sorted().first(where: { !uploaded.contains($0) }), let chunk = pending[next] {
+            // First point that needs capabilities: only a server advertising
+            // final_chunk_finalize accepts the piggybacked finalize header.
+            if chunk.reason == .final {
+                await resolveCapabilities()
+                guard failure == nil else { return }
+            }
             do {
                 let uploadStartedAt = Date()
                 try await upload(chunk, to: sessionID)
@@ -558,12 +246,20 @@ actor VoiceChunkPipeline {
         }
     }
 
-    private func requestHealth() async throws -> VoiceServerHealth {
-        var request = request(base.appendingPathComponent("v1/health"))
+    /// Non-throwing so it can run detached alongside session creation; `nil`
+    /// means "could not ask", which is deliberately not the same as "no".
+    private static func health(base: URL, token: String, clientID: String, engine: String, idleSeconds: Int) async -> VoiceServerHealth? {
+        var request = URLRequest(url: base.appendingPathComponent("v1/health"))
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(clientID, forHTTPHeaderField: "X-Soma-Client-ID")
+        request.setValue(engine, forHTTPHeaderField: "X-Soma-Engine")
+        request.setValue("\(idleSeconds)", forHTTPHeaderField: "X-Soma-Idle-Seconds")
+        if !token.isEmpty { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         request.timeoutInterval = 5
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw VoiceChunkPipelineError.unsupported }
-        return try JSONDecoder().decode(VoiceServerHealth.self, from: data)
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200
+        else { return nil }
+        return try? JSONDecoder().decode(VoiceServerHealth.self, from: data)
     }
 
     private func createSession() async throws -> String {

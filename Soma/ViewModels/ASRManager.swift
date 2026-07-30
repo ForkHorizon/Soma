@@ -5,13 +5,6 @@ import Foundation
 import Network
 import SwiftUI
 
-struct VoiceRecording: Identifiable, Hashable {
-    let url: URL
-    let date: Date
-    let duration: Double
-    let hasTranscript: Bool   // saved alongside the audio as a sidecar .txt
-    var id: URL { url }
-}
 
 private struct RecordingIndexEntry: Sendable {
     let url: URL
@@ -25,25 +18,6 @@ private struct QueuedTranscription {
     let chunkPipeline: VoiceChunkPipeline?
     let expectedChunkCount: Int
     let continuation: CheckedContinuation<String?, Never>
-}
-
-/// A completed WAV awaiting the serial global-voice delivery queue.
-struct CapturedVoiceRecording {
-    let url: URL
-    let chunkPipeline: VoiceChunkPipeline?
-    let expectedChunkCount: Int
-}
-
-enum ASRTranscriptionSource {
-    case inApp
-    case global
-}
-
-enum VoiceServerConnectionState {
-    case unknown
-    case checking
-    case online
-    case offline
 }
 
 private struct VoiceServerErrorEnvelope: Decodable {
@@ -355,17 +329,47 @@ final class ASRManager: ObservableObject {
         ]
     }
 
+    /// Starts the chunked upload pipeline when the remote server can take it.
+    /// The pipeline warms the model and probes /v1/health itself, so the other
+    /// branches exist only for the cases where it does not run.
+    @MainActor
+    private func startChunkPipelineOrWarmBackend(useChunkedRemoteCapture: Bool) {
+        activeChunkCapture = nil
+        activeChunkPipeline = nil
+        let capabilityHint = remoteCapabilityIdentity == remoteCapabilityConfigIdentity ? remoteChunkCapability : nil
+        if useChunkedRemoteCapture, usesRemoteServer, capabilityHint != false, let base = voiceServerURL {
+            let pipeline = VoiceChunkPipeline(
+                base: base,
+                token: voiceServerToken,
+                clientID: voiceServerClientID,
+                engine: engine,
+                idleSeconds: keepLoadedMinutes * 60,
+                workClass: .interactive,
+                capabilityHint: capabilityHint,
+                onCapabilities: { [weak self] health in
+                    Task { @MainActor in self?.applyRemoteCapabilities(health) }
+                }
+            )
+            activeChunkPipeline = pipeline
+            activeChunkCapture = VoiceChunkCapture(settings: transportFLACSettings, fileExtension: "flac") { chunk in
+                Task { await pipeline.enqueue(chunk) }
+            }
+            Task { await pipeline.start() }
+            return
+        }
+        if usesRemoteServer {
+            Task { await checkVoiceServer(silent: true) }
+        } else {
+            Task { _ = try? await ensureServerReady() }   // warm the model while recording
+        }
+    }
+
     @MainActor
     private func beginStreamingRecording(allowWhileTranscribing: Bool, useChunkedRemoteCapture: Bool) {
         ResourceSampler.shared.mark("record_start")
         stopPlayback()
         engineNode.stop()
         engineNode = AVAudioEngine()
-        if usesRemoteServer {
-            Task { await checkVoiceServer(silent: true) }
-        } else {
-            Task { _ = try? await ensureServerReady() }   // warm the model while recording
-        }
 
         let input = engineNode.inputNode
         let inFormat = input.outputFormat(forBus: 0)
@@ -379,25 +383,7 @@ final class ASRManager: ObservableObject {
             self?.lastInputLevelPublishTime = 0
         }
 
-        activeChunkCapture = nil
-        activeChunkPipeline = nil
-        let capabilityHint = remoteCapabilityIdentity == remoteCapabilityConfigIdentity ? remoteChunkCapability : nil
-        if useChunkedRemoteCapture, usesRemoteServer, capabilityHint != false, let base = voiceServerURL {
-            let pipeline = VoiceChunkPipeline(
-                base: base,
-                token: voiceServerToken,
-                clientID: voiceServerClientID,
-                engine: engine,
-                idleSeconds: keepLoadedMinutes * 60,
-                workClass: .interactive,
-                capabilityHint: capabilityHint
-            )
-            activeChunkPipeline = pipeline
-            activeChunkCapture = VoiceChunkCapture(settings: transportFLACSettings, fileExtension: "flac") { chunk in
-                Task { await pipeline.enqueue(chunk) }
-            }
-            Task { await pipeline.start() }
-        }
+        startChunkPipelineOrWarmBackend(useChunkedRemoteCapture: useChunkedRemoteCapture)
 
         let fullURL = recordingsDir.appendingPathComponent("rec-\(Int(Date().timeIntervalSince1970)).wav")
         activeRecordingURL = fullURL
@@ -1404,21 +1390,32 @@ final class ASRManager: ObservableObject {
                 if !silent { status = "Voice Server check failed: \(message)" }
                 return
             }
-            let health = try? JSONDecoder().decode(VoiceServerHealth.self, from: data)
-            let capabilities = Set(health?.capabilities ?? [])
-            remoteChunkCapability = (health?.version ?? 0) >= 2
-                && capabilities.isSuperset(of: ["warmup", "chunk_sessions", "long_poll"])
-            remoteCapabilityIdentity = remoteCapabilityConfigIdentity
-            voiceServerConnectionState = .online
-            voiceServerStatusDetail = "Online"
+            applyRemoteCapabilities(try? JSONDecoder().decode(VoiceServerHealth.self, from: data))
             if !silent { status = "Voice Server online." }
         } catch {
-            remoteChunkCapability = nil
-            remoteCapabilityIdentity = ""
-            voiceServerConnectionState = .offline
+            applyRemoteCapabilities(nil)
             voiceServerStatusDetail = error.localizedDescription
             if !silent { status = "Voice Server unavailable: \(error.localizedDescription)" }
         }
+    }
+
+    /// Records what one /v1/health answer tells us. Shared so a recording's own
+    /// probe updates the cache and the badge without a second request.
+    @MainActor
+    func applyRemoteCapabilities(_ health: VoiceServerHealth?) {
+        guard let health else {
+            remoteChunkCapability = nil
+            remoteCapabilityIdentity = ""
+            voiceServerConnectionState = .offline
+            voiceServerStatusDetail = "Unreachable"
+            return
+        }
+        let capabilities = Set(health.capabilities ?? [])
+        remoteChunkCapability = (health.version ?? 0) >= 2
+            && capabilities.isSuperset(of: ["warmup", "chunk_sessions", "long_poll"])
+        remoteCapabilityIdentity = remoteCapabilityConfigIdentity
+        voiceServerConnectionState = .online
+        voiceServerStatusDetail = "Online"
     }
 
     private func transcribeRemotely(_ audioURL: URL) async -> String? {
