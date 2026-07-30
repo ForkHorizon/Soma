@@ -144,41 +144,7 @@ class VoiceServerState:
         self.pending.put((priority, self.next_sequence, job.id))
 
     def submit(self, headers: dict[str, str], body: bytes) -> tuple[int, dict[str, Any]]:
-        if len(body) > self.max_audio_bytes:
-            return self.error(413, "audio_too_large", "Audio file is too large.", retryable=False)
-        client_id, request_id, engine, idle_seconds = self._request_options(headers)
-        if engine is None:
-            return self.error(400, "unknown_engine", "Unknown ASR engine.", retryable=False)
-        work_class = self._work_class(headers)
-        if work_class is None:
-            return self.error(400, "bad_work_class", "Work class must be interactive or background.", retryable=False)
-        language = self._language(headers)
-        if language is None:
-            return self.error(400, "bad_language", "ASR language must be auto or an ISO language code.", retryable=False)
-        suffix = self._audio_suffix(headers)
-        if suffix is None:
-            return self.error(415, "unsupported_audio", "Only WAV and FLAC audio are accepted.", retryable=False)
-        key = (client_id, request_id)
-        # Spilled before the lock: see voice_jobs.spill_audio.
-        audio_path = voice_jobs.spill_audio(body, suffix)
-        accepted = False
-        try:
-            with self.changed:
-                existing = self.idempotency.get(key)
-                if existing and existing in self.jobs:
-                    return 202, self.jobs[existing].public()
-                if error := self._queue_error_locked(work_class):
-                    return error
-                job = self._new_job(client_id, request_id, engine, language, idle_seconds, audio_path, work_class)
-                self.jobs[job.id] = job
-                self.idempotency[key] = job.id
-                self._enqueue_locked(job)
-                self.changed.notify_all()
-                accepted = True
-                return 202, job.public()
-        finally:
-            if not accepted:
-                voice_jobs.discard_audio(audio_path)
+        return voice_jobs.submit(self, headers, body)
 
     def warm(self, headers: dict[str, str]) -> tuple[int, dict[str, Any]]:
         _client_id, _request_id, engine, idle_seconds = self._request_options(headers)

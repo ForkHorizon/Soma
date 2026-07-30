@@ -15,7 +15,7 @@ import tempfile
 import threading
 import time
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import voice_session_view
 import voice_transcript_merge as merge
@@ -57,6 +57,44 @@ def new_job(state, client_id: str, request_id: str, engine: str, language: str, 
         work_class=work_class,
         client_managed_recovery=client_managed_recovery,
     )
+
+def submit(state, headers: dict[str, str], body: bytes) -> tuple[int, dict[str, Any]]:
+    if len(body) > state.max_audio_bytes:
+        return state.error(413, "audio_too_large", "Audio file is too large.", retryable=False)
+    client_id, request_id, engine, idle_seconds = state._request_options(headers)
+    if engine is None:
+        return state.error(400, "unknown_engine", "Unknown ASR engine.", retryable=False)
+    work_class = state._work_class(headers)
+    if work_class is None:
+        return state.error(400, "bad_work_class", "Work class must be interactive or background.", retryable=False)
+    language = state._language(headers)
+    if language is None:
+        return state.error(400, "bad_language", "ASR language must be auto or an ISO language code.", retryable=False)
+    suffix = state._audio_suffix(headers)
+    if suffix is None:
+        return state.error(415, "unsupported_audio", "Only WAV and FLAC audio are accepted.", retryable=False)
+    key = (client_id, request_id)
+    # Spilled before the lock: see voice_jobs.spill_audio.
+    audio_path = spill_audio(body, suffix)
+    accepted = False
+    try:
+        with state.changed:
+            existing = state.idempotency.get(key)
+            if existing and existing in state.jobs:
+                return 202, state.jobs[existing].public()
+            if error := state._queue_error_locked(work_class):
+                return error
+            job = state._new_job(client_id, request_id, engine, language, idle_seconds, audio_path, work_class)
+            state.jobs[job.id] = job
+            state.idempotency[key] = job.id
+            state._enqueue_locked(job)
+            state.changed.notify_all()
+            accepted = True
+            return 202, job.public()
+    finally:
+        if not accepted:
+            discard_audio(audio_path)
+
 
 def _decode(state, job: Job, initial_prompt: str | None) -> tuple[str, dict]:
     """Decode one job. Background work gets one retry without the text prompt
