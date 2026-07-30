@@ -5,7 +5,6 @@ import Foundation
 import Network
 import SwiftUI
 
-
 private struct RecordingIndexEntry: Sendable {
     let url: URL
     let date: Date
@@ -347,8 +346,7 @@ final class ASRManager: ObservableObject {
                 workClass: .interactive,
                 capabilityHint: capabilityHint,
                 onCapabilities: { health in
-                    // Re-capture weakly on the inner task: referencing the outer
-                    // closure's captured `self` var is an error in Swift 6.
+                    // Inner [weak self]: Swift 6 rejects reading the outer captured var.
                     Task { @MainActor [weak self] in self?.applyRemoteCapabilities(health) }
                 }
             )
