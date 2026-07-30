@@ -200,6 +200,10 @@ extension RusToPromptQueueManager {
         Task {
             let value = await Self.readFreeMemoryGB()
             await MainActor.run {
+                // Only republish when the displayed 0.1 GB value moves, so the 5s
+                // poll doesn't re-render observers when the number hasn't changed.
+                func tenths(_ v: Double?) -> Int? { v.map { Int(($0 * 10).rounded()) } }
+                guard tenths(value) != tenths(self.freeMemoryGB) else { return }
                 self.freeMemoryGB = value
             }
         }

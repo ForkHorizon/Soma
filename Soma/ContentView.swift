@@ -63,6 +63,7 @@ struct ContentView: View {
             viewModel.hydrateProjectRootsIfNeeded()
         }
         .onAppear {
+            ResourceSampler.shared.start()   // memory+CPU log to ~/.soma/logs/soma_resource.log
             textPriorityQueue.onImportTranslationCompleted = { [weak voiceASR] id, path in
                 voiceASR?.setImportedTranslation(id, path: path)
             }

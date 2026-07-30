@@ -20,6 +20,8 @@ struct SomaApp: App {
     @StateObject private var voicePrompter = RusToPromptViewModel()
     @StateObject private var globalVoice = GlobalVoiceController()
     @StateObject private var voiceTextPriorityQueue = VoiceTextPriorityQueue()
+    @StateObject private var windowLifecycle = SomaWindowLifecycleCoordinator()
+    @NSApplicationDelegateAdaptor(SomaAppDelegate.self) private var appDelegate
 
     var body: some Scene {
         WindowGroup {
@@ -32,6 +34,14 @@ struct SomaApp: App {
                 globalVoice: globalVoice,
                 textPriorityQueue: voiceTextPriorityQueue
             )
+            .background(
+                MainWindowAccessor { window in
+                    windowLifecycle.attach(mainWindow: window, globalVoice: globalVoice)
+                }
+            )
+            .onAppear {
+                appDelegate.windowLifecycle = windowLifecycle
+            }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
                 globalVoice.setEnabled(false)
                 voiceASR.cancelRecording()

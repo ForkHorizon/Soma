@@ -10,6 +10,9 @@ func logActivity(_ message: String, duration: Double? = nil) {
             log += String(format: " (%.2fs)", duration)
         }
         activityLogs.append(log)
+        if activityLogs.count > 500 {
+            activityLogs.removeFirst(activityLogs.count - 500)
+        }
     }
 func startLogRefreshTimer() {
         logRefreshTimer?.invalidate()

@@ -221,7 +221,7 @@ final class RusToPromptQueueManager: ObservableObject {
         recoverRunningItems()
         applyPowerGate()
         saveToDisk()
-        startTimer()
+        startTimerIfNeeded()   // only poll if launch recovered active/queued work
     }
     deinit {
         timer?.invalidate()

@@ -23,12 +23,13 @@ import voice_asr_backend
 
 
 class FakeBroker:
-    def __init__(self, delay=0.01, echo_initial_prompt=False):
+    def __init__(self, delay=0.01, echo_initial_prompt=False, scripted_texts=None):
         self.calls = []
         self.configured = []
         self.warm_calls = []
         self.delay = delay
         self.echo_initial_prompt = echo_initial_prompt
+        self.scripted_texts = list(scripted_texts or [])
 
     def health(self):
         return {
@@ -45,11 +46,11 @@ class FakeBroker:
         self.warm_calls.append((engine, idle_seconds))
         return {"ok": True, "engine": engine, "loaded": True, "already_loaded": False, "load_seconds": 0.01}
 
-    def transcribe(self, engine, audio_path, idle_seconds=None, initial_prompt=None):
+    def transcribe(self, engine, audio_path, idle_seconds=None, initial_prompt=None, language="ru"):
         audio = Path(audio_path).read_bytes()
-        self.calls.append((engine, audio, idle_seconds, initial_prompt))
+        self.calls.append((engine, audio, idle_seconds, initial_prompt, language))
         time.sleep(self.delay)
-        text = audio.decode("utf-8")
+        text = self.scripted_texts.pop(0) if self.scripted_texts else audio.decode("utf-8")
         if self.echo_initial_prompt and initial_prompt:
             text = f"{initial_prompt} {text}"
         return {"text": text, "engine": engine, "infer_seconds": 0.01}
@@ -65,8 +66,15 @@ class SomaVoiceServerTests(unittest.TestCase):
         settings_path=None,
         broker_delay=0.01,
         broker_echo_initial_prompt=False,
+        broker_scripted_texts=None,
+        max_queue=0,
+        max_background_queue=0,
     ):
-        broker = FakeBroker(delay=broker_delay, echo_initial_prompt=broker_echo_initial_prompt)
+        broker = FakeBroker(
+            delay=broker_delay,
+            echo_initial_prompt=broker_echo_initial_prompt,
+            scripted_texts=broker_scripted_texts,
+        )
         state = voice_server.VoiceServerState(
             token=token,
             broker=broker,
@@ -76,6 +84,8 @@ class SomaVoiceServerTests(unittest.TestCase):
             max_audio_bytes=max_audio_bytes,
             upload_timeout_seconds=upload_timeout_seconds,
             settings_path=settings_path,
+            max_queue=max_queue,
+            max_background_queue=max_background_queue,
         )
         server = voice_server.ThreadingHTTPServer(("127.0.0.1", 0), voice_server.make_handler(state))
         thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -95,6 +105,14 @@ class SomaVoiceServerTests(unittest.TestCase):
         for _ in range(50):
             _status, payload = self.request("GET", f"{base}/v1/transcriptions/{job_id}")
             if payload["status"] == "done":
+                return payload
+            time.sleep(0.02)
+        self.fail("job did not finish")
+
+    def wait_terminal_job(self, base, job_id):
+        for _ in range(50):
+            _status, payload = self.request("GET", f"{base}/v1/transcriptions/{job_id}")
+            if payload["status"] in {"done", "failed"}:
                 return payload
             time.sleep(0.02)
         self.fail("job did not finish")
@@ -192,6 +210,65 @@ class SomaVoiceServerTests(unittest.TestCase):
         self.assertEqual(done["text"], "lossless-audio")
         self.assertEqual(broker.calls[0][1], b"lossless-audio")
 
+    def test_media_session_retries_bad_chunk_then_strips_previous_audio_context(self):
+        base, broker = self.start_server(broker_scripted_texts=[
+            "previous context",
+            "again " * 12,
+            "again " * 12,
+            "previous context repaired current transcript",
+        ])
+        _status, session = self.request(
+            "POST", f"{base}/v1/sessions",
+            headers={
+                "X-Soma-Client-ID": "client-a",
+                "X-Soma-Request-ID": "session-auto",
+                "X-Soma-Language": "auto",
+            },
+        )
+        session_id = session["session_id"]
+        status, _payload = self.request(
+            "PUT", f"{base}/v1/sessions/{session_id}/chunks/0",
+            body=b"previous-audio",
+            headers={
+                "Content-Type": "audio/flac",
+                "X-Soma-Client-ID": "client-a",
+                "X-Soma-Request-ID": f"{session_id}-0-0",
+                "X-Soma-Work-Class": "background",
+                "X-Soma-Chunk-Reason": "forced",
+            },
+        )
+        self.assertEqual(status, 202)
+        first = self.wait_terminal_job(base, _payload["job_id"])
+        self.assertEqual(first["status"], "done")
+
+        headers = {
+            "Content-Type": "audio/flac",
+            "X-Soma-Client-ID": "client-a",
+            "X-Soma-Work-Class": "background",
+            "X-Soma-Chunk-Recovery": "client-v1",
+            "X-Soma-Chunk-Reason": "final",
+            "X-Soma-Finalize-Session": "1",
+        }
+        _status, first_attempt = self.request(
+            "PUT", f"{base}/v1/sessions/{session_id}/chunks/1", body=b"current-audio",
+            headers={**headers, "X-Soma-Request-ID": f"{session_id}-1-0"},
+        )
+        self.assertEqual(self.wait_terminal_job(base, first_attempt["job_id"])["error"]["code"], "pathological_repetition")
+        _status, second_attempt = self.request(
+            "PUT", f"{base}/v1/sessions/{session_id}/chunks/1", body=b"current-audio",
+            headers={**headers, "X-Soma-Request-ID": f"{session_id}-1-1", "X-Soma-Retry-Failed-Chunk": "1"},
+        )
+        self.assertEqual(self.wait_terminal_job(base, second_attempt["job_id"])["error"]["code"], "pathological_repetition")
+        _status, third_attempt = self.request(
+            "PUT", f"{base}/v1/sessions/{session_id}/chunks/1", body=b"previous-plus-current",
+            headers={**headers, "X-Soma-Request-ID": f"{session_id}-1-2", "X-Soma-Retry-Failed-Chunk": "1", "X-Soma-Context-Chunk-Index": "0"},
+        )
+        self.assertEqual(self.wait_terminal_job(base, third_attempt["job_id"])["status"], "done")
+        _status, done = self.request("GET", f"{base}/v1/sessions/{session_id}?wait=2", headers={"X-Soma-Client-ID": "client-a"})
+        self.assertEqual(done["status"], "done")
+        self.assertEqual(done["text"], "previous context repaired current transcript")
+        self.assertEqual([call[4] for call in broker.calls], ["auto"] * 4)
+
     def test_live_work_runs_before_waiting_background_work(self):
         base, broker = self.start_server(broker_delay=0.15)
         common = {"X-Soma-Client-ID": "client-a", "Content-Type": "audio/flac"}
@@ -212,6 +289,20 @@ class SomaVoiceServerTests(unittest.TestCase):
         self.wait_done(base, live["job_id"])
         order = [call[1] for call in broker.calls]
         self.assertLess(order.index(b"live"), order.index(b"background-2"))
+
+    def test_media_backlog_is_unlimited_by_default(self):
+        base, _broker = self.start_server(broker_delay=0.2)
+        headers = {
+            "X-Soma-Client-ID": "client-a",
+            "Content-Type": "audio/flac",
+            "X-Soma-Work-Class": "background",
+        }
+        for index in range(40):
+            status, _payload = self.request(
+                "POST", f"{base}/v1/transcriptions", body=f"media-{index}".encode(),
+                headers={**headers, "X-Soma-Request-ID": f"media-{index}"},
+            )
+            self.assertEqual(status, 202)
 
     def test_warmup_is_authenticated_and_idempotent(self):
         base, broker = self.start_server()
@@ -296,10 +387,26 @@ class SomaVoiceServerTests(unittest.TestCase):
         _status, first = self.request("PUT", f"{base}/v1/sessions/{session_id}/chunks/0", body=b"first", headers=headers)
         _status, retry = self.request("PUT", f"{base}/v1/sessions/{session_id}/chunks/0", body=b"first", headers=headers)
         self.assertEqual(first["job_id"], retry["job_id"])
+        headers["X-Soma-Request-ID"] = f"{session_id}-0-after-relaunch"
+        _status, resumed = self.request("PUT", f"{base}/v1/sessions/{session_id}/chunks/0", body=b"first", headers=headers)
+        self.assertEqual(first["job_id"], resumed["job_id"])
 
     def test_forced_overlap_reports_unsafe_when_words_do_not_match(self):
         self.assertEqual(voice_server.VoiceServerState._join_overlap("hello world", "world again"), ("hello world again", True))
         self.assertEqual(voice_server.VoiceServerState._join_overlap("hello world", "different words"), ("hello world different words", False))
+
+    def test_repetition_guard_rejects_decoder_loops(self):
+        self.assertFalse(voice_server.VoiceServerState._has_pathological_repetition("yes yes yes yes"))
+        self.assertTrue(voice_server.VoiceServerState._has_pathological_repetition("already " * 12))
+        self.assertTrue(voice_server.VoiceServerState._has_pathological_repetition("come back here for a second " * 3))
+        self.assertTrue(voice_server.VoiceServerState._has_pathological_repetition("f sağ " * 6))
+        self.assertTrue(voice_server.VoiceServerState._has_pathological_repetition("... " * 8))
+
+    def test_backend_auto_language_omits_the_forced_language(self):
+        self.assertIsNone(voice_asr_backend._requested_language({"language": "auto"}))
+        self.assertEqual(voice_asr_backend._requested_language({"language": "ru"}), "ru")
+        with self.assertRaises(ValueError):
+            voice_asr_backend._requested_language({"language": None})
 
     def test_cancel_session_discards_queued_chunk_result(self):
         base, broker = self.start_server(broker_delay=0.2)

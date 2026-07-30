@@ -27,9 +27,31 @@ final class OllamaManager: ObservableObject {
         analystModelName = LocalModelSettingsStore.model(for: .analyst)
         translatorModelName = LocalModelSettingsStore.model(for: .translator)
         startPolling()
+        installMemoryPressureUnload()
     }
     deinit {
         timer?.invalidate()
+        memoryPressureSource?.cancel()
+    }
+
+    /// Under system memory pressure, tell Ollama to drop the loaded role models
+    /// (keep_alive=0) so Soma's translator doesn't keep multi-GB weights resident
+    /// while the box is swapping. Skipped while a request is in flight.
+    private var memoryPressureSource: DispatchSourceMemoryPressure?
+    private func installMemoryPressureUnload() {
+        let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
+        source.setEventHandler { [weak self] in
+            let critical = source.data.contains(.critical)
+            MainActor.assumeIsolated {
+                ResourceSampler.shared.mark(critical ? "mem_pressure_critical/ollama" : "mem_pressure_warning/ollama")
+                guard let self, !self.isBusy else { return }
+                for model in Set([self.modelName, self.rankerModelName, self.analystModelName, self.translatorModelName]) where !model.isEmpty {
+                    self.unloadModel(model)
+                }
+            }
+        }
+        source.resume()
+        memoryPressureSource = source
     }
     func startPolling() {
         timer?.invalidate()   // never stack a second poll timer if called again
