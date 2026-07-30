@@ -12,6 +12,7 @@ import unittest
 from unittest import mock
 import urllib.error
 import urllib.request
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 from soma_test_bootstrap import install_soma_imports
@@ -20,6 +21,7 @@ install_soma_imports()
 
 import voice_server
 import voice_asr_backend
+import voice_transcript_merge
 
 
 class FakeBroker:
@@ -87,7 +89,7 @@ class SomaVoiceServerTests(unittest.TestCase):
             max_queue=max_queue,
             max_background_queue=max_background_queue,
         )
-        server = voice_server.ThreadingHTTPServer(("127.0.0.1", 0), voice_server.make_handler(state))
+        server = ThreadingHTTPServer(("127.0.0.1", 0), voice_server.make_handler(state))
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         self.addCleanup(lambda: (server.shutdown(), server.server_close()))
@@ -392,15 +394,15 @@ class SomaVoiceServerTests(unittest.TestCase):
         self.assertEqual(first["job_id"], resumed["job_id"])
 
     def test_forced_overlap_reports_unsafe_when_words_do_not_match(self):
-        self.assertEqual(voice_server.VoiceServerState._join_overlap("hello world", "world again"), ("hello world again", True))
-        self.assertEqual(voice_server.VoiceServerState._join_overlap("hello world", "different words"), ("hello world different words", False))
+        self.assertEqual(voice_transcript_merge.join_overlap("hello world", "world again"), ("hello world again", True))
+        self.assertEqual(voice_transcript_merge.join_overlap("hello world", "different words"), ("hello world different words", False))
 
     def test_repetition_guard_rejects_decoder_loops(self):
-        self.assertFalse(voice_server.VoiceServerState._has_pathological_repetition("yes yes yes yes"))
-        self.assertTrue(voice_server.VoiceServerState._has_pathological_repetition("already " * 12))
-        self.assertTrue(voice_server.VoiceServerState._has_pathological_repetition("come back here for a second " * 3))
-        self.assertTrue(voice_server.VoiceServerState._has_pathological_repetition("f sağ " * 6))
-        self.assertTrue(voice_server.VoiceServerState._has_pathological_repetition("... " * 8))
+        self.assertFalse(voice_transcript_merge.has_pathological_repetition("yes yes yes yes"))
+        self.assertTrue(voice_transcript_merge.has_pathological_repetition("already " * 12))
+        self.assertTrue(voice_transcript_merge.has_pathological_repetition("come back here for a second " * 3))
+        self.assertTrue(voice_transcript_merge.has_pathological_repetition("f sağ " * 6))
+        self.assertTrue(voice_transcript_merge.has_pathological_repetition("... " * 8))
 
     def test_backend_auto_language_omits_the_forced_language(self):
         self.assertIsNone(voice_asr_backend._requested_language({"language": "auto"}))
@@ -590,7 +592,7 @@ class SomaVoiceServerTests(unittest.TestCase):
         try:
             voice_asr_backend._idle_seconds = 10
             voice_asr_backend._loaded = False
-            server = voice_server.ThreadingHTTPServer(("127.0.0.1", 0), voice_asr_backend.Handler)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), voice_asr_backend.Handler)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             self.addCleanup(lambda: (server.shutdown(), server.server_close()))
@@ -624,7 +626,7 @@ class SomaVoiceServerTests(unittest.TestCase):
                 voice_asr_backend._loaded = True
             voice_asr_backend._loaded = False
             voice_asr_backend._load = fake_load
-            server = voice_server.ThreadingHTTPServer(("127.0.0.1", 0), voice_asr_backend.Handler)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), voice_asr_backend.Handler)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             self.addCleanup(lambda: (server.shutdown(), server.server_close()))

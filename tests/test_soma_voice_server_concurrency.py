@@ -10,6 +10,7 @@ import types
 import unittest
 from unittest import mock
 import urllib.request
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 from soma_test_bootstrap import install_soma_imports
@@ -42,7 +43,7 @@ class VoiceServerConcurrencyTests(unittest.TestCase):
                 setattr(voice_asr_backend, name, value)
 
         self.addCleanup(restore)
-        server = voice_server.ThreadingHTTPServer(("127.0.0.1", 0), voice_asr_backend.Handler)
+        server = ThreadingHTTPServer(("127.0.0.1", 0), voice_asr_backend.Handler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         self.addCleanup(lambda: (server.shutdown(), server.server_close()))
         return f"http://127.0.0.1:{server.server_address[1]}"

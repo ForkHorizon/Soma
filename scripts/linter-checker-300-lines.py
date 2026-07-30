@@ -124,9 +124,105 @@ def main(argv: Sequence[str]) -> int:
     config = load_config(root / args.config)
 
     paths = collect_paths(root, config, args)
+    if args.tighten:
+        return tighten_baselines(root, root / args.config, paths, config)
     issues = check_paths(root, paths, config)
+    issues += stale_baseline_issues(root, paths, config)
     print_report(issues, len(paths), args.mode)
     return 1 if issues else 0
+
+
+def measure(root: Path, paths: Sequence[Path], config: dict) -> tuple[dict, dict]:
+    """Current file and function lengths, keyed the same way as the baselines."""
+    files: dict[str, int] = {}
+    functions: dict[str, int] = {}
+    for path in paths:
+        relative = path.relative_to(root).as_posix()
+        language = LANGUAGE_BY_EXTENSION.get(path.suffix)
+        if language is None or should_ignore(relative, config["ignore"]):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        files[relative] = len(text.splitlines())
+        for name, _start, length in function_lengths(text, language):
+            functions[f"{relative}:{name}"] = length
+    return files, functions
+
+
+def stale_baseline_issues(root: Path, paths: Sequence[Path], config: dict) -> list[Issue]:
+    """A baseline looser than reality is a ratchet that has stopped ratcheting:
+    it silently re-permits every line the file has already shed."""
+    baseline = config.get("baseline", {})
+    files, functions = measure(root, paths, config)
+    issues: list[Issue] = []
+    for relative, actual in sorted(files.items()):
+        recorded = baseline.get("file_length", {}).get(relative)
+        if recorded is not None and actual < int(recorded):
+            issues.append(Issue(
+                path=relative,
+                line=1,
+                kind="stale_baseline",
+                message=(
+                    f"File is now {actual} lines but its baseline still allows {int(recorded)}. "
+                    f"Lower it (Scripts/linter-checker-300-lines.py --tighten) so the ratchet holds."
+                ),
+            ))
+    for key, actual in sorted(functions.items()):
+        recorded = baseline.get("function_length", {}).get(key)
+        if recorded is not None and actual < int(recorded):
+            relative, _, name = key.rpartition(":")
+            issues.append(Issue(
+                path=relative,
+                line=1,
+                kind="stale_baseline",
+                message=(
+                    f"{name} is now {actual} lines but its baseline still allows {int(recorded)}. "
+                    f"Lower it (Scripts/linter-checker-300-lines.py --tighten) so the ratchet holds."
+                ),
+            ))
+    return issues
+
+
+def tighten_baselines(root: Path, config_path: Path, paths: Sequence[Path], config: dict) -> int:
+    """Lower every baseline to what the code actually measures. Never raises one,
+    and drops baselines for entries that now fit under the plain limit."""
+    if not config_path.exists():
+        print(f"::error::no config at {config_path}", file=sys.stderr)
+        return 1
+    stored = json.loads(config_path.read_text(encoding="utf-8"))
+    baseline = stored.setdefault("baseline", {})
+    files, functions = measure(root, paths, config)
+    changed = 0
+    for section, measured, limit_key in (
+        ("file_length", files, "max_file_lines"),
+        ("function_length", functions, "max_function_lines"),
+    ):
+        recorded = baseline.setdefault(section, {})
+        for key, actual in measured.items():
+            if key not in recorded:
+                continue
+            limit = int(config[limit_key])
+            if actual <= limit:
+                del recorded[key]
+                print(f"dropped {section} baseline for {key} (now {actual}, under the {limit} limit)")
+                changed += 1
+            elif actual < int(recorded[key]):
+                print(f"tightened {section} baseline for {key}: {int(recorded[key])} -> {actual}")
+                recorded[key] = actual
+                changed += 1
+    # A function baseline whose function no longer exists in that file is an
+    # orphan: it would silently grandfather the name if anything reclaimed it.
+    recorded_functions = baseline.setdefault("function_length", {})
+    for key in [k for k in recorded_functions if k.rpartition(":")[0] in files and k not in functions]:
+        print(f"dropped orphaned function baseline {key} (no such function in that file)")
+        del recorded_functions[key]
+        changed += 1
+    if changed:
+        config_path.write_text(json.dumps(stored, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"tightened {changed} baseline(s).")
+    return 0
 
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
@@ -138,6 +234,11 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--head", default="HEAD", help="Head ref for changed mode.")
     parser.add_argument("--config", default=".ai-readability.json")
     parser.add_argument("--root", default=".")
+    parser.add_argument(
+        "--tighten",
+        action="store_true",
+        help="Lower baselines to current measurements (never raises one) and exit.",
+    )
     return parser.parse_args(argv)
 
 
