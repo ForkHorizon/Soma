@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import threading
 import time
 import uuid
 from typing import TYPE_CHECKING
@@ -23,17 +24,35 @@ from voice_models import Job, PathologicalRepetitionError
 if TYPE_CHECKING:  # annotations stay lazy, so this cannot cycle at runtime
     from voice_server import VoiceServerState  # noqa: F401
 
-def new_job(state, client_id: str, request_id: str, engine: str, language: str, idle_seconds: int, body: bytes, work_class: str, suffix: str, client_managed_recovery: bool = False) -> Job:
+def spill_audio(body: bytes, suffix: str) -> str:
+    """Put the upload on disk and return its path.
+
+    Deliberately callable without the state lock: this is the only slow step in
+    accepting a chunk, and holding the global lock across it stalls every other
+    upload, long-poll wake-up and status read on the server.
+    """
     fd, path = tempfile.mkstemp(prefix="soma-voice-", suffix=suffix)
     with os.fdopen(fd, "wb") as handle:
         handle.write(body)
+    return path
+
+
+def discard_audio(path: str) -> None:
+    """Drop a spilled upload that was never accepted."""
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def new_job(state, client_id: str, request_id: str, engine: str, language: str, idle_seconds: int, audio_path: str, work_class: str, client_managed_recovery: bool = False) -> Job:
     return Job(
         id=str(uuid.uuid4()),
         client_id=client_id,
         request_id=request_id,
         engine=engine,
         language=language,
-        audio_path=path,
+        audio_path=audio_path,
         idle_seconds=max(0, idle_seconds),
         work_class=work_class,
         client_managed_recovery=client_managed_recovery,
@@ -117,6 +136,29 @@ def work_loop(state) -> None:
                 except FileNotFoundError:
                     pass
             state.pending.task_done()
+
+
+PRUNE_INTERVAL_SECONDS = 60.0
+
+
+def start_pruner(state) -> threading.Thread:
+    """Sweep expired jobs and sessions on a timer.
+
+    This used to run at the top of every submit, get and chunk upload, taking
+    the global lock for an O(jobs + sessions) scan on the hot path to expire
+    things whose TTLs are measured in hours.
+    """
+    def loop() -> None:
+        while True:
+            time.sleep(PRUNE_INTERVAL_SECONDS)
+            try:
+                prune(state)
+            except Exception:  # a sweep failure must never kill the sweeper
+                pass
+
+    thread = threading.Thread(target=loop, name="voice-prune", daemon=True)
+    thread.start()
+    return thread
 
 
 def prune(state) -> None:

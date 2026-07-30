@@ -291,6 +291,33 @@ class SomaVoiceServerTests(unittest.TestCase):
         order = [call[1] for call in broker.calls]
         self.assertLess(order.index(b"live"), order.index(b"background-2"))
 
+    def test_background_backlog_limit_is_enforced_when_configured(self):
+        # Guards the reorder that skips the O(jobs) scan when no limit is set.
+        base, _broker = self.start_server(broker_delay=0.3, max_background_queue=1)
+        headers = {"X-Soma-Client-ID": "client-a", "Content-Type": "audio/flac", "X-Soma-Work-Class": "background"}
+        for index in range(2):  # one runs, one waits and fills the reserve
+            status, _payload = self.request(
+                "POST", f"{base}/v1/transcriptions", body=f"media-{index}".encode(),
+                headers={**headers, "X-Soma-Request-ID": f"media-{index}"},
+            )
+            self.assertEqual(status, 202)
+        with self.assertRaises(urllib.error.HTTPError) as raised:
+            self.request(
+                "POST", f"{base}/v1/transcriptions", body=b"media-overflow",
+                headers={**headers, "X-Soma-Request-ID": "media-overflow"},
+            )
+        payload = json.loads(raised.exception.read().decode())
+        raised.exception.close()
+        self.assertEqual(raised.exception.code, 429)
+        self.assertEqual(payload["error"]["code"], "background_queue_full")
+
+        # Live dictation is still admitted while background work is refused.
+        status, _payload = self.request(
+            "POST", f"{base}/v1/transcriptions", body=b"live",
+            headers={"X-Soma-Client-ID": "client-a", "Content-Type": "audio/flac", "X-Soma-Request-ID": "live"},
+        )
+        self.assertEqual(status, 202)
+
     def test_media_backlog_is_unlimited_by_default(self):
         base, _broker = self.start_server(broker_delay=0.2)
         headers = {
