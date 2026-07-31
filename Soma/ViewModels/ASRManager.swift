@@ -651,17 +651,14 @@ final class ASRManager: ObservableObject {
     }
 
     @MainActor
-    private func finishChunkedTranscription(
-        _ pipeline: VoiceChunkPipeline,
-        expectedChunkCount: Int,
-        fallbackURL: URL
-    ) async -> String? {
+    private func finishChunkedTranscription(_ pipeline: VoiceChunkPipeline, expectedChunkCount: Int, fallbackURL: URL) async -> String? {
         do {
             let result = try await pipeline.finalize(expectedChunkCount: expectedChunkCount)
-            guard result.mergeSafe else {
-                VoiceMetrics.log("whole_file_fallback", ["reason": "unsafe_forced_overlap_merge"])
-                status = "Chunk merge needs full transcription; retrying…"
-                return await transcribeRemotely(fallbackURL)
+            if !result.mergeSafe {
+                // Seam words duplicated, never lost. Re-transcribing the whole
+                // recording to avoid that cost 2.12x decode for 0.057 WER of
+                // unproven direction — Scripts/whisper_chunk_merge_bench.py.
+                VoiceMetrics.log("merge_seam_unmatched", ["kept_chunked_result": "true"])
             }
             lastInferSeconds = result.inferSeconds
             return result.text
