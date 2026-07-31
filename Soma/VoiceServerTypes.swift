@@ -42,6 +42,7 @@ nonisolated struct VoiceServerSessionResponse: Decodable, Sendable {
     let session_id: String?
     let status: String?
     let text: String?
+    let partial_text: String?
     let merge_safe: Bool?
     let accepted_chunks: Int?
     let completed_chunks: Int?

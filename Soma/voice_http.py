@@ -79,6 +79,14 @@ class VoiceHTTPHandler(BaseHTTPRequestHandler):
         return False
 
     @staticmethod
+    def _since_completed(query: dict[str, list[str]]) -> int | None:
+        """Wake the long poll as soon as more chunks than this have decoded."""
+        try:
+            return max(0, int(query["since_completed"][0]))
+        except (KeyError, IndexError, TypeError, ValueError):
+            return None
+
+    @staticmethod
     def _wait_seconds(query: dict[str, list[str]]) -> float:
         try:
             return max(0.0, min(25.0, float(query.get("wait", ["0"])[0])))
@@ -104,10 +112,12 @@ class VoiceHTTPHandler(BaseHTTPRequestHandler):
             return
         session_prefix = "/v1/sessions/"
         if parsed.path.startswith(session_prefix):
+            query = parse_qs(parsed.query)
             self._reply(*self.state.get_session(
                 parsed.path.removeprefix(session_prefix),
                 self._headers(),
-                self._wait_seconds(parse_qs(parsed.query)),
+                self._wait_seconds(query),
+                self._since_completed(query),
             ))
             return
         self._reply(*self.state.error(404, "not_found", "Endpoint not found.", retryable=False))

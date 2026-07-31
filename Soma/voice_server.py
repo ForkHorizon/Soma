@@ -183,7 +183,16 @@ class VoiceServerState:
                 self.changed.wait(remaining)
             return 200, job.public()
 
-    def get_session(self, session_id: str, headers: dict[str, str], wait_seconds: float = 0) -> tuple[int, dict[str, Any]]:
+    def get_session(
+        self,
+        session_id: str,
+        headers: dict[str, str],
+        wait_seconds: float = 0,
+        since_completed: int | None = None,
+    ) -> tuple[int, dict[str, Any]]:
+        """Long-polls until the session finishes, or — when `since_completed` is
+        given — as soon as another chunk finishes decoding. The second form is
+        what lets a caller consume the transcript while recording continues."""
         client_id = headers.get("x-soma-client-id", "unknown").strip() or "unknown"
         with self.changed:
             session = self.sessions.get(session_id)
@@ -193,6 +202,8 @@ class VoiceServerState:
                 return self.error(403, "session_client_mismatch", "Voice session belongs to another client.", retryable=False)
             deadline = time.monotonic() + wait_seconds
             while wait_seconds > 0 and session.status in {"recording", "finalizing"}:
+                if since_completed is not None and voice_session_view.completed_locked(self, session) > since_completed:
+                    break
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     break

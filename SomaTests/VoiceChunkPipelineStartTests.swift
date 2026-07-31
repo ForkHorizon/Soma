@@ -75,8 +75,13 @@ final class StubVoiceServer: URLProtocol {
         if path.hasSuffix("/v1/sessions") {
             return (201, #"{"session_id":"stub-session","status":"recording"}"#)
         }
+        // Chunk uploads live under /v1/sessions/{id}/chunks/{n}, so they must be
+        // matched before the session-status branch below.
         if path.contains("/chunks/") {
             return (202, #"{"job_id":"stub-job","status":"queued"}"#)
+        }
+        if path.contains("/v1/sessions/") {
+            return (200, #"{"session_id":"stub-session","status":"recording","completed_chunks":1,"partial_text":"первая фраза"}"#)
         }
         return (200, #"{"status":"recording"}"#)
     }
@@ -99,13 +104,29 @@ final class VoiceChunkPipelineStartTests: XCTestCase {
     }
 
     private func makePipeline(
-        onCapabilities: (@Sendable (VoiceServerHealth?) -> Void)? = nil
+        onCapabilities: (@Sendable (VoiceServerHealth?) -> Void)? = nil,
+        onPartialTranscript: (@Sendable (String) -> Void)? = nil
     ) -> VoiceChunkPipeline {
         VoiceChunkPipeline(
             base: base, token: "t", clientID: "c", engine: "whisper",
             idleSeconds: 600, workClass: .interactive, capabilityHint: nil,
-            onCapabilities: onCapabilities
+            onCapabilities: onCapabilities, onPartialTranscript: onPartialTranscript
         )
+    }
+
+    func testDecodedTextIsDeliveredWhileTheSessionIsStillRecording() async {
+        let delivered = expectation(description: "partial transcript delivered")
+        let seen = UncheckedBox<String>("")
+        let pipeline = makePipeline(onPartialTranscript: { text in
+            guard seen.value.isEmpty else { return }
+            seen.value = text
+            delivered.fulfill()
+        })
+        await pipeline.start()
+        await fulfillment(of: [delivered], timeout: 5)
+        // The session never reached "done"; this is text arriving mid-recording.
+        XCTAssertEqual(seen.value, "первая фраза")
+        await pipeline.cancel()
     }
 
     /// Warmup and session creation are concurrent, so their network order is not

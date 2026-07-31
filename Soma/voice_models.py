@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-CAPABILITIES = ("warmup", "chunk_sessions", "long_poll", "flac", "priority_queue", "final_chunk_finalize")
+CAPABILITIES = ("warmup", "chunk_sessions", "long_poll", "flac", "priority_queue", "final_chunk_finalize", "partial_text")
 
 def default_settings_path() -> Path:
     return Path.home() / "Library/Application Support/Soma/VoiceServer/settings.json"

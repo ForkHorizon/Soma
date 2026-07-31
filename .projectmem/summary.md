@@ -1,6 +1,6 @@
 # projectmem - Soma
 
-_Last updated: 2026-07-30_
+_Last updated: 2026-07-31_
 
 ## Project purpose
 Soma is a local-first macOS SwiftUI workbench for comparing language-model output and managing per-project coding-tool/MCP configuration. Its bundled Python services provide the MCP gateway and optional voice transcription server.
@@ -71,6 +71,8 @@ Soma is a local-first macOS SwiftUI workbench for comparing language-model outpu
 - Refactor: refactor: bring every moved function under the readability limits [.linter-checker-300-lines.json]
 - Refactor: refactor: split the voice client files the ratchet caught [.linter-checker-300-lines.json]
 - Refactor: refactor: split what task 3 pushed over the readability limits [.linter-checker-300-lines.json]
+- Refactor: refactor: split the partial-transcript additions past their baselines [Soma/VoiceChunkPipeline.swift]
+- Refactor: refactor: one shared builder for authenticated voice-server requests [.linter-checker-300-lines.json]
 
 ## Notes
 - Improve Soma extension updates and app layout
