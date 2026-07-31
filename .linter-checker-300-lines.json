@@ -6,7 +6,6 @@
       "Scripts/rus_to_prompt_stress_runner_confidence.py": 592,
       "Soma/ContentView.swift": 685,
       "Soma/GlobalVoiceController.swift": 1434,
-      "Soma/ViewModels/ASRManager.swift": 1654,
       "Soma/Views/LocalAISettingsView.swift": 550,
       "Soma/Views/PromptCompilerView.swift": 369,
       "Soma/Views/RusToPromptView+Part2.swift": 599,
@@ -21,9 +20,6 @@
     },
     "function_length": {
       "Soma/GlobalVoiceController.swift:startEventTap": 56,
-      "Soma/ViewModels/ASRManager.swift:beginStreamingRecording": 63,
-      "Soma/ViewModels/ASRManager.swift:finishRecording": 52,
-      "Soma/ViewModels/ASRManager.swift:transcribeImportedRemotely": 83,
       "Soma/Views/LocalAISettingsView.swift:roleCard": 61,
       "Soma/Views/LocalAISettingsView.swift:roleRow": 72,
       "Soma/Views/RusToPromptView+Part2.swift:loadRusToPromptModelStats": 77,
