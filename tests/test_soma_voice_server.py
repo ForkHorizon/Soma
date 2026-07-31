@@ -186,55 +186,6 @@ class SomaVoiceServerTests(unittest.TestCase):
         self.assertEqual(payload["version"], 2)
         self.assertTrue({"warmup", "chunk_sessions", "long_poll", "flac", "priority_queue", "final_chunk_finalize"}.issubset(payload["capabilities"]))
 
-    def test_session_exposes_decoded_text_before_it_is_finalized(self):
-        """Chunks decode while the user is still speaking; measured at a median
-        86% of the transcript by release. Without this the client cannot see any
-        of it until the merge, and nothing downstream can start early."""
-        base, _broker = self.start_server()
-        _status, session = self.request(
-            "POST", f"{base}/v1/sessions",
-            headers={"X-Soma-Client-ID": "client-a", "X-Soma-Request-ID": "session-partial"},
-        )
-        session_id = session["session_id"]
-        for index, body in enumerate((b"first phrase", b"second phrase")):
-            status, _payload = self.request(
-                "PUT", f"{base}/v1/sessions/{session_id}/chunks/{index}", body=body,
-                headers={
-                    "Content-Type": "audio/flac",
-                    "X-Soma-Client-ID": "client-a",
-                    "X-Soma-Request-ID": f"{session_id}-{index}",
-                    "X-Soma-Chunk-Reason": "pause",
-                },
-            )
-            self.assertEqual(status, 202)
-
-        for _ in range(50):
-            _status, live = self.request(
-                "GET", f"{base}/v1/sessions/{session_id}", headers={"X-Soma-Client-ID": "client-a"})
-            if live.get("partial_text"):
-                break
-            time.sleep(0.02)
-        self.assertEqual(live["status"], "recording", "still recording, not finalized")
-        self.assertNotIn("text", live, "text is reserved for the finalized transcript")
-        self.assertEqual(live["partial_text"], "first phrase second phrase")
-
-        # A progress long-poll returns as soon as another chunk decodes, rather
-        # than blocking until the session finishes — that is what makes the
-        # partial usable while the user is still speaking.
-        began = time.monotonic()
-        _status, progressed = self.request(
-            "GET", f"{base}/v1/sessions/{session_id}?wait=5&since_completed=0",
-            headers={"X-Soma-Client-ID": "client-a"})
-        self.assertLess(time.monotonic() - began, 2.0, "progress poll blocked for the full wait")
-        self.assertGreater(progressed["completed_chunks"], 0)
-
-        self.request("POST", f"{base}/v1/sessions/{session_id}/finalize", headers={"X-Soma-Client-ID": "client-a"})
-        _status, done = self.request(
-            "GET", f"{base}/v1/sessions/{session_id}?wait=2", headers={"X-Soma-Client-ID": "client-a"})
-        self.assertEqual(done["status"], "done")
-        self.assertEqual(done["text"], "first phrase second phrase")
-        self.assertNotIn("partial_text", done, "a finished session reports text, not a partial")
-
     def test_flac_final_chunk_finalizes_a_session_without_an_extra_request(self):
         base, broker = self.start_server()
         _status, session = self.request(

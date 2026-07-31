@@ -72,7 +72,10 @@ actor VoiceChunkPipeline {
                 return
             }
             sessionID = createdSessionID
-            startPartialWatch(createdSessionID)
+            partialTask = VoiceSessionPartialWatcher.start(
+                sessionID: createdSessionID, base: base, token: token, clientID: clientID,
+                engine: engine, idleSeconds: idleSeconds, onPartial: onPartialTranscript
+            )
             await drain()
             if !cancelled {
                 log("session_started", ["session_id": sessionID ?? ""])
@@ -107,45 +110,6 @@ actor VoiceChunkPipeline {
                     "engine": engine,
                     "request_milliseconds": "\(Int(Date().timeIntervalSince(warmStartedAt) * 1_000))",
                 ])
-            }
-        }
-    }
-
-    /// Streams the transcript as it decodes. Chunks finish while the user is
-    /// still speaking — a measured median of 86% of the text is already on the
-    /// server by the time they release — so anything downstream can start on it
-    /// instead of waiting for the final merge.
-    private func startPartialWatch(_ sessionID: String) {
-        guard let onPartialTranscript else { return }
-        partialTask = Task { [base, token, clientID, engine, idleSeconds] in
-            var seen = 0
-            var lastText = ""
-            while !Task.isCancelled {
-                var components = URLComponents(
-                    url: base.appendingPathComponent("v1/sessions/\(sessionID)"),
-                    resolvingAgainstBaseURL: false
-                )!
-                components.queryItems = [
-                    URLQueryItem(name: "wait", value: "25"),
-                    URLQueryItem(name: "since_completed", value: "\(seen)"),
-                ]
-                var request = URLRequest(url: components.url!)
-                request.setValue("application/json", forHTTPHeaderField: "Accept")
-                request.setValue(clientID, forHTTPHeaderField: "X-Soma-Client-ID")
-                request.setValue(engine, forHTTPHeaderField: "X-Soma-Engine")
-                request.setValue("\(idleSeconds)", forHTTPHeaderField: "X-Soma-Idle-Seconds")
-                if !token.isEmpty { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
-                request.timeoutInterval = 30
-                guard let (data, response) = try? await URLSession.shared.data(for: request),
-                      (response as? HTTPURLResponse)?.statusCode == 200,
-                      let payload = try? JSONDecoder().decode(VoiceServerSessionResponse.self, from: data)
-                else { return }
-                seen = max(seen, payload.completed_chunks ?? seen)
-                if let partial = payload.partial_text, !partial.isEmpty, partial != lastText {
-                    lastText = partial
-                    onPartialTranscript(partial)
-                }
-                if payload.status != "recording" && payload.status != "finalizing" { return }
             }
         }
     }
