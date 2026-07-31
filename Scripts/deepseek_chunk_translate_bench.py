@@ -85,36 +85,10 @@ def main(argv: list[str] | None = None) -> int:
 
     results = []
     for index, row in enumerate(rows, start=1):
-        chunks = [c["text"] for c in row["chunk_texts"] if c["text"].strip()]
-        if len(chunks) < 2:
+        entry = measure(row)
+        if entry is None:
+            print(f"{index:3}  skipped ({row['file']})", flush=True)
             continue
-        full_text, full_seconds = translate(row["merged_text"])
-        if not full_text:
-            print(f"{index:3}  full translation failed, skipping", flush=True)
-            continue
-
-        per_chunk, chunk_seconds = [], []
-        for chunk in chunks:
-            text, seconds = translate(chunk)
-            per_chunk.append(text)
-            chunk_seconds.append(seconds)
-        if not all(per_chunk):
-            print(f"{index:3}  a chunk translation failed, skipping", flush=True)
-            continue
-
-        chunked_text = " ".join(per_chunk).strip()
-        entry = {
-            "file": row["file"],
-            "chunks": len(chunks),
-            # today: nothing starts until the merge, so the whole call is tail latency
-            "tail_today_seconds": round(full_seconds, 2),
-            # proposed: every chunk but the last is already translated by release
-            "tail_streamed_seconds": round(chunk_seconds[-1], 2),
-            "chunk_seconds_total": round(sum(chunk_seconds), 2),
-            "wer_vs_full": round(word_error_rate(normalized(full_text), normalized(chunked_text)), 4),
-            "full_translation": full_text,
-            "chunked_translation": chunked_text,
-        }
         results.append(entry)
         print(f"{index:3}  {entry['chunks']} chunks   tail today {entry['tail_today_seconds']:5.2f}s"
               f"  ->  streamed {entry['tail_streamed_seconds']:5.2f}s"
@@ -125,6 +99,36 @@ def main(argv: list[str] | None = None) -> int:
         args.json_out.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"\nwrote {args.json_out}")
     return 0 if results else 1
+
+
+def measure(row: dict) -> dict | None:
+    """Translate one recording both ways. None when either arm fails."""
+    chunks = [c["text"] for c in row["chunk_texts"] if c["text"].strip()]
+    if len(chunks) < 2:
+        return None
+    full_text, full_seconds = translate(row["merged_text"])
+    if not full_text:
+        return None
+    per_chunk, chunk_seconds = [], []
+    for chunk in chunks:
+        text, seconds = translate(chunk)
+        per_chunk.append(text)
+        chunk_seconds.append(seconds)
+    if not all(per_chunk):
+        return None
+    chunked_text = " ".join(per_chunk).strip()
+    return {
+        "file": row["file"],
+        "chunks": len(chunks),
+        # today: nothing starts until the merge, so the whole call is tail latency
+        "tail_today_seconds": round(full_seconds, 2),
+        # proposed: every chunk but the last is already translated by release
+        "tail_streamed_seconds": round(chunk_seconds[-1], 2),
+        "chunk_seconds_total": round(sum(chunk_seconds), 2),
+        "wer_vs_full": round(word_error_rate(normalized(full_text), normalized(chunked_text)), 4),
+        "full_translation": full_text,
+        "chunked_translation": chunked_text,
+    }
 
 
 def report(results: list[dict]) -> None:
