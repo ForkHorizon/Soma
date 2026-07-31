@@ -92,7 +92,7 @@ actor VoiceChunkPipeline {
         warmupTask = Task { [base, token, clientID, engine, idleSeconds] in
             let warmStartedAt = Date()
             do {
-                let result = try await Self.warm(
+                let result = try await VoiceServerRequest.warm(
                     base: base,
                     token: token,
                     clientID: clientID,
@@ -116,7 +116,7 @@ actor VoiceChunkPipeline {
 
     private func startCapabilityFetch() {
         capabilityTask = Task { [base, token, clientID, engine, idleSeconds] in
-            await Self.health(base: base, token: token, clientID: clientID, engine: engine, idleSeconds: idleSeconds)
+            await VoiceServerRequest.health(base: base, token: token, clientID: clientID, engine: engine, idleSeconds: idleSeconds)
         }
     }
 
@@ -258,22 +258,6 @@ actor VoiceChunkPipeline {
         }
     }
 
-    /// Non-throwing so it can run detached alongside session creation; `nil`
-    /// means "could not ask", which is deliberately not the same as "no".
-    private static func health(base: URL, token: String, clientID: String, engine: String, idleSeconds: Int) async -> VoiceServerHealth? {
-        var request = URLRequest(url: base.appendingPathComponent("v1/health"))
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue(clientID, forHTTPHeaderField: "X-Soma-Client-ID")
-        request.setValue(engine, forHTTPHeaderField: "X-Soma-Engine")
-        request.setValue("\(idleSeconds)", forHTTPHeaderField: "X-Soma-Idle-Seconds")
-        if !token.isEmpty { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
-        request.timeoutInterval = 5
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
-              (response as? HTTPURLResponse)?.statusCode == 200
-        else { return nil }
-        return try? JSONDecoder().decode(VoiceServerHealth.self, from: data)
-    }
-
     private func createSession() async throws -> String {
         var request = request(base.appendingPathComponent("v1/sessions"))
         request.httpMethod = "POST"
@@ -353,29 +337,7 @@ actor VoiceChunkPipeline {
     }
 
     private func request(_ url: URL) -> URLRequest {
-        var request = URLRequest(url: url)
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue(clientID, forHTTPHeaderField: "X-Soma-Client-ID")
-        request.setValue(engine, forHTTPHeaderField: "X-Soma-Engine")
-        request.setValue("\(idleSeconds)", forHTTPHeaderField: "X-Soma-Idle-Seconds")
-        if !token.isEmpty { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
-        return request
-    }
-
-    private static func warm(base: URL, token: String, clientID: String, engine: String, idleSeconds: Int) async throws -> VoiceServerWarmupResponse {
-        var request = URLRequest(url: base.appendingPathComponent("v1/warmup"))
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue(clientID, forHTTPHeaderField: "X-Soma-Client-ID")
-        request.setValue(engine, forHTTPHeaderField: "X-Soma-Engine")
-        request.setValue("\(idleSeconds)", forHTTPHeaderField: "X-Soma-Idle-Seconds")
-        if !token.isEmpty { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
-        request.timeoutInterval = 90
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-            throw VoiceChunkPipelineError.server("Model warm-up failed.")
-        }
-        return try JSONDecoder().decode(VoiceServerWarmupResponse.self, from: data)
+        VoiceServerRequest.build(url, token: token, clientID: clientID, engine: engine, idleSeconds: idleSeconds)
     }
 
     private func cleanup() {

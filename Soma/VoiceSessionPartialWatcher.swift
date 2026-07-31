@@ -30,12 +30,8 @@ enum VoiceSessionPartialWatcher {
                     URLQueryItem(name: "wait", value: "25"),
                     URLQueryItem(name: "since_completed", value: "\(seen)"),
                 ]
-                var request = URLRequest(url: components.url!)
-                request.setValue("application/json", forHTTPHeaderField: "Accept")
-                request.setValue(clientID, forHTTPHeaderField: "X-Soma-Client-ID")
-                request.setValue(engine, forHTTPHeaderField: "X-Soma-Engine")
-                request.setValue("\(idleSeconds)", forHTTPHeaderField: "X-Soma-Idle-Seconds")
-                if !token.isEmpty { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+                var request = VoiceServerRequest.build(
+                    components.url!, token: token, clientID: clientID, engine: engine, idleSeconds: idleSeconds)
                 request.timeoutInterval = 30
                 guard let (data, response) = try? await URLSession.shared.data(for: request),
                       (response as? HTTPURLResponse)?.statusCode == 200,
