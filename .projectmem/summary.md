@@ -72,6 +72,7 @@ Soma is a local-first macOS SwiftUI workbench for comparing language-model outpu
 - Refactor: refactor: split the voice client files the ratchet caught [.linter-checker-300-lines.json]
 - Refactor: refactor: split what task 3 pushed over the readability limits [.linter-checker-300-lines.json]
 - Refactor: refactor: split the partial-transcript additions past their baselines [Soma/VoiceChunkPipeline.swift]
+- Refactor: refactor: one shared builder for authenticated voice-server requests [.linter-checker-300-lines.json]
 
 ## Notes
 - Improve Soma extension updates and app layout
