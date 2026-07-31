@@ -22,6 +22,7 @@ class VoiceHTTPHandler(BaseHTTPRequestHandler):
     """Routing only. `state` is bound per-server by make_handler."""
 
     protocol_version = "HTTP/1.1"
+    disable_nagle_algorithm = True
     state: VoiceServerState
 
     def _auth_ok(self) -> bool:
