@@ -5,13 +5,24 @@ import Foundation
 extension ASRManager {
     // MARK: Recordings library
 
-    /// Retention: drop saved recordings (and their transcripts) older than 14
-    /// days so the VoiceRecordings cache can't grow without bound. Runs once at
-    /// launch, off the main thread.
-    static let recordingRetention: TimeInterval = 14 * 24 * 60 * 60
+    /// Retention: drop saved recordings (and their transcripts) older than the
+    /// configured window so the VoiceRecordings cache can't grow without bound.
+    /// Runs at launch and again whenever the setting changes, off the main thread.
+    static let retentionKey = "recordingRetentionDays"
+    static let defaultRetentionDays = 90
+    static var retentionDays: Int {
+        UserDefaults.standard.object(forKey: retentionKey) as? Int ?? defaultRetentionDays
+    }
+
+    /// ponytail: 0 days means keep forever, so the sweep needs no separate
+    /// on/off toggle. Split out from the sweep itself to stay testable.
+    nonisolated static func retentionCutoff(days: Int, now: Date = Date()) -> Date? {
+        days > 0 ? now.addingTimeInterval(-Double(days) * 24 * 60 * 60) : nil
+    }
+
     func pruneOldRecordings() {
+        guard let cutoff = Self.retentionCutoff(days: Self.retentionDays) else { return }
         let dir = recordingsDir
-        let cutoff = Date().addingTimeInterval(-Self.recordingRetention)
         Task { [weak self, dir, cutoff] in
             await Task.detached(priority: .utility) {
                 Self.removeRecordingFiles(in: dir, olderThan: cutoff)
