@@ -9,7 +9,7 @@ from ground_truth_consensus import (   # noqa: E402
     decide, needs_second_tier, normalize, proposed_terms, repeats_itself, wer,
 )
 
-SILENT = {"no_speech": 0.85, "peak_db": -20.6}     # measured on rec-1784382778.wav
+SILENT = {"no_speech": 0.851, "peak_db": -20.6}    # measured on rec-1784382778.wav
 SPEECH = {"no_speech": 0.02, "peak_db": -2.9}      # measured on rec-1784382789.wav
 
 
@@ -62,8 +62,35 @@ def test_a_repeated_token_loop_is_never_accepted_even_when_engines_agree():
     assert repeats_itself(normalize(loop))
 
 
-def test_silence_is_reported_as_empty_not_as_an_error():
-    assert decide({"w-greedy": "", "gigaam": ""})["status"] == "empty"
+def test_blank_output_alone_is_not_evidence_of_silence():
+    # Every engine returning nothing is a symptom, not a measurement. Without a
+    # no_speech reading to back it, discarding the recording would be a guess —
+    # and a discard cannot be undone from the panel.
+    assert decide({"w-greedy": "", "gigaam": ""})["status"] == "review"
+    assert decide({"w-greedy": "", "gigaam": ""}, None, SILENT)["status"] == "empty"
+
+
+def test_speech_evidence_against_blank_output_reaches_a_human():
+    # Whisper insisting there IS speech while returning none of it is an
+    # anomaly, not a silent recording.
+    loud = {"no_speech": 0.02, "peak_db": -2.0}
+    assert decide({"w-greedy": "", "gigaam": ""}, None, loud)["status"] == "review"
+
+
+def test_unusable_metrics_fail_closed():
+    # NaN compares false against every threshold, so an unguarded rule would
+    # sail past the check and discard the file.
+    nan = float("nan")
+    assert decide({"w-greedy": "да", "gigaam": ""}, None,
+                  {"no_speech": nan, "peak_db": nan})["status"] == "review"
+    assert decide({"w-greedy": "да", "gigaam": ""}, None, {})["status"] == "review"
+
+
+def test_the_gap_between_measured_speech_and_measured_hallucination_goes_to_a_human():
+    # 0.02 was measured on real speech and 0.851 on a hallucination. Nothing was
+    # measured in between, so nothing in between is decided automatically.
+    grey = {"no_speech": 0.6, "peak_db": -30.0}
+    assert decide({"w-greedy": "да", "gigaam": ""}, None, grey)["status"] == "review"
 
 
 def test_a_failed_decode_is_an_error_not_a_silent_pass():

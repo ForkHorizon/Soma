@@ -13,8 +13,11 @@ venv, and the voting rules are the part worth unit-testing.
 """
 from __future__ import annotations
 
-import re
-import unicodedata
+import math
+
+from ground_truth_text import (Glossary, agrees, cross_script,   # noqa: F401
+                               normalize, proposed_terms, repeats_itself,
+                               same_word, unforgiven_edits, wer)
 
 # Votes are grouped by what they actually share, because agreement inside a
 # family proves much less than agreement across one.
@@ -32,119 +35,15 @@ GIGAAM = "gigaam"
 WHISPER_CONFIGS = (PRIMARY, "w-prompt", "w-fallback", "w-sample", "w-offset", "fw-beam")
 GIGAAM_CONFIGS = (GIGAAM, "gigaam-ctc")
 
-# The engines never agree on surface form: GigaAM emits lowercase and
-# unpunctuated, Whisper emits cased and punctuated. Comparing raw would report a
-# disagreement on literally every file.
-_PUNCT = re.compile(r"[^\w\s]", re.UNICODE)
-_SPACE = re.compile(r"\s+")
-
-
-def normalize(text: str) -> str:
-    """Casefold, unify ё/е, drop punctuation, collapse whitespace.
-
-    Digits are deliberately NOT spelled out. "5" versus "пять" is exactly the
-    kind of difference a human should adjudicate, so leaving it in place routes
-    those files to review instead of silently guessing one form.
-    """
-    folded = unicodedata.normalize("NFC", text or "").casefold().replace("ё", "е")
-    return _SPACE.sub(" ", _PUNCT.sub(" ", folded)).strip()
-
-
-_LATIN = re.compile(r"[a-z]")
-
-Glossary = dict[str, list[str]]
-
-
-def cross_script(reference_word: str, hypothesis_word: str) -> bool:
-    """GigaAM's vocabulary is Russian-only, so it writes English terms out
-    phonetically: unity -> юнити, assets -> асец, go -> гоу. Whisper keeps the
-    Latin spelling.
-
-    This only REPORTS the shape; it never forgives on its own. Script alone is
-    not evidence that two words are the same word — "unity" against "единица"
-    looks identical to this test — and a blind rule would hide exactly the
-    technical terms that matter most. The panel proposes these pairs, the
-    listener confirms them against the audio, and only then do they enter the
-    glossary."""
-    return bool(_LATIN.search(hypothesis_word)) and not _LATIN.search(reference_word)
-
-
-def same_word(reference_word: str, hypothesis_word: str, glossary: Glossary | None) -> bool:
-    if reference_word == hypothesis_word:
-        return True
-    return hypothesis_word in (glossary or {}).get(reference_word, ())
-
-
-def unforgiven_edits(reference: str, hypothesis: str, glossary: Glossary | None = None) -> int:
-    """Word-level edit distance where a substitution costs nothing if the
-    glossary says the two words are the same word."""
-    ref, hyp = reference.split(), hypothesis.split()
-    previous = list(range(len(hyp) + 1))
-    for i, ref_word in enumerate(ref, start=1):
-        current = [i]
-        for j, hyp_word in enumerate(hyp, start=1):
-            same = same_word(ref_word, hyp_word, glossary)
-            current.append(min(previous[j] + 1, current[j - 1] + 1,
-                               previous[j - 1] + (0 if same else 1)))
-        previous = current
-    return previous[-1]
-
-
-def agrees(reference: str, hypothesis: str, glossary: Glossary | None = None) -> bool:
-    return unforgiven_edits(reference, hypothesis, glossary) == 0
-
-
-def proposed_terms(reference: str, hypothesis: str, glossary: Glossary | None = None) -> list[tuple[str, str]]:
-    """Cross-script word pairs this file would need confirmed before the two
-    engines could agree. These are what the review panel offers to the listener,
-    never applied on their own."""
-    import difflib
-
-    ref, hyp = reference.split(), hypothesis.split()
-    found = []
-    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(a=ref, b=hyp).get_opcodes():
-        if tag != "replace" or i2 - i1 != 1 or j2 - j1 != 1:
-            continue
-        if cross_script(ref[i1], hyp[j1]) and not same_word(ref[i1], hyp[j1], glossary):
-            found.append((ref[i1], hyp[j1]))
-    return found
-
-
-def wer(reference: str, hypothesis: str) -> float:
-    """Levenshtein over words, normalised by reference length."""
-    ref, hyp = reference.split(), hypothesis.split()
-    if not ref:
-        return 0.0 if not hyp else 1.0
-    previous = list(range(len(hyp) + 1))
-    for i, ref_word in enumerate(ref, start=1):
-        current = [i]
-        for j, hyp_word in enumerate(hyp, start=1):
-            current.append(min(previous[j] + 1, current[j - 1] + 1,
-                               previous[j - 1] + (ref_word != hyp_word)))
-        previous = current
-    return previous[-1] / len(ref)
-
-
-def repeats_itself(text: str, run: int = 6) -> bool:
-    """Whisper's classic failure on silence and noise is one token repeated
-    until the window ends. Every config can produce the same loop, so such a
-    transcript can look unanimous and still be pure invention — it must never
-    be accepted without a human looking at it."""
-    words = text.split()
-    streak = 1
-    for previous, word in zip(words, words[1:]):
-        streak = streak + 1 if word == previous else 1
-        if streak >= run:
-            return True
-    return False
-
-
 def _verdict(status: str, text: str, reason: str, **extra) -> dict:
     return {"status": status, "text": text, "reason": reason, **extra}
 
 
-NO_SPEECH_PROB = 0.5      # measured: hallucination over silence 0.851, real speech 0.020
-SILENT_PEAK_DB = -40.0    # nothing in this corpus reaches -40 dBFS and contains speech
+# Set at the LOWEST hallucination actually measured (0.851, 0.88) rather than
+# halfway to the one speech reading (0.020). Between 0.8 and 0.02 there is no
+# data, and inventing a threshold there would be guessing about an irreversible
+# discard, so files in that gap go to a human.
+NO_SPEECH_PROB = 0.8
 
 
 def decide(candidates: dict[str, str | None], glossary: Glossary | None = None,
@@ -161,35 +60,37 @@ def decide(candidates: dict[str, str | None], glossary: Glossary | None = None,
         return _verdict("error", "", f"no usable decode from: {', '.join(missing)}")
 
     norm = {name: normalize(text) for name, text in candidates.items() if text is not None}
-    if not any(norm.values()):
-        return _verdict("empty", "", "every engine reported no speech")
     silent = _hallucinated_over_silence(norm, metrics or {})
     if silent:
         return silent
+    if not any(norm.values()):
+        # Whisper reporting speech while returning no text is an anomaly worth
+        # a listen, not a discard justified by the blank output itself.
+        return _verdict("review", "", "every engine returned nothing, but the no-speech evidence does not support it",
+                        candidates=candidates, wer=1.0, edits=0, terms=[])
     return _adjudicate(candidates, norm, glossary)
 
 
 def _hallucinated_over_silence(norm: dict[str, str], metrics: dict) -> dict | None:
     """Whisper answers silence with a stock phrase — "Спасибо", "Продолжение
-    следует". The old rule here guessed from transcript length, which is not
-    evidence: a genuine "да" is short too.
+    следует" — and reports no_speech_prob per segment while doing it. Requiring
+    GigaAM's independent silence too means two architectures must agree that
+    nothing was said. Transcript length is not evidence: a genuine "да" is short.
 
-    Whisper already knows. It reports no_speech_prob per segment, and on this
-    corpus a hallucinated "Спасибо." scores 0.851 against 0.020 for real
-    speech. Requiring GigaAM's independent silence as well means two engines
-    and, where available, the waveform's own level all have to agree that
-    nothing was said. Anything short of that goes to a human."""
+    A discard cannot be undone from the panel, so every uncertain input fails
+    CLOSED, to a human: a missing reading, a NaN, or a probability under the
+    measured hallucination floor. The waveform level is reported but is NOT a
+    gate — real silent recordings here peak at -20 to -29 dBFS, so any threshold
+    on it would be invented."""
     if any(norm.get(name) for name in GIGAAM_CONFIGS):
         return None
     no_speech, peak = metrics.get("no_speech"), metrics.get("peak_db")
-    if no_speech is None or no_speech < NO_SPEECH_PROB:
+    if not isinstance(no_speech, (int, float)) or not math.isfinite(no_speech):
         return None
-    detail = f"whisper no_speech={no_speech:.2f}, gigaam heard nothing"
-    if peak is not None:
-        detail += f", peak {peak:.0f} dBFS"
-        if peak > SILENT_PEAK_DB and no_speech < 0.8:
-            return None      # audible and Whisper is not certain — let a human hear it
-    return _verdict("empty", "", detail)
+    if no_speech < NO_SPEECH_PROB:
+        return None
+    level = f", peak {peak:.0f} dBFS" if isinstance(peak, (int, float)) and math.isfinite(peak) else ""
+    return _verdict("empty", "", f"whisper no_speech={no_speech:.2f}, gigaam heard nothing{level}")
 
 
 def _adjudicate(candidates: dict[str, str | None], norm: dict[str, str],

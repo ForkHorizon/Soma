@@ -11,8 +11,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "Scripts"))
 
-from ground_truth_build import Runner   # noqa: E402
-from ground_truth_corpus import has_audio   # noqa: E402
+from ground_truth_runner import Runner   # noqa: E402
+from ground_truth_corpus import append, has_audio, read_rows, replace_atomically   # noqa: E402
 
 
 def _runner(tmp: Path) -> Runner:
@@ -77,3 +77,24 @@ def test_an_unreadable_header_is_left_to_the_engines(tmp_path=None):
     # Screening is only meant to catch the known empty-container case; anything
     # else should reach an engine so its error is reported rather than guessed.
     assert has_audio(broken)
+
+
+def test_an_interrupted_write_does_not_swallow_the_next_record(tmp_path=None):
+    tmp = tmp_path or Path(__import__("tempfile").mkdtemp())
+    log = tmp / "decodes.jsonl"
+    log.write_text('{"file":"killed mid-write')      # no trailing newline
+    append(log, {"file": "survivor", "config": "w-greedy"})
+    rows = read_rows(log)
+    # The broken record is still lost — nothing can recover it — but the one
+    # written after the crash must not be lost with it.
+    assert [r["file"] for r in rows] == ["survivor"]
+
+
+def test_a_whole_file_rewrite_is_never_half_applied(tmp_path=None):
+    tmp = tmp_path or Path(__import__("tempfile").mkdtemp())
+    verdicts = tmp / "verdicts.jsonl"
+    append(verdicts, {"file": "a.wav", "status": "accepted"})
+    replace_atomically(verdicts, [{"file": "a.wav", "status": "review"},
+                                  {"file": "b.wav", "status": "accepted"}])
+    assert [r["file"] for r in read_rows(verdicts)] == ["a.wav", "b.wav"]
+    assert not (tmp / "verdicts.jsonl.new").exists()   # scratch file cleaned up

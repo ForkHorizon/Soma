@@ -53,8 +53,32 @@ def read_rows(path: Path) -> list[dict]:
 
 
 def append(path: Path, obj: dict) -> None:
+    """Append one object as its own line.
+
+    A write killed mid-line leaves a tail with no newline. Appending straight
+    onto it would fuse the broken record and the next good one into a single
+    unparseable line, so read_rows would drop BOTH — the crash would eat a
+    decode that completed after it. Closing the ragged line first costs one
+    byte and confines the damage to the record that was actually interrupted."""
+    ragged = path.exists() and path.stat().st_size > 0 and not path.read_bytes().endswith(b"\n")
     with path.open("a", encoding="utf-8") as handle:
+        if ragged:
+            handle.write("\n")
         handle.write(json.dumps(obj, ensure_ascii=False) + "\n")
+
+
+def replace_atomically(path: Path, rows: list[dict]) -> None:
+    """Rewrite a whole file without a window in which it does not exist.
+
+    Truncating in place and refilling means a stop, a crash or a bad argument
+    leaves a partial or empty result set where a complete one used to be."""
+    scratch = path.with_suffix(path.suffix + ".new")
+    with scratch.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(scratch, path)
 
 
 def pick(recordings: Path, limit: int) -> list[Path]:
