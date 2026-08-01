@@ -33,6 +33,8 @@ struct ContentView: View {
                         VoiceToTextView(
                             somaViewModel: viewModel, ollama: ollama, asr: voiceASR, prompter: voicePrompter, globalVoice: globalVoice,
                             textPriorityQueue: textPriorityQueue)
+                    case .groundTruth:
+                        GroundTruthView(asr: voiceASR)
                     case .queue:
                         TestsView(mode: .queue, ollama: ollama, queueManager: rusToPromptQueueManager)
                     case .modelStats:
