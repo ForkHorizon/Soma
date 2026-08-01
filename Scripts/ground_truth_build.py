@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 """Build a ground-truth transcript set from the saved voice recordings.
 
-Runs under the SYSTEM python, not an engine venv: the two engines have
-conflicting dependencies, so each decode pass is spawned into its own venv and
-this process only orchestrates and votes.
+Runs under the SYSTEM python, not an engine venv: the three engine backends
+(mlx-whisper, faster-whisper, GigaAM) have conflicting dependencies, so each
+decode pass is spawned into its own venv and this process only orchestrates
+and votes.
 
 Work is done in blocks rather than whole-corpus passes so the counters move and
 a crash costs one block, not a night. Per block:
 
     1. Whisper w-greedy over every file in the block
-    2. GigaAM v2 over the same files            <- the independent vote
-    3. files where the two disagree get three more Whisper decodes
-    4. vote, write verdicts
+    2. GigaAM v2 RNNT over the same files       <- the independent vote
+    3. files where the two disagree get six more decodes: three more mlx
+       configs, a shifted-window pass, faster-whisper with real beam search,
+       and GigaAM's CTC head
+    4. vote across families, write verdicts
 
 Resumable: every decode and every verdict is appended to disk, and a rerun skips
 the files that already have a verdict.
@@ -33,7 +36,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ground_truth_consensus import PRIMARY, decide, needs_second_tier   # noqa: E402
 
 TIER_ONE = "w-greedy"
-TIER_TWO = "w-prompt,w-fallback,w-sample"
+# Tier two only ever runs on files where tier one disagreed, so it can afford to
+# be thorough. Grouped by venv, because each spawn loads its own model.
+TIER_TWO = "w-prompt,w-fallback,w-sample,w-offset"
+TIER_TWO_FASTER = "fw-beam"
+TIER_TWO_GIGAAM = "gigaam-ctc"
+SPAN_PADDING = 1.5
 DEFAULT_RECORDINGS = Path.home() / "Library/Application Support/Soma/VoiceRecordings"
 
 
@@ -119,7 +127,8 @@ class Runner:
                    str(Path(__file__).resolve().parent / "ground_truth_worker.py"),
                    "--engine", engine, "--configs", configs, "--list", listing_path,
                    "--best-of", str(self.args.best_of),
-                   "--gigaam-root", str(self.args.models_root / "gigaam")]
+                   "--gigaam-root", str(self.args.models_root / "gigaam"),
+                   "--faster-root", str(self.args.models_root / "faster")]
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    text=True, bufsize=1, env=self._environment())
         for line in process.stdout:
@@ -138,7 +147,7 @@ class Runner:
             append(self.results, row)
             emit({"event": "decode", "file": row["file"], "config": row["config"],
                   "seconds": row.get("seconds"), "failed": row.get("error") is not None})
-        elif row.get("event") in ("fatal", "loaded"):
+        elif row.get("event") in ("fatal", "loaded", "skip"):
             emit({**row, "engine": engine})
 
     def candidates(self, name: str, configs: list[str]) -> dict[str, str | None]:
@@ -155,9 +164,26 @@ class Runner:
         row = self.decoded.get((name, PRIMARY)) or {}
         return {key: row[key] for key in ("no_speech", "peak_db", "avg_logprob") if key in row}
 
+    def span_seconds(self, name: str, span: list | None) -> list[float] | None:
+        """Turn disputed word indices into a clip the panel can play. Whisper's
+        word timestamps come from the tier-one decode, so the indices are its
+        own; anything out of range just widens the clip rather than dropping
+        it, since a slightly long clip still beats replaying two minutes."""
+        words = (self.decoded.get((name, PRIMARY)) or {}).get("words")
+        if not span or not words:
+            return None
+        first, last = int(span[0]), int(span[1])
+        first, last = max(0, min(first, len(words) - 1)), max(0, min(last, len(words) - 1))
+        start = max(0.0, float(words[first][1]) - SPAN_PADDING)
+        end = float(words[last][2]) + SPAN_PADDING
+        return [round(start, 2), round(end, 2)] if end > start else None
+
     def settle(self, path: Path) -> dict:
-        every = [TIER_ONE, *TIER_TWO.split(","), "gigaam"]
+        every = [TIER_ONE, *TIER_TWO.split(","), TIER_TWO_FASTER, "gigaam", TIER_TWO_GIGAAM]
         verdict = decide(self.candidates(path.name, every), self.glossary, self.metrics(path.name))
+        seconds = self.span_seconds(path.name, verdict.pop("span", None))
+        if seconds:
+            verdict["span_seconds"] = seconds
         record = {"file": path.name, **verdict}
         append(self.verdicts, record)
         self.done[path.name] = record
@@ -184,8 +210,10 @@ def run_block(runner: Runner, block: list[Path]) -> None:
     disputed = [p for p in block
                 if needs_second_tier(runner.candidates(p.name, [TIER_ONE, "gigaam"]), runner.glossary)]
     if disputed:
-        emit({"event": "stage", "text": f"{len(disputed)} disagreed — running 3 more Whisper decodes"})
+        emit({"event": "stage", "text": f"{len(disputed)} disagreed — running six more decodes each"})
         runner.decode("whisper", TIER_TWO, disputed)
+        runner.decode("fasterwhisper", TIER_TWO_FASTER, disputed)
+        runner.decode("gigaam", TIER_TWO_GIGAAM, disputed)
     for path in block:
         runner.settle(path)
 
@@ -198,7 +226,8 @@ def readjudicate(runner: Runner, files: list[Path]) -> int:
     runner.done.clear()
     decided = [p for p in files if (p.name, PRIMARY) in runner.decoded]
     emit({"event": "plan", "files": len(files), "pending": 0, "blocks": 0,
-          "tier_one": TIER_ONE, "tier_two": TIER_TWO})
+          "tier_one": TIER_ONE,
+          "tier_two": ",".join([TIER_TWO, TIER_TWO_FASTER, TIER_TWO_GIGAAM])})
     emit({"event": "stage", "text": f"Re-voting {len(decided)} decoded recordings under the glossary"})
     for path in decided:
         runner.settle(path)
@@ -229,7 +258,8 @@ def main(argv: list[str] | None = None) -> int:
     pending = [p for p in files if p.name not in runner.done]
     blocks = [pending[i:i + args.block] for i in range(0, len(pending), args.block)]
     emit({"event": "plan", "files": len(files), "pending": len(pending), "blocks": len(blocks),
-          "tier_one": TIER_ONE, "tier_two": TIER_TWO})
+          "tier_one": TIER_ONE,
+          "tier_two": ",".join([TIER_TWO, TIER_TWO_FASTER, TIER_TWO_GIGAAM])})
     emit(totals(runner, len(files)))
 
     for index, block in enumerate(blocks, start=1):

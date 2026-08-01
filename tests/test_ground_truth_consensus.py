@@ -125,3 +125,48 @@ def test_audible_audio_whisper_is_unsure_about_goes_to_a_human():
 def test_a_long_transcript_against_silent_gigaam_still_gets_looked_at():
     long_text = "это довольно длинная фраза которую гигаам почему то не услышал совсем"
     assert decide({"w-greedy": long_text, "gigaam": ""}, None, SPEECH)["status"] == "review"
+
+
+def test_faster_whisper_counts_as_whisper_not_as_a_second_opinion():
+    # fw-beam runs the same large-v3 weights through CTranslate2. It brings beam
+    # search, which mlx lacks, but not independence — so five agreeing Whisper
+    # decodes still cannot outvote the one architecture that disagrees.
+    verdict = decide({
+        "w-greedy": "привет мор", "w-prompt": "привет мор", "w-fallback": "привет мор",
+        "w-sample": "привет мор", "w-offset": "привет мор", "fw-beam": "привет мор",
+        "gigaam": "привет мир",
+    }, None, SPEECH)
+    assert verdict["status"] == "review"
+
+
+def test_both_gigaam_heads_agreeing_is_the_strongest_signal():
+    agreed = {"w-greedy": "привет мир", "w-prompt": "Привет, мир.", "w-fallback": "привет мир",
+              "gigaam": "привет мир", "gigaam-ctc": "привет мир"}
+    verdict = decide(agreed, None, SPEECH)
+    assert verdict["status"] == "accepted"
+    assert verdict["confidence"] == "high"
+
+
+def test_one_gigaam_head_failing_is_not_a_dead_file():
+    # The RNNT head died on one recording in forty; the CTC head can still carry
+    # the vote rather than the file being written off as an engine error.
+    verdict = decide({"w-greedy": "привет мир", "gigaam": None, "gigaam-ctc": "привет мир"},
+                     None, SPEECH)
+    assert verdict["status"] == "accepted"
+
+
+def test_the_weaker_head_cannot_veto_what_the_stronger_one_settles():
+    verdict = decide({
+        "w-greedy": "привет мир", "w-prompt": "привет мир", "w-fallback": "привет мир",
+        "gigaam": "привет мир", "gigaam-ctc": "привет мура",
+    }, None, SPEECH)
+    assert verdict["status"] == "accepted"
+    assert verdict["confidence"] == "medium"     # one head dissenting costs the high grade
+
+
+def test_a_review_verdict_points_at_the_words_under_dispute():
+    # The span is what lets the panel play four seconds instead of two minutes.
+    verdict = decide({"w-greedy": "раз два три четыре пять", "gigaam": "раз два сто четыре пять"},
+                     None, SPEECH)
+    assert verdict["status"] == "review"
+    assert verdict["span"] == [2.0, 2.0]

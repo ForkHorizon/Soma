@@ -16,13 +16,21 @@ from __future__ import annotations
 import re
 import unicodedata
 
-# Four Whisper decodes, ordered by how much each is trusted as the surface form
-# to keep. They share an acoustic model, so their errors correlate — they are
-# four opinions, not four independent votes, which is why GigaAM is required in
-# every accepting rule below.
+# Votes are grouped by what they actually share, because agreement inside a
+# family proves much less than agreement across one.
+#
+# The Whisper family is six readings of ONE acoustic model — fw-beam included,
+# since faster-whisper runs the same large-v3 weights through a different
+# decoder (the only one here that implements beam search at all). Six correlated
+# opinions are not six votes.
+#
+# The GigaAM family is two heads on one encoder: RNNT and CTC. Also correlated
+# with each other, but independent of Whisper in weights and training data —
+# which is the only reason anything can be accepted automatically.
 PRIMARY = "w-greedy"
-WHISPER_CONFIGS = (PRIMARY, "w-prompt", "w-fallback", "w-sample")
 GIGAAM = "gigaam"
+WHISPER_CONFIGS = (PRIMARY, "w-prompt", "w-fallback", "w-sample", "w-offset", "fw-beam")
+GIGAAM_CONFIGS = (GIGAAM, "gigaam-ctc")
 
 # The engines never agree on surface form: GigaAM emits lowercase and
 # unpunctuated, Whisper emits cased and punctuated. Comparing raw would report a
@@ -146,9 +154,10 @@ def decide(candidates: dict[str, str | None], glossary: Glossary | None = None,
 
     Returns a verdict dict with status accepted / review / empty / error.
     """
-    primary, russian = candidates.get(PRIMARY), candidates.get(GIGAAM)
-    if primary is None or russian is None:
-        missing = [n for n in (PRIMARY, GIGAAM) if candidates.get(n) is None]
+    heads = [n for n in GIGAAM_CONFIGS if candidates.get(n) is not None]
+    if candidates.get(PRIMARY) is None or not heads:
+        missing = [PRIMARY] if candidates.get(PRIMARY) is None else []
+        missing += [] if heads else ["every gigaam head"]
         return _verdict("error", "", f"no usable decode from: {', '.join(missing)}")
 
     norm = {name: normalize(text) for name, text in candidates.items() if text is not None}
@@ -170,7 +179,7 @@ def _hallucinated_over_silence(norm: dict[str, str], metrics: dict) -> dict | No
     speech. Requiring GigaAM's independent silence as well means two engines
     and, where available, the waveform's own level all have to agree that
     nothing was said. Anything short of that goes to a human."""
-    if norm.get(GIGAAM, "") != "":
+    if any(norm.get(name) for name in GIGAAM_CONFIGS):
         return None
     no_speech, peak = metrics.get("no_speech"), metrics.get("peak_db")
     if no_speech is None or no_speech < NO_SPEECH_PROB:
@@ -185,10 +194,16 @@ def _hallucinated_over_silence(norm: dict[str, str], metrics: dict) -> dict | No
 
 def _adjudicate(candidates: dict[str, str | None], norm: dict[str, str],
                 glossary: Glossary | None) -> dict:
-    reference = norm[GIGAAM]
-    agreeing = [name for name in WHISPER_CONFIGS
-                if name in norm and agrees(reference, norm[name], glossary)]
+    """Pick whichever GigaAM head draws the most Whisper agreement and judge
+    against that — asking the weaker head to carry the verdict would reject
+    files the stronger one settles."""
+    russian = [name for name in GIGAAM_CONFIGS if name in norm]
     tried = [name for name in WHISPER_CONFIGS if name in norm]
+    scored = [(len([w for w in tried if agrees(norm[name], norm[w], glossary)]), name)
+              for name in russian]
+    votes, best_russian = max(scored)
+    reference = norm[best_russian]
+    agreeing = [name for name in tried if agrees(reference, norm[name], glossary)]
     closest = min((wer(reference, norm[name]), name) for name in tried)
     # How many words a human would actually have to adjudicate. Most review
     # cases come down to one or two, and the panel sorts on this so the cheap
@@ -201,20 +216,51 @@ def _adjudicate(candidates: dict[str, str | None], norm: dict[str, str],
         hint = "whisper unanimous but gigaam dissents" if unanimous and len(tried) > 1 \
             else "no engine pair agrees"
         return _verdict("review", "", f"{hint} ({edits} word(s) differ, best WER {closest[0]:.3f} via {closest[1]})",
-                        candidates=candidates, wer=round(closest[0], 4), edits=edits, terms=terms)
+                        candidates=candidates, wer=round(closest[0], 4), edits=edits, terms=terms,
+                        span=_disputed_span(candidates, reference, PRIMARY, glossary))
 
     text = candidates[agreeing[0]] or ""
     if repeats_itself(norm[agreeing[0]]):
         return _verdict("review", "", "engines agree on a repeated-token loop, which reads as a hallucination",
                         candidates=candidates, wer=0.0, edits=0)
-    exact = agreeing[0] == PRIMARY and len(agreeing) == len(tried)
+    # Both GigaAM heads landing on the same text is the strongest signal
+    # available: two decoders, one encoder, and a whole separate architecture
+    # from every Whisper vote. A dissenting head always costs the high grade,
+    # even when every Whisper decode agrees — it is the only vote that can.
+    heads = len([name for name in russian if agrees(reference, norm[name], glossary)])
+    exact = agreeing[0] == PRIMARY and len(agreeing) == len(tried) and heads == len(russian)
     if len(agreeing) < 2 and not exact:
-        return _verdict("review", "", f"only {agreeing[0]} matches gigaam; the other whisper decodes disagree",
-                        candidates=candidates, wer=round(closest[0], 4), edits=edits, terms=terms)
+        return _verdict("review", "", f"only {agreeing[0]} matches {best_russian}; the other whisper decodes disagree",
+                        candidates=candidates, wer=round(closest[0], 4), edits=edits, terms=terms,
+                        span=_disputed_span(candidates, reference, PRIMARY, glossary))
+    strong = exact or (len(agreeing) >= 3 and heads == len(russian))
     return _verdict("accepted", text,
-                    f"gigaam matches {len(agreeing)}/{len(tried)} whisper decodes ({', '.join(agreeing)})",
-                    confidence="high" if exact or len(agreeing) >= 3 else "medium",
-                    wer=0.0)
+                    f"{best_russian} matches {len(agreeing)}/{len(tried)} whisper decodes "
+                    f"({', '.join(agreeing)}); {heads}/{len(russian)} gigaam head(s) agree",
+                    confidence="high" if strong else "medium", wer=0.0, votes=votes)
+
+
+def _disputed_span(candidates: dict[str, str | None], reference: str,
+                   closest: str, glossary: Glossary | None) -> list[float] | None:
+    """Word index range of the disagreement in the closest Whisper decode.
+
+    One wrong word in a two-minute recording currently costs a full listen. The
+    orchestrator turns these indices into seconds using the tier-one word
+    timestamps, so the panel can play just the seconds in question."""
+    import difflib
+
+    hypothesis = normalize(candidates.get(closest) or "").split()
+    reference_words = reference.split()
+    marks = [j for tag, i1, i2, j1, j2 in
+             difflib.SequenceMatcher(a=reference_words, b=hypothesis).get_opcodes()
+             if tag != "equal"
+             for j in range(j1, max(j2, j1 + 1))]
+    unforgiven = [j for j in marks if j >= len(hypothesis)
+                  or not any(same_word(r, hypothesis[j], glossary) for r in reference_words)]
+    interesting = unforgiven or marks
+    if not interesting:
+        return None
+    return [float(min(interesting)), float(max(interesting))]
 
 
 def needs_second_tier(candidates: dict[str, str | None], glossary: Glossary | None = None) -> bool:

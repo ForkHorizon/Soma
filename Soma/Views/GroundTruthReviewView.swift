@@ -100,7 +100,8 @@ struct GroundTruthReviewDetail: View {
     /// GigaAM first: it is the independent vote, so it is the one worth reading
     /// against the audio before Whisper's more fluent phrasing anchors you.
     private var ordered: [(String, String)] {
-        let order = ["gigaam", "w-greedy", "w-prompt", "w-fallback", "w-sample"]
+        let order = ["gigaam", "gigaam-ctc", "w-greedy", "fw-beam", "w-prompt",
+                     "w-fallback", "w-sample", "w-offset"]
         return order.compactMap { name in
             item.candidates[name].map { (name, $0) }
         }
@@ -108,12 +109,29 @@ struct GroundTruthReviewDetail: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Button { asr.togglePlayback(audioURL) } label: {
-                Label(isPlaying ? "Stop" : "Play the original",
-                      systemImage: isPlaying ? "stop.fill" : "play.circle.fill")
+            HStack(spacing: 10) {
+                // The disputed seconds first, because that is the question being
+                // asked; the full recording stays one click away for context.
+                if let span = item.span {
+                    Button { asr.togglePlayback(audioURL, from: span.lowerBound, to: span.upperBound) } label: {
+                        Label(isPlaying ? "Stop" : "Play the disputed \(Int((span.upperBound - span.lowerBound).rounded())) s",
+                              systemImage: isPlaying ? "stop.fill" : "play.circle.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    Button("Whole recording") { asr.togglePlayback(audioURL) }
+                        .buttonStyle(.bordered).controlSize(.small)
+                    Text(String(format: "at %.1f–%.1f s", span.lowerBound, span.upperBound))
+                        .font(.caption2).foregroundStyle(.secondary)
+                } else {
+                    Button { asr.togglePlayback(audioURL) } label: {
+                        Label(isPlaying ? "Stop" : "Play the original",
+                              systemImage: isPlaying ? "stop.fill" : "play.circle.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                }
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
             .disabled(!FileManager.default.fileExists(atPath: audioURL.path))
 
             ForEach(ordered, id: \.0) { name, text in
@@ -141,7 +159,7 @@ struct GroundTruthReviewDetail: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(name).font(.caption2).monospaced()
-                    .foregroundStyle(name == "gigaam" ? .blue : .secondary)
+                    .foregroundStyle(name.hasPrefix("gigaam") ? .blue : .secondary)
                 Spacer()
                 Button("Use this as the reference") {
                     GroundTruthGold.write(file: item.file, text: text, source: name)
