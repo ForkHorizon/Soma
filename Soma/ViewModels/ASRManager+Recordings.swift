@@ -36,9 +36,16 @@ extension ASRManager {
             (try? FileManager.default.contentsOfDirectory(
                 at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles])) ?? []
         for url in files where url.pathExtension.lowercased() == "wav" {
-            let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            guard date < cutoff else { continue }
-            try? FileManager.default.removeItem(at: url)
+            // An unreadable date used to fall back to .distantPast, which made
+            // "I don't know how old this is" mean "delete it". Unknown age is a
+            // reason to keep a recording, not to destroy it.
+            guard let date = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                  date < cutoff
+            else { continue }
+            // The transcript goes only once its audio is actually gone. Removing
+            // it after a failed WAV delete would leave a recording nothing can
+            // read back.
+            guard (try? FileManager.default.removeItem(at: url)) != nil else { continue }
             try? FileManager.default.removeItem(at: url.deletingPathExtension().appendingPathExtension("txt"))
         }
     }
