@@ -202,6 +202,9 @@ def _adjudicate(candidates: dict[str, str | None], norm: dict[str, str],
     scored = [(len([w for w in tried if agrees(norm[name], norm[w], glossary)]), name)
               for name in russian]
     votes, best_russian = max(scored)
+    deadlock = _deadlocked_heads(scored, norm, candidates, glossary)
+    if deadlock:
+        return deadlock
     reference = norm[best_russian]
     agreeing = [name for name in tried if agrees(reference, norm[name], glossary)]
     closest = min((wer(reference, norm[name]), name) for name in tried)
@@ -238,6 +241,31 @@ def _adjudicate(candidates: dict[str, str | None], norm: dict[str, str],
                     f"{best_russian} matches {len(agreeing)}/{len(tried)} whisper decodes "
                     f"({', '.join(agreeing)}); {heads}/{len(russian)} gigaam head(s) agree",
                     confidence="high" if strong else "medium", wer=0.0, votes=votes)
+
+
+def _deadlocked_heads(scored: list[tuple[int, str]], norm: dict[str, str],
+                      candidates: dict[str, str | None], glossary: Glossary | None) -> dict | None:
+    """A review verdict when the GigaAM heads read the recording differently and
+    pull the same non-zero number of Whisper decodes each; None otherwise.
+
+    Otherwise `max()` breaks that tie on the config NAME — "gigaam-ctc" wins
+    over "gigaam" by string comparison — and accepts whichever text the
+    alphabet picked. An even split of the only independent evidence is the
+    exact case this design exists to hand to a person.
+
+    Two ties need no handling: zero-zero (a review anyway, since neither head
+    has Whisper support) and heads that tie while agreeing on the text."""
+    top = max(score for score, _ in scored)
+    tied = [name for score, name in scored if score == top]
+    if top == 0 or len(tied) < 2:
+        return None
+    if all(agrees(norm[tied[0]], norm[other], glossary) for other in tied[1:]):
+        return None
+    return _verdict("review", "",
+                    f"the two gigaam heads read this differently and draw {top} whisper "
+                    f"decode(s) each — the independent evidence is split, so a human decides",
+                    candidates=candidates, wer=1.0, edits=top, terms=[],
+                    span=_disputed_span(candidates, norm[GIGAAM], PRIMARY, glossary))
 
 
 def _disputed_span(candidates: dict[str, str | None], reference: str,

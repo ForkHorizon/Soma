@@ -170,3 +170,38 @@ def test_a_review_verdict_points_at_the_words_under_dispute():
                      None, SPEECH)
     assert verdict["status"] == "review"
     assert verdict["span"] == [2.0, 2.0]
+
+
+def test_evenly_split_gigaam_heads_go_to_a_human_not_to_the_alphabet():
+    # Both independent heads read it differently and pull two Whisper decodes
+    # each. max() would break that tie on the config NAME — "gigaam-ctc" wins
+    # over "gigaam" by string comparison — and accept whichever the alphabet
+    # picked. A 50/50 split of the only independent evidence is the case this
+    # design exists to hand to a person.
+    verdict = decide({
+        "w-greedy": "alpha one", "w-prompt": "alpha one",
+        "w-fallback": "beta one", "w-sample": "beta one",
+        "gigaam": "alpha one", "gigaam-ctc": "beta one",
+    }, None, SPEECH)
+    assert verdict["status"] == "review"
+    assert "split" in verdict["reason"]
+
+
+def test_heads_tied_at_zero_still_just_review():
+    # Neither head has Whisper support; the verdict was already a review, and
+    # the deadlock check must not change that or crash on it.
+    verdict = decide({
+        "w-greedy": "alpha one", "w-prompt": "alpha two",
+        "gigaam": "beta one", "gigaam-ctc": "beta two",
+    }, None, SPEECH)
+    assert verdict["status"] == "review"
+
+
+def test_heads_that_tie_while_agreeing_are_not_deadlocked():
+    # Same score, same text — there is nothing for a human to decide.
+    verdict = decide({
+        "w-greedy": "alpha one", "w-prompt": "alpha one",
+        "gigaam": "alpha one", "gigaam-ctc": "alpha one",
+    }, None, SPEECH)
+    assert verdict["status"] == "accepted"
+    assert verdict["confidence"] == "high"
