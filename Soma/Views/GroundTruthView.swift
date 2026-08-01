@@ -69,7 +69,7 @@ struct GroundTruthView: View {
                 .toggleStyle(.switch)
                 .disabled(runner.isRunning)
             Text(thorough
-                 ? "Every decode runs on every recording, not just where the first two disagree. Measured at about seven hours for a thousand recordings, against five without. What it buys is grading: an accepted file then reads 5/5 whisper and 2/2 gigaam heads, or 4/5 — a distinction the fast path cannot make, because it stops as soon as the first two agree."
+                 ? "Every decode runs on every recording, not just where the first two disagree. Measured at about seven hours for a thousand recordings, against five without. What it buys is grading: an accepted file then reads how many of the Whisper decodes and both GigaAM heads actually agreed — five or six Whisper configs depending on length, since the shifted-window pass is skipped under 30 s. The fast path cannot make that distinction; it stops as soon as the first two agree."
                  : "Only recordings where Whisper and GigaAM disagree get the other six decodes. About five hours for a thousand recordings, and every accepted file reads the same 1/1 regardless of how solid it is.")
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

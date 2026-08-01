@@ -232,3 +232,19 @@ def test_heads_that_tie_while_agreeing_are_not_deadlocked():
     }, None, SPEECH)
     assert verdict["status"] == "accepted"
     assert verdict["confidence"] == "high"
+
+
+def test_a_repeated_phrase_is_a_loop_too():
+    # Only identical consecutive unigrams used to count, so "спасибо большое"
+    # six times over was accepted at high confidence — the same hallucination
+    # wearing two words instead of one.
+    verdict = decide({"w-greedy": "спасибо большое " * 6, "gigaam": "спасибо большое " * 6},
+                     None, {"no_speech": 0.3, "peak_db": -20.0})
+    assert verdict["status"] == "review"
+
+
+def test_a_short_genuine_repetition_is_not_a_loop():
+    # "да да да" is something a person says; flagging it would push real
+    # recordings into a queue that only works while it stays finishable.
+    assert decide({"w-greedy": "да да да", "gigaam": "да да да"},
+                  None, SPEECH)["status"] == "accepted"

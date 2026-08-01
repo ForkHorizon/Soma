@@ -100,16 +100,28 @@ def wer(reference: str, hypothesis: str) -> float:
     return previous[-1] / len(ref)
 
 
-def repeats_itself(text: str, run: int = 6) -> bool:
-    """Whisper's classic failure on silence is one token repeated until the
-    window ends. Every config can produce the same loop, so the transcript can
-    look unanimous and still be pure invention."""
+def repeats_itself(text: str, span: int = 6, longest: int = 4) -> bool:
+    """Whisper's classic failure on silence is a loop that runs until the window
+    ends. Every config can produce the same one, so the transcript can look
+    unanimous and still be pure invention.
+
+    The loop is not always a single word: "спасибо большое" repeated six times
+    is the same failure and used to be accepted at high confidence, because only
+    identical consecutive unigrams were checked. Phrases up to `longest` words
+    are now checked, and a run counts when it repeats at least three times AND
+    covers `span` words — so "да да да" stays a plausible utterance while six
+    words of anything cycling is not."""
     words = text.split()
-    streak = 1
-    for previous, word in zip(words, words[1:]):
-        streak = streak + 1 if word == previous else 1
-        if streak >= run:
-            return True
+    for size in range(1, longest + 1):
+        for start in range(len(words)):
+            phrase = words[start:start + size]
+            if len(phrase) < size:
+                break
+            repeats = 1
+            while words[start + repeats * size:start + (repeats + 1) * size] == phrase:
+                repeats += 1
+            if repeats >= 3 and repeats * size >= span:
+                return True
     return False
 
 

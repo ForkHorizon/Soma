@@ -18,7 +18,9 @@ run owns an output directory at a time; see claim_lock.
 from __future__ import annotations
 
 import argparse
+import os
 import signal
+import subprocess
 import sys
 from pathlib import Path
 
@@ -86,6 +88,20 @@ def readjudicate(runner: Runner, files: list[Path]) -> int:
     return 0
 
 
+def hold_awake() -> None:
+    """Keep the machine up for exactly as long as this run lasts.
+
+    The point of the panel is a job left running overnight, and on battery this
+    Mac sleeps after a minute. `caffeinate -w` waits on our PID, so the
+    assertion is owned by the run and released the moment it ends — no leftover
+    assertion outliving the work, and nothing to remember to switch off."""
+    try:
+        subprocess.Popen(["/usr/bin/caffeinate", "-i", "-w", str(os.getpid())],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError as error:
+        emit({"event": "warn", "text": f"could not hold the machine awake: {error}"})
+
+
 def parse(argv: list[str] | None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--recordings", type=Path, default=DEFAULT_RECORDINGS)
@@ -109,6 +125,7 @@ def parse(argv: list[str] | None):
 def main(argv: list[str] | None = None) -> int:
     args = parse(argv)
     runner = Runner(args)
+    hold_awake()
     for received in (signal.SIGTERM, signal.SIGINT):
         signal.signal(received, runner.stop_worker)
     lock = args.out / "run.lock"
