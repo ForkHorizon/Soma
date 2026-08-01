@@ -6,6 +6,7 @@ struct GroundTruthView: View {
     @ObservedObject var asr: ASRManager
     @StateObject private var runner = GroundTruthRunner()
     @AppStorage("groundTruthBestOf") private var bestOf = 5
+    @AppStorage("groundTruthThorough") private var thorough = true
     @State private var glossaryDirty = false
 
     var body: some View {
@@ -41,7 +42,7 @@ struct GroundTruthView: View {
                         Label("Stop", systemImage: "stop.fill")
                     }
                 } else {
-                    Button { runner.start(asr: asr, bestOf: bestOf) } label: {
+                    Button { runner.start(asr: asr, bestOf: bestOf, thorough: thorough) } label: {
                         Label("Start run", systemImage: "play.fill")
                     }
                     .buttonStyle(.borderedProminent)
@@ -64,6 +65,14 @@ struct GroundTruthView: View {
                 .disabled(runner.isRunning)
                 .frame(maxWidth: 320)
             }
+            Toggle("Maximum verification — every engine on every recording", isOn: $thorough)
+                .toggleStyle(.switch)
+                .disabled(runner.isRunning)
+            Text(thorough
+                 ? "Every decode runs on every recording, not just where the first two disagree. Measured at about seven hours for a thousand recordings, against five without. What it buys is grading: an accepted file then reads 5/5 whisper and 2/2 gigaam heads, or 4/5 — a distinction the fast path cannot make, because it stops as soon as the first two agree."
+                 : "Only recordings where Whisper and GigaAM disagree get the other six decodes. About five hours for a thousand recordings, and every accepted file reads the same 1/1 regardless of how solid it is.")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             if asr.isRecording || asr.isTranscribing {
                 Text("Finish the current transcription first — the run loads its own copy of the model.")
                     .font(.caption).foregroundStyle(.orange)

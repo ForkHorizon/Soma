@@ -126,7 +126,7 @@ final class GroundTruthRunner: ObservableObject {
         start(asr: asr, bestOf: 1, adjudicateOnly: true)
     }
 
-    func start(asr: ASRManager, bestOf: Int, adjudicateOnly: Bool = false) {
+    func start(asr: ASRManager, bestOf: Int, thorough: Bool = false, adjudicateOnly: Bool = false) {
         guard !isRunning else { return }
         failure = nil
         loadExistingVerdicts()
@@ -137,13 +137,13 @@ final class GroundTruthRunner: ObservableObject {
         }
         try? FileManager.default.createDirectory(at: Self.outputDirectory, withIntermediateDirectories: true)
         do {
-            try launch(script: script, asr: asr, bestOf: bestOf, adjudicateOnly: adjudicateOnly)
+            try launch(script: script, asr: asr, bestOf: bestOf, thorough: thorough, adjudicateOnly: adjudicateOnly)
         } catch {
             failure = error.localizedDescription
         }
     }
 
-    private func launch(script: URL, asr: ASRManager, bestOf: Int, adjudicateOnly: Bool) throws {
+    private func launch(script: URL, asr: ASRManager, bestOf: Int, thorough: Bool, adjudicateOnly: Bool) throws {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: pythonPath)
         task.arguments = [
@@ -153,7 +153,7 @@ final class GroundTruthRunner: ObservableObject {
             "--engines-root", asr.enginesRoot,
             "--models-root", asr.modelsRoot,
             "--best-of", String(bestOf),
-        ] + (adjudicateOnly ? ["--adjudicate-only"] : [])
+        ] + (adjudicateOnly ? ["--adjudicate-only"] : []) + (thorough ? ["--thorough"] : [])
         task.currentDirectoryURL = repoRoot
         task.environment = childEnvironment()
 

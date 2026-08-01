@@ -204,13 +204,19 @@ def pick(recordings: Path, limit: int) -> list[Path]:
     return files[:limit] if limit else files
 
 
-def run_block(runner: Runner, block: list[Path]) -> None:
+def run_block(runner: Runner, block: list[Path], thorough: bool = False) -> None:
     runner.decode("whisper", TIER_ONE, block)
     runner.decode("gigaam", "gigaam", block)
-    disputed = [p for p in block
-                if needs_second_tier(runner.candidates(p.name, [TIER_ONE, "gigaam"]), runner.glossary)]
+    # Thorough spends the remaining six decodes on files the cheap pass already
+    # agreed on. It cannot overturn those verdicts — agreement across families
+    # still decides — but it grades them: a file every engine settles on is a
+    # different thing from one where only the first two happened to match.
+    disputed = block if thorough else [
+        p for p in block
+        if needs_second_tier(runner.candidates(p.name, [TIER_ONE, "gigaam"]), runner.glossary)]
     if disputed:
-        emit({"event": "stage", "text": f"{len(disputed)} disagreed — running six more decodes each"})
+        headline = "all" if thorough else f"{len(disputed)} disagreed —"
+        emit({"event": "stage", "text": f"{headline} {len(disputed)} recordings: six more decodes each"})
         runner.decode("whisper", TIER_TWO, disputed)
         runner.decode("fasterwhisper", TIER_TWO_FASTER, disputed)
         runner.decode("gigaam", TIER_TWO_GIGAAM, disputed)
@@ -249,6 +255,10 @@ def main(argv: list[str] | None = None) -> int:
     # Re-vote from the cached decodes after the glossary grew. Costs seconds and
     # no model time, which is the whole point of keeping every decode on disk.
     parser.add_argument("--adjudicate-only", action="store_true")
+    # Every engine on every recording instead of only on disagreements. Roughly
+    # 1.7x the wall clock, and it is what turns "these two agreed" into "nothing
+    # available disagrees".
+    parser.add_argument("--thorough", action="store_true")
     args = parser.parse_args(argv)
 
     runner = Runner(args)
@@ -264,7 +274,7 @@ def main(argv: list[str] | None = None) -> int:
 
     for index, block in enumerate(blocks, start=1):
         emit({"event": "stage", "text": f"Block {index}/{len(blocks)} · {len(block)} recordings"})
-        run_block(runner, block)
+        run_block(runner, block, args.thorough)
         emit(totals(runner, len(files)))
     emit({"event": "done", **totals(runner, len(files))})
     return 0

@@ -18,4 +18,47 @@ final class RecordingRetentionTests: XCTestCase {
     func testDefaultIsThreeMonths() {
         XCTAssertEqual(ASRManager.defaultRetentionDays, 90)
     }
+
+    /// The sweep itself, against a real directory. The unit maths above says
+    /// the cutoff is right; this says the file walk honours it — which is the
+    /// part that actually deleted ten recordings when an old build ran.
+    func testTheSweepDeletesOnlyWhatIsPastTheCutoff() throws {
+        let manager = FileManager.default
+        let directory = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try manager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? manager.removeItem(at: directory) }
+
+        let now = Date()
+        let ages: [(name: String, daysOld: Double)] = [
+            ("fresh", 0), ("yesterday", 1), ("two-weeks", 14),
+            ("almost-ninety", 89), ("past-ninety", 91), ("ancient", 400),
+        ]
+        for age in ages {
+            for suffix in ["wav", "txt"] {
+                let url = directory.appendingPathComponent("\(age.name).\(suffix)")
+                try Data("x".utf8).write(to: url)
+                try manager.setAttributes(
+                    [.modificationDate: now.addingTimeInterval(-age.daysOld * 24 * 60 * 60)],
+                    ofItemAtPath: url.path)
+            }
+        }
+
+        let cutoff = try XCTUnwrap(ASRManager.retentionCutoff(days: 90, now: now))
+        ASRManager.removeRecordingFiles(in: directory, olderThan: cutoff)
+
+        let left = Set(try manager.contentsOfDirectory(atPath: directory.path))
+        for name in ["fresh", "yesterday", "two-weeks", "almost-ninety"] {
+            XCTAssertTrue(left.contains("\(name).wav"), "\(name) was swept but is inside the window")
+            XCTAssertTrue(left.contains("\(name).txt"), "\(name) transcript was swept but is inside the window")
+        }
+        for name in ["past-ninety", "ancient"] {
+            XCTAssertFalse(left.contains("\(name).wav"), "\(name) is past the cutoff and should be gone")
+            XCTAssertFalse(left.contains("\(name).txt"), "\(name) transcript should go with its audio")
+        }
+    }
+
+    /// "Never" must sweep nothing at all, including files years old.
+    func testNeverSweepsNothing() throws {
+        XCTAssertNil(ASRManager.retentionCutoff(days: 0, now: Date()))
+    }
 }
