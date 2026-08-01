@@ -7,8 +7,36 @@ everything here is stdlib and side-effect free apart from the appends.
 from __future__ import annotations
 
 import json
+import os
 import wave
 from pathlib import Path
+
+
+def claim_lock(path: Path) -> bool:
+    """Refuse to start when another orchestrator already owns this output
+    directory. Two of them appending to the same decodes.jsonl — and
+    --adjudicate-only truncating verdicts.jsonl under the other's feet — would
+    corrupt a night's work silently.
+
+    A stale lock from a killed run is reclaimed: the PID inside is checked for
+    life first, so a crash never needs a manual cleanup."""
+    if path.exists():
+        try:
+            owner = int(path.read_text(encoding="utf-8").strip())
+            os.kill(owner, 0)
+            return False                      # a live process holds it
+        except (ValueError, OSError):
+            pass                              # unreadable or dead: ours to take
+    path.write_text(str(os.getpid()), encoding="utf-8")
+    return True
+
+
+def release_lock(path: Path) -> None:
+    try:
+        if path.exists() and path.read_text(encoding="utf-8").strip() == str(os.getpid()):
+            path.unlink()
+    except OSError:
+        pass
 
 
 def read_rows(path: Path) -> list[dict]:

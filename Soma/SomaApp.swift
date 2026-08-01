@@ -20,6 +20,11 @@ struct SomaApp: App {
     @StateObject private var voicePrompter = RusToPromptViewModel()
     @StateObject private var globalVoice = GlobalVoiceController()
     @StateObject private var voiceTextPriorityQueue = VoiceTextPriorityQueue()
+    // Owned here, not by the Ground Truth route: the run outlives any view. A
+    // route-local @StateObject dies when the sidebar selection changes, and the
+    // orchestrator it launched keeps going with nobody reading its progress —
+    // measured, not assumed — while the rebuilt panel offers Start again.
+    @StateObject private var groundTruth = GroundTruthRunner()
     @StateObject private var windowLifecycle = SomaWindowLifecycleCoordinator()
     @NSApplicationDelegateAdaptor(SomaAppDelegate.self) private var appDelegate
 
@@ -32,7 +37,8 @@ struct SomaApp: App {
                 voiceASR: voiceASR,
                 voicePrompter: voicePrompter,
                 globalVoice: globalVoice,
-                textPriorityQueue: voiceTextPriorityQueue
+                textPriorityQueue: voiceTextPriorityQueue,
+                groundTruth: groundTruth
             )
             .background(
                 MainWindowAccessor { window in

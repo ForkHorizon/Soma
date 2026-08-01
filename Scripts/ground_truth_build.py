@@ -12,10 +12,8 @@ two disagree (unless --thorough), then vote across families.
 
 Resumable: every decode and verdict is appended to disk and a rerun skips files
 that already have a verdict. Because a verdict is FINAL, it is only written once
-every required engine has actually had its turn — see Runner.can_settle.
-
-Usage:
-    python3 Scripts/ground_truth_build.py --out ~/Library/.../GroundTruth
+every required engine has actually had its turn — see Runner.can_settle. One
+run owns an output directory at a time; see claim_lock.
 """
 from __future__ import annotations
 
@@ -29,11 +27,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ground_truth_consensus import PRIMARY, decide, needs_second_tier   # noqa: E402
-from ground_truth_corpus import append, has_audio, pick, read_rows   # noqa: E402
+from ground_truth_corpus import (append, claim_lock, has_audio, pick,   # noqa: E402
+                                 read_rows, release_lock)
 
 TIER_ONE = "w-greedy"
-# Tier two only ever runs on files where tier one disagreed, so it can afford to
-# be thorough. Grouped by venv, because each spawn loads its own model.
+# Tier two runs only where tier one disagreed. Grouped by venv: each spawn loads
+# its own model.
 TIER_TWO = "w-prompt,w-fallback,w-sample,w-offset"
 TIER_TWO_FASTER = "fw-beam"
 TIER_TWO_GIGAAM = "gigaam-ctc"
@@ -45,11 +44,6 @@ def emit(obj: dict) -> None:
     sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
     sys.stdout.flush()
 
-
-
-def append(path: Path, obj: dict) -> None:
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
 
 class Runner:
@@ -243,7 +237,7 @@ def readjudicate(runner: Runner, files: list[Path]) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def parse(argv: list[str] | None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--recordings", type=Path, default=DEFAULT_RECORDINGS)
     parser.add_argument("--out", type=Path, required=True)
@@ -261,10 +255,24 @@ def main(argv: list[str] | None = None) -> int:
     # 1.7x the wall clock, and it is what turns "these two agreed" into "nothing
     # available disagrees".
     parser.add_argument("--thorough", action="store_true")
-    args = parser.parse_args(argv)
+    return parser.parse_args(argv)
 
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse(argv)
     runner = Runner(args)
-    files = pick(args.recordings, args.limit)
+    lock = args.out / "run.lock"
+    if not claim_lock(lock):
+        emit({"event": "fatal", "config": "orchestrator",
+              "error": f"another run already owns {args.out}"})
+        return 2
+    try:
+        return _run(runner, args, files=pick(args.recordings, args.limit))
+    finally:
+        release_lock(lock)
+
+
+def _run(runner: Runner, args, files: list[Path]) -> int:
     if args.adjudicate_only:
         return readjudicate(runner, files)
     for path in [p for p in files if p.name not in runner.done and not has_audio(p)]:
