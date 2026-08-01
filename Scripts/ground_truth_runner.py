@@ -65,9 +65,13 @@ class Runner:
         return self.args.engines_root / f"venv-{engine}" / "bin" / "python"
 
     def decode(self, engine: str, configs: str, paths: list[Path]) -> None:
-        """Spawn one worker and fold everything it decodes into self.decoded."""
+        """Spawn one worker and fold everything it decodes into self.decoded.
+
+        A row that recorded an ERROR is treated as absent, so a rerun actually
+        re-decodes it. Keeping it would make a retry cosmetic: the file would be
+        re-settled to the same failure without any engine touching it again."""
         wanted = [p for p in paths if any(
-            (p.name, name) not in self.decoded for name in configs.split(","))]
+            self.failed_or_missing(p.name, name) for name in configs.split(","))]
         if not wanted:
             return
         with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as listing:
@@ -159,6 +163,10 @@ class Runner:
         if text:
             self.noise = (self.noise + [text[:200]])[-20:]
         return None
+
+    def failed_or_missing(self, name: str, config: str) -> bool:
+        row = self.decoded.get((name, config))
+        return row is None or row.get("error") is not None
 
     def candidates(self, name: str, configs: list[str]) -> dict[str, str | None]:
         found = {}

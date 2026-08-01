@@ -98,3 +98,25 @@ def test_a_whole_file_rewrite_is_never_half_applied(tmp_path=None):
                                   {"file": "b.wav", "status": "accepted"}])
     assert [r["file"] for r in read_rows(verdicts)] == ["a.wav", "b.wav"]
     assert not (tmp / "verdicts.jsonl.new").exists()   # scratch file cleaned up
+
+
+def test_an_error_verdict_does_not_retire_the_recording(tmp_path=None):
+    tmp = tmp_path or Path(__import__("tempfile").mkdtemp())
+    runner = _runner(tmp)
+    runner.done["broke.wav"] = {"file": "broke.wav", "status": "error"}
+    runner.done["settled.wav"] = {"file": "settled.wav", "status": "accepted"}
+    # An error reports a failure; it does not decide anything about the audio.
+    pending = [n for n in ("broke.wav", "settled.wav", "fresh.wav")
+               if (runner.done.get(n) or {}).get("status", "error") == "error"]
+    assert pending == ["broke.wav", "fresh.wav"]
+
+
+def test_a_failed_decode_is_re_run_rather_than_re_read(tmp_path=None):
+    tmp = tmp_path or Path(__import__("tempfile").mkdtemp())
+    runner = _runner(tmp)
+    runner.decoded[("a.wav", "w-greedy")] = {"text": None, "error": "boom"}
+    runner.decoded[("b.wav", "w-greedy")] = {"text": "привет", "error": None}
+    # Without this the retry would be cosmetic: the file re-settles to the same
+    # failure without an engine ever touching it again.
+    assert runner.failed_or_missing("a.wav", "w-greedy")
+    assert not runner.failed_or_missing("b.wav", "w-greedy")

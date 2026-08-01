@@ -31,6 +31,12 @@ struct GroundTruthView: View {
             Text("Ground Truth").font(.title2).bold()
             Text("Builds a reference transcript for every saved recording by making two different ASR architectures agree. Runs for hours; safe to leave overnight.")
                 .font(.callout).foregroundStyle(.secondary)
+            // Naming honesty: what comes out of here is a consensus, not a
+            // transcription. Two engines agreeing rules out a lot, but both can
+            // be wrong the same way, and nothing here has heard the audio.
+            Text("What this produces is a **consensus**, not a verified transcript. Accepted means no available engine disagreed — not that anyone listened. Only the entries you settle by ear in the review queue are verified.")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

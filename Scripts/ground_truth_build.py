@@ -145,7 +145,11 @@ def _run(runner: Runner, args, files: list[Path]) -> int:
     for path in [p for p in files if p.name not in runner.done and not has_audio(p)]:
         runner.write(path, {"status": "empty", "text": "",
                             "reason": "recording contains no audio (zero frames)"})
-    pending = [p for p in files if p.name not in runner.done]
+    # An error verdict is a report of a failure, not a decision about the
+    # recording, so it must not retire the file the way a real verdict does. A
+    # rerun retries it; a permanently broken file simply fails again, visibly.
+    pending = [p for p in files
+               if (runner.done.get(p.name) or {}).get("status", "error") == "error"]
     blocks = [pending[i:i + args.block] for i in range(0, len(pending), args.block)]
     emit({"event": "plan", "files": len(files), "pending": len(pending), "blocks": len(blocks),
           "tier_one": TIER_ONE,
