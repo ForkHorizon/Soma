@@ -6,7 +6,9 @@ import SwiftUI
 /// will actually be tuning.
 struct GroundTruthMethodCard: View {
     let bestOf: Int
-    @State private var expanded = true
+    // Collapsed by default: it is reference material, read once. The review
+    // queue below it is the part touched every session.
+    @State private var expanded = false
 
     private var passes: [(String, String)] {
         [
@@ -37,9 +39,10 @@ struct GroundTruthMethodCard: View {
                 Text("How a verdict is reached").font(.callout).bold()
                 note("Only w-greedy and GigaAM run on every file. The three remaining Whisper decodes are spent solely on recordings where those two disagree, which is what keeps a full corpus run to hours instead of days.")
                 note("Accepted needs GigaAM to match at least two Whisper decodes (or to match w-greedy outright on the first pass). Four Whisper opinions agreeing with each other is not enough — they share one acoustic model, so their mistakes are correlated.")
-                note("Comparison is case-insensitive, ignores punctuation and unifies ё/е. Latin terms GigaAM spells out phonetically (unity → юнити, assets → асец) are not counted as disagreements; two Cyrillic words that differ always are, and so are digits against spelled-out numbers.")
+                note("Comparison is case-insensitive, ignores punctuation and unifies ё/е. Nothing else is forgiven automatically — not digits against spelled-out numbers, and not GigaAM's phonetic spelling of English terms (unity → юнити). Latin against Cyrillic looks the same whether the engines heard the same word or two different ones, so those pairs are proposed in the review queue and only stop counting as disagreements once you have heard the recording and confirmed them.")
                 note("Never auto-accepted: a token repeated six times or more, which is what a Whisper hallucination loop looks like even when every config produces it.")
-                note("Recordings where GigaAM hears nothing and Whisper returns a short stock phrase are filed as no speech, not as a disagreement — that is Whisper hallucinating over silence.")
+                note("A recording is filed as no speech only on evidence: Whisper's own no_speech_prob above 0.5 — measured at 0.85 on a hallucinated \"Спасибо\" against 0.02 on real speech — together with GigaAM independently hearing nothing. Audible audio that Whisper is merely unsure about goes to a human instead.")
+                note("Confirming a term costs no model time to apply: every decode stays on disk, so Apply glossary just re-votes the cached results and the queue shrinks in seconds.")
             }
             .padding(.top, 10)
         }
@@ -51,44 +54,5 @@ struct GroundTruthMethodCard: View {
     private func note(_ text: String) -> some View {
         Text(text).font(.caption).foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
-    }
-}
-
-/// The files a human still has to settle, cheapest first.
-struct GroundTruthReviewList: View {
-    let items: [GroundTruthVerdict]
-    @State private var expanded = false
-
-    var body: some View {
-        DisclosureGroup(isExpanded: $expanded) {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(items.prefix(200)) { item in
-                    HStack(alignment: .top, spacing: 10) {
-                        Text(item.edits > 0 ? "\(item.edits)w" : "—")
-                            .font(.caption).monospaced().frame(width: 34, alignment: .trailing)
-                            .foregroundStyle(item.edits <= 2 ? .green : .orange)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(item.file).font(.caption).monospaced()
-                            Text(item.reason).font(.caption2).foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.vertical, 5)
-                    Divider()
-                }
-                if items.count > 200 {
-                    Text("…and \(items.count - 200) more").font(.caption).foregroundStyle(.secondary)
-                        .padding(.top, 6)
-                }
-                if items.isEmpty {
-                    Text("Nothing to review yet.").font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            .padding(.top, 8)
-        } label: {
-            Text("Needs review (\(items.count)) — sorted by how many words actually differ")
-        }
-        .padding(14)
-        .background(Color.primary.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }

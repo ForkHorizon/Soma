@@ -30,7 +30,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ground_truth_consensus import decide, needs_second_tier   # noqa: E402
+from ground_truth_consensus import PRIMARY, decide, needs_second_tier   # noqa: E402
 
 TIER_ONE = "w-greedy"
 TIER_TWO = "w-prompt,w-fallback,w-sample"
@@ -72,6 +72,20 @@ class Runner:
             (row["file"], row["config"]): row for row in read_rows(self.results)
         }
         self.done: dict[str, dict] = {row["file"]: row for row in read_rows(self.verdicts)}
+        self.glossary = self._glossary()
+
+    def _glossary(self) -> dict[str, list[str]]:
+        """Confirmed term pairs, written by the review panel once the listener
+        has heard the audio. Absent on the first run, which is correct: nothing
+        is forgiven until a human has said it may be."""
+        path = self.args.out / "glossary.json"
+        if not path.exists():
+            return {}
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            emit({"event": "warn", "text": f"unreadable glossary at {path}"})
+            return {}
 
     def venv_python(self, engine: str) -> Path:
         return self.args.engines_root / f"venv-{engine}" / "bin" / "python"
@@ -135,9 +149,15 @@ class Runner:
                 found[config] = row.get("text")
         return found
 
+    def metrics(self, name: str) -> dict:
+        """Whisper's own no_speech reading plus the waveform level, taken from
+        the tier-one decode — the only pass every file is guaranteed to have."""
+        row = self.decoded.get((name, PRIMARY)) or {}
+        return {key: row[key] for key in ("no_speech", "peak_db", "avg_logprob") if key in row}
+
     def settle(self, path: Path) -> dict:
         every = [TIER_ONE, *TIER_TWO.split(","), "gigaam"]
-        verdict = decide(self.candidates(path.name, every))
+        verdict = decide(self.candidates(path.name, every), self.glossary, self.metrics(path.name))
         record = {"file": path.name, **verdict}
         append(self.verdicts, record)
         self.done[path.name] = record
@@ -162,12 +182,28 @@ def run_block(runner: Runner, block: list[Path]) -> None:
     runner.decode("whisper", TIER_ONE, block)
     runner.decode("gigaam", "gigaam", block)
     disputed = [p for p in block
-                if needs_second_tier(runner.candidates(p.name, [TIER_ONE, "gigaam"]))]
+                if needs_second_tier(runner.candidates(p.name, [TIER_ONE, "gigaam"]), runner.glossary)]
     if disputed:
         emit({"event": "stage", "text": f"{len(disputed)} disagreed — running 3 more Whisper decodes"})
         runner.decode("whisper", TIER_TWO, disputed)
     for path in block:
         runner.settle(path)
+
+
+def readjudicate(runner: Runner, files: list[Path]) -> int:
+    """Recompute every verdict from decodes already on disk, under the current
+    glossary. Verdicts are rewritten wholesale because a term confirmed today
+    can flip a file decided yesterday."""
+    runner.verdicts.write_text("", encoding="utf-8")
+    runner.done.clear()
+    decided = [p for p in files if (p.name, PRIMARY) in runner.decoded]
+    emit({"event": "plan", "files": len(files), "pending": 0, "blocks": 0,
+          "tier_one": TIER_ONE, "tier_two": TIER_TWO})
+    emit({"event": "stage", "text": f"Re-voting {len(decided)} decoded recordings under the glossary"})
+    for path in decided:
+        runner.settle(path)
+    emit({"event": "done", **totals(runner, len(files))})
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -181,10 +217,15 @@ def main(argv: list[str] | None = None) -> int:
     # temperature-0 decode is byte-identical, sampling N and ranking is not.
     parser.add_argument("--best-of", type=int, default=5)
     parser.add_argument("--limit", type=int, default=0, help="0 means the whole corpus")
+    # Re-vote from the cached decodes after the glossary grew. Costs seconds and
+    # no model time, which is the whole point of keeping every decode on disk.
+    parser.add_argument("--adjudicate-only", action="store_true")
     args = parser.parse_args(argv)
 
     runner = Runner(args)
     files = pick(args.recordings, args.limit)
+    if args.adjudicate_only:
+        return readjudicate(runner, files)
     pending = [p for p in files if p.name not in runner.done]
     blocks = [pending[i:i + args.block] for i in range(0, len(pending), args.block)]
     emit({"event": "plan", "files": len(files), "pending": len(pending), "blocks": len(blocks),

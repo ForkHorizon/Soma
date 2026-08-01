@@ -44,34 +44,62 @@ def normalize(text: str) -> str:
 
 _LATIN = re.compile(r"[a-z]")
 
+Glossary = dict[str, list[str]]
 
-def transliteration(reference_word: str, hypothesis_word: str) -> bool:
+
+def cross_script(reference_word: str, hypothesis_word: str) -> bool:
     """GigaAM's vocabulary is Russian-only, so it writes English terms out
-    phonetically: unity -> юнити, assets -> асец, playground -> плейграунду.
-    Whisper keeps the Latin spelling. That is a disagreement about script, not
-    about what was said, and the Latin form is the one worth keeping — so it
-    must not block acceptance. Cyrillic-vs-Cyrillic differences are never
-    forgiven here: "проект" vs "проджект" is a real difference for a human."""
+    phonetically: unity -> юнити, assets -> асец, go -> гоу. Whisper keeps the
+    Latin spelling.
+
+    This only REPORTS the shape; it never forgives on its own. Script alone is
+    not evidence that two words are the same word — "unity" against "единица"
+    looks identical to this test — and a blind rule would hide exactly the
+    technical terms that matter most. The panel proposes these pairs, the
+    listener confirms them against the audio, and only then do they enter the
+    glossary."""
     return bool(_LATIN.search(hypothesis_word)) and not _LATIN.search(reference_word)
 
 
-def unforgiven_edits(reference: str, hypothesis: str) -> int:
-    """Word-level edit distance where a substitution costs nothing if it is only
-    a transliteration."""
+def same_word(reference_word: str, hypothesis_word: str, glossary: Glossary | None) -> bool:
+    if reference_word == hypothesis_word:
+        return True
+    return hypothesis_word in (glossary or {}).get(reference_word, ())
+
+
+def unforgiven_edits(reference: str, hypothesis: str, glossary: Glossary | None = None) -> int:
+    """Word-level edit distance where a substitution costs nothing if the
+    glossary says the two words are the same word."""
     ref, hyp = reference.split(), hypothesis.split()
     previous = list(range(len(hyp) + 1))
     for i, ref_word in enumerate(ref, start=1):
         current = [i]
         for j, hyp_word in enumerate(hyp, start=1):
-            same = ref_word == hyp_word or transliteration(ref_word, hyp_word)
+            same = same_word(ref_word, hyp_word, glossary)
             current.append(min(previous[j] + 1, current[j - 1] + 1,
                                previous[j - 1] + (0 if same else 1)))
         previous = current
     return previous[-1]
 
 
-def agrees(reference: str, hypothesis: str) -> bool:
-    return unforgiven_edits(reference, hypothesis) == 0
+def agrees(reference: str, hypothesis: str, glossary: Glossary | None = None) -> bool:
+    return unforgiven_edits(reference, hypothesis, glossary) == 0
+
+
+def proposed_terms(reference: str, hypothesis: str, glossary: Glossary | None = None) -> list[tuple[str, str]]:
+    """Cross-script word pairs this file would need confirmed before the two
+    engines could agree. These are what the review panel offers to the listener,
+    never applied on their own."""
+    import difflib
+
+    ref, hyp = reference.split(), hypothesis.split()
+    found = []
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(a=ref, b=hyp).get_opcodes():
+        if tag != "replace" or i2 - i1 != 1 or j2 - j1 != 1:
+            continue
+        if cross_script(ref[i1], hyp[j1]) and not same_word(ref[i1], hyp[j1], glossary):
+            found.append((ref[i1], hyp[j1]))
+    return found
 
 
 def wer(reference: str, hypothesis: str) -> float:
@@ -107,8 +135,14 @@ def _verdict(status: str, text: str, reason: str, **extra) -> dict:
     return {"status": status, "text": text, "reason": reason, **extra}
 
 
-def decide(candidates: dict[str, str | None]) -> dict:
+NO_SPEECH_PROB = 0.5      # measured: hallucination over silence 0.851, real speech 0.020
+SILENT_PEAK_DB = -40.0    # nothing in this corpus reaches -40 dBFS and contains speech
+
+
+def decide(candidates: dict[str, str | None], glossary: Glossary | None = None,
+           metrics: dict | None = None) -> dict:
     """candidates maps config name -> transcript, or None if that decode failed.
+    metrics carries Whisper's own no_speech/peak_db readings for the file.
 
     Returns a verdict dict with status accepted / review / empty / error.
     """
@@ -120,42 +154,54 @@ def decide(candidates: dict[str, str | None]) -> dict:
     norm = {name: normalize(text) for name, text in candidates.items() if text is not None}
     if not any(norm.values()):
         return _verdict("empty", "", "every engine reported no speech")
-    silent = _hallucinated_over_silence(norm)
+    silent = _hallucinated_over_silence(norm, metrics or {})
     if silent:
         return silent
-    return _adjudicate(candidates, norm)
+    return _adjudicate(candidates, norm, glossary)
 
 
-def _hallucinated_over_silence(norm: dict[str, str]) -> dict | None:
+def _hallucinated_over_silence(norm: dict[str, str], metrics: dict) -> dict | None:
     """Whisper answers silence with a stock phrase — "Спасибо", "Продолжение
-    следует" — while GigaAM correctly returns nothing. Treating that as a
-    disagreement would fill the review queue with files that have no speech in
-    them at all. A long Whisper transcript against an empty GigaAM is a
-    different animal and still goes to review."""
-    if norm.get(GIGAAM) != "":
+    следует". The old rule here guessed from transcript length, which is not
+    evidence: a genuine "да" is short too.
+
+    Whisper already knows. It reports no_speech_prob per segment, and on this
+    corpus a hallucinated "Спасибо." scores 0.851 against 0.020 for real
+    speech. Requiring GigaAM's independent silence as well means two engines
+    and, where available, the waveform's own level all have to agree that
+    nothing was said. Anything short of that goes to a human."""
+    if norm.get(GIGAAM, "") != "":
         return None
-    longest = max((len(text.split()) for name, text in norm.items() if name != GIGAAM), default=0)
-    if longest > 4:
+    no_speech, peak = metrics.get("no_speech"), metrics.get("peak_db")
+    if no_speech is None or no_speech < NO_SPEECH_PROB:
         return None
-    return _verdict("empty", "", "gigaam heard nothing; whisper returned a stock phrase over silence")
+    detail = f"whisper no_speech={no_speech:.2f}, gigaam heard nothing"
+    if peak is not None:
+        detail += f", peak {peak:.0f} dBFS"
+        if peak > SILENT_PEAK_DB and no_speech < 0.8:
+            return None      # audible and Whisper is not certain — let a human hear it
+    return _verdict("empty", "", detail)
 
 
-def _adjudicate(candidates: dict[str, str | None], norm: dict[str, str]) -> dict:
+def _adjudicate(candidates: dict[str, str | None], norm: dict[str, str],
+                glossary: Glossary | None) -> dict:
     reference = norm[GIGAAM]
-    agreeing = [name for name in WHISPER_CONFIGS if name in norm and agrees(reference, norm[name])]
+    agreeing = [name for name in WHISPER_CONFIGS
+                if name in norm and agrees(reference, norm[name], glossary)]
     tried = [name for name in WHISPER_CONFIGS if name in norm]
     closest = min((wer(reference, norm[name]), name) for name in tried)
     # How many words a human would actually have to adjudicate. Most review
     # cases come down to one or two, and the panel sorts on this so the cheap
     # ones can be cleared in a single pass.
-    edits = min(unforgiven_edits(reference, norm[name]) for name in tried)
+    edits = min(unforgiven_edits(reference, norm[name], glossary) for name in tried)
+    terms = proposed_terms(reference, norm[closest[1]], glossary)
 
     if not agreeing:
         unanimous = len({norm[name] for name in tried}) == 1
         hint = "whisper unanimous but gigaam dissents" if unanimous and len(tried) > 1 \
             else "no engine pair agrees"
         return _verdict("review", "", f"{hint} ({edits} word(s) differ, best WER {closest[0]:.3f} via {closest[1]})",
-                        candidates=candidates, wer=round(closest[0], 4), edits=edits)
+                        candidates=candidates, wer=round(closest[0], 4), edits=edits, terms=terms)
 
     text = candidates[agreeing[0]] or ""
     if repeats_itself(norm[agreeing[0]]):
@@ -164,17 +210,17 @@ def _adjudicate(candidates: dict[str, str | None], norm: dict[str, str]) -> dict
     exact = agreeing[0] == PRIMARY and len(agreeing) == len(tried)
     if len(agreeing) < 2 and not exact:
         return _verdict("review", "", f"only {agreeing[0]} matches gigaam; the other whisper decodes disagree",
-                        candidates=candidates, wer=round(closest[0], 4), edits=edits)
+                        candidates=candidates, wer=round(closest[0], 4), edits=edits, terms=terms)
     return _verdict("accepted", text,
                     f"gigaam matches {len(agreeing)}/{len(tried)} whisper decodes ({', '.join(agreeing)})",
                     confidence="high" if exact or len(agreeing) >= 3 else "medium",
                     wer=0.0)
 
 
-def needs_second_tier(candidates: dict[str, str | None]) -> bool:
+def needs_second_tier(candidates: dict[str, str | None], glossary: Glossary | None = None) -> bool:
     """After the cheap pass (w-greedy + gigaam), does this file justify paying
     for the three extra Whisper decodes? Only a disagreement does."""
     primary, russian = candidates.get(PRIMARY), candidates.get(GIGAAM)
     if primary is None or russian is None:
         return False
-    return not agrees(normalize(russian), normalize(primary))
+    return not agrees(normalize(russian), normalize(primary), glossary)

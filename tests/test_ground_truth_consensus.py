@@ -6,8 +6,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "Scripts"))
 
 from ground_truth_consensus import (   # noqa: E402
-    decide, needs_second_tier, normalize, repeats_itself, wer,
+    decide, needs_second_tier, normalize, proposed_terms, repeats_itself, wer,
 )
+
+SILENT = {"no_speech": 0.85, "peak_db": -20.6}     # measured on rec-1784382778.wav
+SPEECH = {"no_speech": 0.02, "peak_db": -2.9}      # measured on rec-1784382789.wav
 
 
 def test_normalize_bridges_the_two_engines_surface_forms():
@@ -72,12 +75,29 @@ def test_wer_counts_word_edits_against_the_reference_length():
     assert wer("а б в г", "а б в д") == 0.25
 
 
-def test_latin_terms_transliterated_by_gigaam_do_not_block_acceptance():
-    # GigaAM has no Latin in its vocabulary, so every English term in this
-    # corpus would otherwise read as a disagreement.
-    whisper = "добавил папку внутрь assets внутри Unity проекта"
-    gigaam = "добавил папку внутрь асец внутри юнити проекта"
-    assert decide({"w-greedy": whisper, "gigaam": gigaam})["status"] == "accepted"
+WHISPER_TERMS = "добавил папку внутрь assets внутри Unity проекта"
+GIGAAM_TERMS = "добавил папку внутрь асец внутри юнити проекта"
+
+
+def test_an_unconfirmed_term_pair_is_not_forgiven_on_script_alone():
+    # Latin-vs-Cyrillic is not evidence that two words are the same word:
+    # "unity" against "единица" has exactly the same shape. Until the listener
+    # confirms the pair against the audio, this is a disagreement.
+    verdict = decide({"w-greedy": WHISPER_TERMS, "gigaam": GIGAAM_TERMS})
+    assert verdict["status"] == "review"
+    assert ("юнити", "unity") in verdict["terms"]
+    assert ("асец", "assets") in verdict["terms"]
+
+
+def test_a_confirmed_term_pair_stops_blocking_acceptance():
+    glossary = {"асец": ["assets"], "юнити": ["unity"]}
+    verdict = decide({"w-greedy": WHISPER_TERMS, "gigaam": GIGAAM_TERMS}, glossary)
+    assert verdict["status"] == "accepted"
+
+
+def test_a_confirmed_pair_stops_being_proposed_again():
+    assert proposed_terms("внутри юнити проекта", "внутри unity проекта",
+                          {"юнити": ["unity"]}) == []
 
 
 def test_a_cyrillic_word_difference_is_never_forgiven():
@@ -88,9 +108,20 @@ def test_a_cyrillic_word_difference_is_never_forgiven():
 
 
 def test_whisper_stock_phrase_against_silent_gigaam_is_empty_not_review():
-    assert decide({"w-greedy": "Спасибо.", "gigaam": ""})["status"] == "empty"
+    # Decided by Whisper's own no_speech reading, not by transcript length —
+    # a genuine "да" is just as short as a hallucinated "Спасибо".
+    assert decide({"w-greedy": "Спасибо.", "gigaam": ""}, None, SILENT)["status"] == "empty"
+
+
+def test_silence_is_not_called_without_the_evidence_to_call_it():
+    assert decide({"w-greedy": "Спасибо.", "gigaam": ""}, None, {})["status"] == "review"
+
+
+def test_audible_audio_whisper_is_unsure_about_goes_to_a_human():
+    metrics = {"no_speech": 0.6, "peak_db": -12.0}
+    assert decide({"w-greedy": "Да.", "gigaam": ""}, None, metrics)["status"] == "review"
 
 
 def test_a_long_transcript_against_silent_gigaam_still_gets_looked_at():
     long_text = "это довольно длинная фраза которую гигаам почему то не услышал совсем"
-    assert decide({"w-greedy": long_text, "gigaam": ""})["status"] == "review"
+    assert decide({"w-greedy": long_text, "gigaam": ""}, None, SPEECH)["status"] == "review"

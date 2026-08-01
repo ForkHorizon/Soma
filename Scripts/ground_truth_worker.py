@@ -76,9 +76,19 @@ def whisper_decoder(config: str, repository: str, best_of: int):
         options["best_of"] = best_of
     options.update(path_or_hf_repo=repository, language="ru")
 
-    def decode(path: str) -> str:
+    def decode(path: str) -> tuple[str, dict]:
         result = mlx_whisper.transcribe(load_audio(path), **options)
-        return (result.get("text") or "").strip()
+        segments = result.get("segments") or []
+        # The MINIMUM no_speech_prob across segments, not the mean: the question
+        # is whether any part of the recording contains speech, and one confident
+        # segment is enough to answer yes. Measured on this corpus, a
+        # hallucinated "Спасибо." over silence reports 0.851 while real speech
+        # reports 0.020 — Whisper knows, it just is not asked.
+        return (result.get("text") or "").strip(), {
+            "no_speech": min((s.get("no_speech_prob", 1.0) for s in segments), default=1.0),
+            "avg_logprob": min((s.get("avg_logprob", 0.0) for s in segments), default=0.0),
+            "compression": max((s.get("compression_ratio", 0.0) for s in segments), default=0.0),
+        }
 
     # One warm call is not needed: mlx caches the model on first transcribe and
     # the orchestrator already treats the first file's timing as unrepresentative.
@@ -93,10 +103,22 @@ def gigaam_decoder(model_name: str, root: str):
 
     model = gigaam.load_model(model_name, device="cpu", download_root=root or None)
 
-    def decode(path: str) -> str:
-        return transcribe_gigaam(path, model)
+    def decode(path: str) -> tuple[str, dict]:
+        return transcribe_gigaam(path, model), {}
 
     return decode
+
+
+def peak_db(path: str) -> float:
+    """Loudest sample in the file, in dBFS. Model-independent corroboration for
+    a silence call — an engine can hallucinate, a waveform cannot."""
+    import numpy as np
+    import soundfile as sf
+
+    data, _ = sf.read(path, dtype="float32")
+    if getattr(data, "ndim", 1) > 1:
+        data = data.mean(axis=1)
+    return round(float(20 * np.log10(max(abs(data).max() if len(data) else 0.0, 1e-9))), 1)
 
 
 def build_decoder(args, config: str) -> object:
@@ -116,12 +138,15 @@ def run_config(args, config: str, paths: list[str]) -> None:
 
     for path in paths:
         began = time.perf_counter()
+        metrics: dict = {}
         try:
-            text, error = decode(path), None
+            text, error = None, None
+            text, metrics = decode(path)
+            metrics["peak_db"] = peak_db(path)
         except Exception as failure:                              # noqa: BLE001
             text, error = None, f"{type(failure).__name__}: {failure}"
-        emit({"event": "decode", "file": Path(path).name, "config": config,
-              "text": text, "error": error, "seconds": round(time.perf_counter() - began, 2)})
+        emit({"event": "decode", "file": Path(path).name, "config": config, "text": text,
+              "error": error, "seconds": round(time.perf_counter() - began, 2), **metrics})
 
 
 def main(argv: list[str] | None = None) -> int:

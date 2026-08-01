@@ -6,9 +6,21 @@ struct GroundTruthVerdict: Identifiable, Hashable {
     let status: String
     let reason: String
     let edits: Int
+    /// Every engine's text for this recording, so the listener can compare them
+    /// without the panel having to re-run anything.
+    let candidates: [String: String]
+    /// Cross-script pairs this file would need confirmed before the engines
+    /// could agree — proposals only, never applied on their own.
+    let terms: [TermPair]
     var id: String { file }
 
     var isReview: Bool { status == "review" }
+}
+
+struct TermPair: Identifiable, Hashable {
+    let heard: String        // what GigaAM wrote
+    let written: String      // what Whisper wrote
+    var id: String { "\(heard)→\(written)" }
 }
 
 /// Drives Scripts/ground_truth_build.py and mirrors its JSONL progress into
@@ -78,9 +90,14 @@ final class GroundTruthRunner: ObservableObject {
               let file = object["file"] as? String,
               let status = object["status"] as? String
         else { return nil }
+        let pairs = (object["terms"] as? [[String]] ?? []).compactMap { pair -> TermPair? in
+            pair.count == 2 ? TermPair(heard: pair[0], written: pair[1]) : nil
+        }
         return GroundTruthVerdict(file: file, status: status,
                                   reason: object["reason"] as? String ?? "",
-                                  edits: object["edits"] as? Int ?? 0)
+                                  edits: object["edits"] as? Int ?? 0,
+                                  candidates: object["candidates"] as? [String: String] ?? [:],
+                                  terms: pairs)
     }
 
     private func recount() {
@@ -94,7 +111,14 @@ final class GroundTruthRunner: ObservableObject {
 
     // MARK: Running
 
-    func start(asr: ASRManager, bestOf: Int) {
+    /// Re-votes every cached decode under the current glossary. No model runs,
+    /// so confirming a term and seeing the queue shrink takes seconds — that is
+    /// the whole reason each decode is kept on disk.
+    func reAdjudicate(asr: ASRManager) {
+        start(asr: asr, bestOf: 1, adjudicateOnly: true)
+    }
+
+    func start(asr: ASRManager, bestOf: Int, adjudicateOnly: Bool = false) {
         guard !isRunning else { return }
         failure = nil
         loadExistingVerdicts()
@@ -105,13 +129,13 @@ final class GroundTruthRunner: ObservableObject {
         }
         try? FileManager.default.createDirectory(at: Self.outputDirectory, withIntermediateDirectories: true)
         do {
-            try launch(script: script, asr: asr, bestOf: bestOf)
+            try launch(script: script, asr: asr, bestOf: bestOf, adjudicateOnly: adjudicateOnly)
         } catch {
             failure = error.localizedDescription
         }
     }
 
-    private func launch(script: URL, asr: ASRManager, bestOf: Int) throws {
+    private func launch(script: URL, asr: ASRManager, bestOf: Int, adjudicateOnly: Bool) throws {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: pythonPath)
         task.arguments = [
@@ -121,7 +145,7 @@ final class GroundTruthRunner: ObservableObject {
             "--engines-root", asr.enginesRoot,
             "--models-root", asr.modelsRoot,
             "--best-of", String(bestOf),
-        ]
+        ] + (adjudicateOnly ? ["--adjudicate-only"] : [])
         task.currentDirectoryURL = repoRoot
         task.environment = childEnvironment()
 
@@ -168,6 +192,7 @@ final class GroundTruthRunner: ObservableObject {
         process = nil
         isRunning = false
         stage = remaining == 0 ? "Finished" : "Ended early — rerun resumes where this left off"
+        loadExistingVerdicts()   // picks up candidates and term proposals for the review queue
     }
 
     // MARK: Progress events
@@ -210,7 +235,8 @@ final class GroundTruthRunner: ObservableObject {
         verdicts.removeAll { $0.file == file }
         verdicts.append(GroundTruthVerdict(file: file, status: status,
                                            reason: event["reason"] as? String ?? "",
-                                           edits: event["edits"] as? Int ?? 0))
+                                           edits: event["edits"] as? Int ?? 0,
+                                           candidates: [:], terms: []))
     }
 
     private func applyTotals(_ event: [String: Any]) {

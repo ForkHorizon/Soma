@@ -6,6 +6,7 @@ struct GroundTruthView: View {
     @ObservedObject var asr: ASRManager
     @StateObject private var runner = GroundTruthRunner()
     @AppStorage("groundTruthBestOf") private var bestOf = 5
+    @State private var glossaryDirty = false
 
     var body: some View {
         ScrollView {
@@ -15,7 +16,8 @@ struct GroundTruthView: View {
                 progressCard
                 counters
                 GroundTruthMethodCard(bestOf: bestOf)
-                GroundTruthReviewList(items: runner.reviewQueue)
+                GroundTruthReviewList(asr: asr, items: runner.reviewQueue,
+                                      onGlossaryChanged: { glossaryDirty = true })
             }
             .padding(24)
             .frame(maxWidth: 820, alignment: .leading)
@@ -46,6 +48,15 @@ struct GroundTruthView: View {
                     // Both would hold a Whisper model at once, and this machine
                     // does not have the memory to spare for that.
                     .disabled(asr.isRecording || asr.isTranscribing)
+                }
+                if glossaryDirty && !runner.isRunning {
+                    Button {
+                        glossaryDirty = false
+                        runner.reAdjudicate(asr: asr)
+                    } label: {
+                        Label("Apply glossary", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .help(Text(verbatim: "Re-vote every cached decode under the confirmed terms. No model time."))
                 }
                 Stepper(value: $bestOf, in: 1...25) {
                     Text("Sampled decodes per window: **\(bestOf)**")
