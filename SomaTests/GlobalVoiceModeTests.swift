@@ -26,6 +26,14 @@ final class GlobalVoiceModeTests: XCTestCase {
         XCTAssertFalse(capture.shouldConsume(type: .keyUp, keyCode: 20))
     }
 
+    /// The recording watchdog ends a hold when this reports Command released. If
+    /// the session state ever stopped reporting Command through this path it would
+    /// read "still down" forever and the watchdog would silently go back to being
+    /// a 3-minute no-op — which is the bug it exists to fix.
+    func testCommandStateIsReadableAndReportsReleasedWhenNoKeyIsHeld() {
+        XCTAssertFalse(GlobalVoiceController.commandIsDown())
+    }
+
     func testPersistedSelectionIsTheCurrentDefault() {
         let defaults = UserDefaults.standard
         let previous = defaults.object(forKey: VoiceOutputMode.storageKey)

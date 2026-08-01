@@ -204,6 +204,7 @@ final class GlobalVoiceController: ObservableObject {
     private var queueTask: Task<Void, Never>?
     private var watchdogTask: Task<Void, Never>?
     private var permissionRetryTask: Task<Void, Never>?
+    private var stallProbe: DispatchSourceTimer?
     private var systemStateObserversRegistered = false
     private var audioLevelCancellable: AnyCancellable?
     private var rightCommandDown = false
@@ -339,6 +340,7 @@ final class GlobalVoiceController: ObservableObject {
                     return nil
                 }
                 let rawType = type.rawValue
+                let seenAt = ProcessInfo.processInfo.systemUptime
                 let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
                 // Level-based: read whether the right Command key is *actually* down
                 // from the event's device flags, instead of toggling a parity bit.
@@ -354,7 +356,7 @@ final class GlobalVoiceController: ObservableObject {
                     || (type == .keyDown && (consumeEvent || controller.keyCapture.isRightCommandDown()))
                 if needsMainActor {
                     Task { @MainActor in
-                        controller.handleTapEvent(rawType: rawType, keyCode: keyCode, rightCommandIsDown: rightCommandIsDown, modeKeyWasCaptured: consumeEvent)
+                        controller.handleTapEvent(rawType: rawType, keyCode: keyCode, rightCommandIsDown: rightCommandIsDown, modeKeyWasCaptured: consumeEvent, seenAt: seenAt)
                     }
                 }
                 return consumeEvent ? nil : Unmanaged.passUnretained(event)
@@ -368,7 +370,28 @@ final class GlobalVoiceController: ObservableObject {
         eventTap = tap
         tapRunner.start(tap: tap)   // runs on its own thread, off the main runloop
         overlay.prepare()
+        startStallProbe()
         status = "Hold Right Command to record, release to paste."
+    }
+
+    /// Times a round trip to the main queue from a background timer. Anything the
+    /// main thread is stuck on delays this by exactly as long as it delays the key
+    /// release and the island's repaint, so a gap here dates and sizes the jam
+    /// without needing an external profiler attached at the right moment.
+    private func startStallProbe() {
+        guard stallProbe == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "com.soma.stall-probe"))
+        timer.schedule(deadline: .now(), repeating: .milliseconds(200), leeway: .milliseconds(20))
+        timer.setEventHandler {
+            let sent = ProcessInfo.processInfo.systemUptime
+            DispatchQueue.main.async {
+                let delay = ProcessInfo.processInfo.systemUptime - sent
+                guard delay > 0.25 else { return }
+                VoiceMetrics.log("main_thread_stall", ["milliseconds": "\(Int(delay * 1_000))"])
+            }
+        }
+        timer.resume()
+        stallProbe = timer
     }
 
     private func stopEventTap() {
@@ -392,10 +415,20 @@ final class GlobalVoiceController: ObservableObject {
         return keyCapture.shouldConsume(type: type, keyCode: keyCode)
     }
 
-    private func handleTapEvent(rawType: UInt32, keyCode: Int, rightCommandIsDown: Bool, modeKeyWasCaptured: Bool) {
+    private func handleTapEvent(rawType: UInt32, keyCode: Int, rightCommandIsDown: Bool, modeKeyWasCaptured: Bool, seenAt: Double) {
         // tapDisabled events are recovered on the tap thread (see the callback) and
         // never reach here — deliberately: re-enabling must not cancel a recording.
         if rawType == CGEventType.flagsChanged.rawValue, keyCode == rightCommandKeyCode {
+            // How long the tap thread waited for the main actor. If the island keeps
+            // painting "Recording" after the key is up, this says whether the state
+            // learned about the release late, or knew and could not repaint.
+            let hop = ProcessInfo.processInfo.systemUptime - seenAt
+            if hop > 0.1 {
+                VoiceMetrics.log("key_event_hop_slow", [
+                    "direction": rightCommandIsDown ? "down" : "up",
+                    "milliseconds": "\(Int(hop * 1_000))",
+                ])
+            }
             setRightCommand(down: rightCommandIsDown)
             return
         }
@@ -470,16 +503,41 @@ final class GlobalVoiceController: ObservableObject {
         scheduleRecordingWatchdog()
     }
 
-    /// Hard ceiling: even if every other guard fails, a stuck key can't keep the
-    /// recorder — and the island's animated glow — alive for more than a few
-    /// minutes. Normal hold-to-talk lasts seconds, so this never bites real use.
+    /// While recording, poll the real modifier state instead of trusting the event
+    /// stream alone. The tap is re-enabled after a timeout without resyncing (that
+    /// resync used to cancel live recordings), so a flagsChanged dropped in that
+    /// window strands the island on "Recording" until the user next touches a
+    /// modifier. Also keeps the hard ceiling: a stuck key can't keep the recorder —
+    /// and the island's animated glow — alive for more than a few minutes.
     private func scheduleRecordingWatchdog() {
         watchdogTask?.cancel()
         watchdogTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 180_000_000_000)   // 3 min
-            guard let self, !Task.isCancelled, self.recording else { return }
+            for _ in 0..<720 {                                // 720 x 250 ms = 3 min
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                guard !Task.isCancelled, let self, self.recording else { return }
+                guard Self.commandIsDown() else {
+                    // Fires only when the key-up event never arrived, so its presence
+                    // in the log is the proof that path is real in daily use.
+                    VoiceMetrics.log("release_recovered_by_poll")
+                    // The same dropped event also leaves the tap thread swallowing
+                    // 1/2/3 system-wide, so clear its copy too.
+                    self.keyCapture.setRightCommandDown(false)
+                    self.setRightCommand(down: false)
+                    return
+                }
+            }
+            guard let self, self.recording else { return }
             self.cancel()
         }
+    }
+
+    /// Live modifier state from the window server, so a release the tap never
+    /// delivered is still visible. Any Command key counts: the session state does
+    /// not reliably distinguish left from right, and over-reporting "still down"
+    /// only costs one more 250 ms tick, while under-reporting would cut a
+    /// recording short mid-sentence.
+    nonisolated static func commandIsDown() -> Bool {
+        CGEventSource.flagsState(.combinedSessionState).contains(.maskCommand)
     }
 
     private func selectOutputMode(_ mode: VoiceOutputMode) {

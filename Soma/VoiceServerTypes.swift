@@ -63,6 +63,20 @@ nonisolated struct VoiceServerPipelineError: Decodable, Sendable {
 /// Emits timing-only, privacy-preserving diagnostics. Transcript text and audio
 /// never appear in these events.
 nonisolated enum VoiceMetrics {
+    /// A Finder-launched app has no stdout, so print alone makes every one of
+    /// these timings invisible in the build that actually shows the bugs.
+    /// ponytail: plain appended text, wiped wholesale past the cap — rotation
+    /// matters the day someone reads more than the tail.
+    private static let fileQueue = DispatchQueue(label: "com.soma.voice-metrics")
+    private static let maxBytes: UInt64 = 4 * 1024 * 1024
+
+    static let logURL: URL = {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Soma", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("voice-metrics.log")
+    }()
+
     static func log(_ event: String, _ fields: [String: String] = [:]) {
         var payload = fields
         payload["event"] = event
@@ -71,5 +85,21 @@ nonisolated enum VoiceMetrics {
               let text = String(data: data, encoding: .utf8)
         else { return }
         print("[soma.voice] \(text)")
+        append(text)
+    }
+
+    private static func append(_ line: String) {
+        guard let data = (line + "\n").data(using: .utf8) else { return }
+        fileQueue.async {
+            guard let handle = try? FileHandle(forWritingTo: logURL) else {
+                try? data.write(to: logURL)
+                return
+            }
+            defer { try? handle.close() }
+            if ((try? handle.seekToEnd()) ?? 0) > maxBytes {
+                try? handle.truncate(atOffset: 0)
+            }
+            try? handle.write(contentsOf: data)
+        }
     }
 }

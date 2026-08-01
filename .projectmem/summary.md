@@ -76,7 +76,6 @@ Soma is a local-first macOS SwiftUI workbench for comparing language-model outpu
 - Refactor: refactor: split main() in the translate bench under the length limit [Scripts/deepseek_chunk_translate_bench.py]
 
 ## Notes
-- New feature: Add project overview memory tools and global voice paste [.gemini/settings.json.soma-backup-20260708-014730]
 - M1 Soma Voice Server installed as LaunchAgent com.daliys.soma.voice-server from ~/soma-voice-server-test on Tailscale port 18765; token is stored only on the M1 in server.token/plist, not in docs. [Soma/voice_server.py]
 - Local Soma client defaults now point to the installed M1 Voice Server at http://100.80.30.74:18765 with token stored in Keychain service Daliys.Soma.VoiceServer. [Soma/Views/VoiceToTextView.swift]
 - Soma app icon generation defaults to SomaIcon.png; SomaServer.png remains the source image for a future separate server-app icon set. [Scripts/generate_app_icon.swift]
@@ -86,6 +85,7 @@ Soma is a local-first macOS SwiftUI workbench for comparing language-model outpu
 - Merge: Voice: get the audio write and the retention sweep off the state lock (#54)
 - Merge: Voice: measure the Whisper decode options, then keep them (#55)
 - Merge: Voice: expose the transcript while it is still being decoded (#57)
+- Merge: Voice: disable Nagle on voice server responses (#59)
 
 ## Key files
 - `Scripts/generate_app_icon.swift`
