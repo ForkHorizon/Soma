@@ -1,23 +1,18 @@
 #!/usr/bin/env python3
 """Build a ground-truth transcript set from the saved voice recordings.
 
-Runs under the SYSTEM python, not an engine venv: the three engine backends
-(mlx-whisper, faster-whisper, GigaAM) have conflicting dependencies, so each
-decode pass is spawned into its own venv and this process only orchestrates
-and votes.
+Runs under the SYSTEM python, not an engine venv: mlx-whisper, faster-whisper
+and GigaAM have conflicting dependencies, so each decode pass is spawned into
+its own venv and this process only orchestrates and votes.
 
-Work is done in blocks rather than whole-corpus passes so the counters move and
-a crash costs one block, not a night. Per block:
+Work is done in blocks, not whole-corpus passes, so the counters move and a
+crash costs one block rather than a night. Per block: w-greedy over the whole
+block, GigaAM RNNT over the same files, then six more decodes only where those
+two disagree (unless --thorough), then vote across families.
 
-    1. Whisper w-greedy over every file in the block
-    2. GigaAM v2 RNNT over the same files       <- the independent vote
-    3. files where the two disagree get six more decodes: three more mlx
-       configs, a shifted-window pass, faster-whisper with real beam search,
-       and GigaAM's CTC head
-    4. vote across families, write verdicts
-
-Resumable: every decode and every verdict is appended to disk, and a rerun skips
-the files that already have a verdict.
+Resumable: every decode and verdict is appended to disk and a rerun skips files
+that already have a verdict. Because a verdict is FINAL, it is only written once
+every required engine has actually had its turn — see Runner.can_settle.
 
 Usage:
     python3 Scripts/ground_truth_build.py --out ~/Library/.../GroundTruth
@@ -34,6 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ground_truth_consensus import PRIMARY, decide, needs_second_tier   # noqa: E402
+from ground_truth_corpus import append, has_audio, pick, read_rows   # noqa: E402
 
 TIER_ONE = "w-greedy"
 # Tier two only ever runs on files where tier one disagreed, so it can afford to
@@ -49,18 +45,6 @@ def emit(obj: dict) -> None:
     sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
     sys.stdout.flush()
 
-
-def read_rows(path: Path) -> list[dict]:
-    if not path.exists():
-        return []
-    rows = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            try:
-                rows.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue          # a half-written last line after a kill, not a reason to stop
-    return rows
 
 
 def append(path: Path, obj: dict) -> None:
@@ -81,6 +65,7 @@ class Runner:
         }
         self.done: dict[str, dict] = {row["file"]: row for row in read_rows(self.verdicts)}
         self.glossary = self._glossary()
+        self.fatal: str | None = None
 
     def _glossary(self) -> dict[str, list[str]]:
         """Confirmed term pairs, written by the review panel once the listener
@@ -148,6 +133,11 @@ class Runner:
             emit({"event": "decode", "file": row["file"], "config": row["config"],
                   "seconds": row.get("seconds"), "failed": row.get("error") is not None})
         elif row.get("event") in ("fatal", "loaded", "skip"):
+            if row.get("event") == "fatal":
+                # An engine that cannot load will fail identically on every
+                # remaining block. Carrying on would write an error verdict for
+                # the whole corpus and, because verdicts are final, bury it.
+                self.fatal = f"{engine}/{row.get('config')}: {row.get('error')}"
             emit({**row, "engine": engine})
 
     def candidates(self, name: str, configs: list[str]) -> dict[str, str | None]:
@@ -178,18 +168,33 @@ class Runner:
         end = float(words[last][2]) + SPAN_PADDING
         return [round(start, 2), round(end, 2)] if end > start else None
 
-    def settle(self, path: Path) -> dict:
-        every = [TIER_ONE, *TIER_TWO.split(","), TIER_TWO_FASTER, "gigaam", TIER_TWO_GIGAAM]
-        verdict = decide(self.candidates(path.name, every), self.glossary, self.metrics(path.name))
-        seconds = self.span_seconds(path.name, verdict.pop("span", None))
-        if seconds:
-            verdict["span_seconds"] = seconds
+    def can_settle(self, name: str) -> bool:
+        """A verdict is final, so it may only be written once every engine has
+        actually had its turn on this recording. A row that RAN and failed is
+        fine — that is a real error. A missing row means the engine never got
+        there, and settling it would bury the file forever."""
+        have = [(name, config) in self.decoded for config in (TIER_ONE, "gigaam", TIER_TWO_GIGAAM)]
+        return have[0] and (have[1] or have[2])
+
+    def write(self, path: Path, verdict: dict) -> dict:
+        """The single place a verdict becomes final."""
         record = {"file": path.name, **verdict}
         append(self.verdicts, record)
         self.done[path.name] = record
         emit({"event": "verdict", "file": path.name,
               "status": record["status"], "reason": record["reason"]})
         return record
+
+    def settle(self, path: Path) -> dict | None:
+        if not self.can_settle(path.name):
+            emit({"event": "warn", "text": f"{path.name}: a required engine never ran; left pending"})
+            return None
+        every = [TIER_ONE, *TIER_TWO.split(","), TIER_TWO_FASTER, "gigaam", TIER_TWO_GIGAAM]
+        verdict = decide(self.candidates(path.name, every), self.glossary, self.metrics(path.name))
+        seconds = self.span_seconds(path.name, verdict.pop("span", None))
+        if seconds:
+            verdict["span_seconds"] = seconds
+        return self.write(path, verdict)
 
 
 def totals(runner: Runner, total_files: int) -> dict:
@@ -199,9 +204,6 @@ def totals(runner: Runner, total_files: int) -> dict:
     return {"event": "totals", "files": total_files, "decided": len(runner.done), **counts}
 
 
-def pick(recordings: Path, limit: int) -> list[Path]:
-    files = sorted(recordings.glob("*.wav"), key=lambda p: p.stat().st_mtime)
-    return files[:limit] if limit else files
 
 
 def run_block(runner: Runner, block: list[Path], thorough: bool = False) -> None:
@@ -265,6 +267,9 @@ def main(argv: list[str] | None = None) -> int:
     files = pick(args.recordings, args.limit)
     if args.adjudicate_only:
         return readjudicate(runner, files)
+    for path in [p for p in files if p.name not in runner.done and not has_audio(p)]:
+        runner.write(path, {"status": "empty", "text": "",
+                            "reason": "recording contains no audio (zero frames)"})
     pending = [p for p in files if p.name not in runner.done]
     blocks = [pending[i:i + args.block] for i in range(0, len(pending), args.block)]
     emit({"event": "plan", "files": len(files), "pending": len(pending), "blocks": len(blocks),
@@ -276,6 +281,9 @@ def main(argv: list[str] | None = None) -> int:
         emit({"event": "stage", "text": f"Block {index}/{len(blocks)} · {len(block)} recordings"})
         run_block(runner, block, args.thorough)
         emit(totals(runner, len(files)))
+        if runner.fatal:
+            emit({"event": "stage", "text": f"stopped: {runner.fatal}"})
+            break
     emit({"event": "done", **totals(runner, len(files))})
     return 0
 
