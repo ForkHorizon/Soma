@@ -45,6 +45,8 @@ class Runner:
         self.done: dict[str, dict] = {row["file"]: row for row in read_rows(self.verdicts)}
         self.glossary = self._glossary()
         self.fatal: str | None = None
+        self.worker: subprocess.Popen | None = None
+        self.noise: list[str] = []          # last non-JSON worker output, for diagnostics
 
     def _glossary(self) -> dict[str, list[str]]:
         """Confirmed term pairs, written by the review panel once the listener
@@ -92,18 +94,40 @@ class Runner:
                    "--best-of", str(self.args.best_of),
                    "--gigaam-root", str(self.args.models_root / "gigaam"),
                    "--faster-root", str(self.args.models_root / "faster")]
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                   text=True, bufsize=1, env=self._environment())
-        for line in process.stdout:
-            self._consume(line, engine)
-        process.wait()
-        if process.returncode:
-            emit({"event": "warn", "text": (process.stderr.read() or "")[-400:]})
+        # stderr is MERGED into stdout, not given its own pipe. Draining one pipe
+        # while the other fills is a deadlock waiting for a noisy night: torch
+        # prints warnings and huggingface prints progress bars to stderr, so 64 KB
+        # of pipe buffer fills and the child blocks forever with stdout still open.
+        # Non-JSON lines are kept as diagnostics instead of being read at exit.
+        self.worker = subprocess.Popen(command, stdout=subprocess.PIPE,
+                                       stderr=subprocess.STDOUT, text=True,
+                                       bufsize=1, env=self._environment())
+        try:
+            for line in self.worker.stdout:
+                self._consume(line, engine)
+            self.worker.wait()
+            if self.worker.returncode:
+                emit({"event": "warn",
+                      "text": f"{engine} exited {self.worker.returncode}: " + " | ".join(self.noise[-4:])})
+        finally:
+            self.worker = None
+
+    def stop_worker(self, *_) -> None:
+        """Forward a stop to the model process. Terminating only the orchestrator
+        leaves a loaded Whisper or GigaAM decoding against a UI that says
+        Stopped, holding the memory a restarted run needs."""
+        worker = self.worker
+        if worker and worker.poll() is None:
+            worker.terminate()
+            try:
+                worker.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                worker.kill()
+        sys.exit(143)
 
     def _consume(self, line: str, engine: str) -> None:
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError:
+        row = self._parse(line, engine)
+        if row is None:
             return
         if row.get("event") == "decode":
             self.decoded[(row["file"], row["config"])] = row
@@ -116,6 +140,25 @@ class Runner:
                 # remaining block; carrying on would bury the whole corpus.
                 self.fatal = f"{engine}/{row.get('config')}: {row.get('error')}"
             emit({**row, "engine": engine})
+
+    def _parse(self, line: str, engine: str) -> dict | None:
+        """Recover the event even when engine noise shares its line.
+
+        Merging stderr into stdout cures the pipe deadlock but means a flood
+        with no trailing newline — a tqdm bar redraws with \r, not \n — arrives
+        fused to the event that follows it. Retrying from the last opening brace
+        costs nothing and stops a progress bar from hiding a `fatal`."""
+        for candidate in (line, line[line.rfind("{"):] if "{" in line else ""):
+            try:
+                parsed = json.loads(candidate)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if isinstance(parsed, dict):
+                return parsed
+        text = line.strip()
+        if text:
+            self.noise = (self.noise + [text[:200]])[-20:]
+        return None
 
     def candidates(self, name: str, configs: list[str]) -> dict[str, str | None]:
         found = {}

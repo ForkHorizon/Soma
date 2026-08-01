@@ -18,6 +18,7 @@ run owns an output directory at a time; see claim_lock.
 from __future__ import annotations
 
 import argparse
+import signal
 import sys
 from pathlib import Path
 
@@ -108,6 +109,8 @@ def parse(argv: list[str] | None):
 def main(argv: list[str] | None = None) -> int:
     args = parse(argv)
     runner = Runner(args)
+    for received in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(received, runner.stop_worker)
     lock = args.out / "run.lock"
     if not claim_lock(lock):
         emit({"event": "fatal", "config": "orchestrator",

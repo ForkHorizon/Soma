@@ -48,6 +48,8 @@ final class GroundTruthRunner: ObservableObject {
 
     private var process: Process?
     private var buffer = ""
+    /// Last few non-JSON lines from the child, so a failure can say what broke.
+    private var diagnostics: [String] = []
 
     var progress: Double { files > 0 ? Double(decided) / Double(files) : 0 }
     var remaining: Int { max(0, files - decided) }
@@ -129,6 +131,7 @@ final class GroundTruthRunner: ObservableObject {
     func start(asr: ASRManager, bestOf: Int, thorough: Bool = false, adjudicateOnly: Bool = false) {
         guard !isRunning else { return }
         failure = nil
+        diagnostics = []
         loadExistingVerdicts()
         let script = repoRoot.appendingPathComponent("Scripts/ground_truth_build.py")
         guard FileManager.default.fileExists(atPath: script.path) else {
@@ -159,14 +162,18 @@ final class GroundTruthRunner: ObservableObject {
 
         let pipe = Pipe()
         task.standardOutput = pipe
-        task.standardError = FileHandle.nullDevice
+        // The child merges its own stderr into stdout, so a crash arrives on the
+        // same stream as progress. Discarding it here is what let a Python
+        // syntax, path or permission failure report "Finished".
+        task.standardError = pipe
         pipe.fileHandleForReading.readabilityHandler = { handle in
             let chunk = String(decoding: handle.availableData, as: UTF8.self)
             guard !chunk.isEmpty else { return }
             Task { @MainActor [weak self] in self?.absorb(chunk) }
         }
-        task.terminationHandler = { _ in
-            Task { @MainActor [weak self] in self?.finish() }
+        task.terminationHandler = { finished in
+            let status = finished.terminationStatus
+            Task { @MainActor [weak self] in self?.finish(status: status) }
         }
         try task.run()
         process = task
@@ -195,12 +202,21 @@ final class GroundTruthRunner: ObservableObject {
         stage = "Stopped — rerun resumes where this left off"
     }
 
-    private func finish() {
+    /// A run that exits non-zero has NOT finished, however the counters look.
+    /// Basing the message on those alone reported success for a child that never
+    /// decoded anything.
+    private func finish(status: Int32) {
         guard isRunning else { return }
         process = nil
         isRunning = false
-        stage = remaining == 0 ? "Finished" : "Ended early — rerun resumes where this left off"
         loadExistingVerdicts()   // picks up candidates and term proposals for the review queue
+        if status != 0 {
+            let tail = diagnostics.suffix(3).joined(separator: " | ")
+            failure = "the run exited with status \(status)" + (tail.isEmpty ? "" : ": \(tail)")
+            stage = "Failed — nothing was lost; a rerun resumes from the last verdict"
+            return
+        }
+        stage = remaining == 0 ? "Finished" : "Ended early — rerun resumes where this left off"
     }
 
     // MARK: Progress events
@@ -218,7 +234,11 @@ final class GroundTruthRunner: ObservableObject {
         guard let data = line.data(using: .utf8),
               let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let name = event["event"] as? String
-        else { return }
+        else {
+            let text = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty { diagnostics = (diagnostics + [String(text.prefix(200))]).suffix(10) }
+            return
+        }
         switch name {
         case "plan":
             files = event["files"] as? Int ?? files
