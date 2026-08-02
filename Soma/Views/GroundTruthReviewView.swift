@@ -109,30 +109,19 @@ struct GroundTruthReviewDetail: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                // The disputed seconds first, because that is the question being
-                // asked; the full recording stays one click away for context.
-                if let span = item.span {
-                    Button { asr.togglePlayback(audioURL, from: span.lowerBound, to: span.upperBound) } label: {
-                        Label(isPlaying ? "Stop" : "Play the disputed \(Int((span.upperBound - span.lowerBound).rounded())) s",
-                              systemImage: isPlaying ? "stop.fill" : "play.circle.fill")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    Button("Whole recording") { asr.togglePlayback(audioURL) }
-                        .buttonStyle(.bordered).controlSize(.small)
-                    Text(String(format: "at %.1f–%.1f s", span.lowerBound, span.upperBound))
-                        .font(.caption2).foregroundStyle(.secondary)
-                } else {
-                    Button { asr.togglePlayback(audioURL) } label: {
-                        Label(isPlaying ? "Stop" : "Play the original",
-                              systemImage: isPlaying ? "stop.fill" : "play.circle.fill")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                }
-            }
-            .disabled(!FileManager.default.fileExists(atPath: audioURL.path))
+            // One button per disputed cluster. A single range could not work:
+            // the disagreements scatter, so it either began after the first
+            // disputed word or swallowed the whole recording.
+            FlowingSpots(spots: item.spots, isPlaying: isPlaying,
+                         play: { spot in
+                             // Stop first: togglePlayback would read a second
+                             // click on the same recording as "stop", so jumping
+                             // from spot 1 to spot 2 would fall silent instead.
+                             asr.stopPlayback()
+                             asr.togglePlayback(audioURL, from: spot.lowerBound, to: spot.upperBound)
+                         },
+                         playAll: { asr.togglePlayback(audioURL) })
+                .disabled(!FileManager.default.fileExists(atPath: audioURL.path))
 
             Text("Coloured words are where this transcript disagrees with the others; the rest is common to all of them.")
                 .font(.caption2).foregroundStyle(.secondary)
@@ -159,7 +148,12 @@ struct GroundTruthReviewDetail: View {
 
     /// Computed once per recording, not per candidate: every transcript is
     /// marked against the same anchor, so the highlights line up across them.
-    private var marked: [String: GroundTruthDiff.Marked] { GroundTruthDiff.mark(ordered) }
+    private var marked: [String: GroundTruthDiff.Marked] {
+        // Anchored on the tier-one decode, the same text the clip timings come
+        // from, so a coloured word and the audio that plays answer the same
+        // question. They used to be computed against different candidates.
+        GroundTruthDiff.mark(ordered, anchor: "w-greedy")
+    }
 
     private func candidate(names: [String], text: String) -> some View {
         let lead = names[0]
@@ -212,6 +206,44 @@ struct GroundTruthReviewDetail: View {
                     onGlossaryChanged()
                 }
                 .buttonStyle(.bordered).controlSize(.small)
+            }
+        }
+    }
+}
+
+
+/// The disputed clips plus the whole recording, wrapped so a recording with
+/// eight scattered disagreements does not push its transcripts off screen.
+private struct FlowingSpots: View {
+    let spots: [ClosedRange<Double>]
+    let isPlaying: Bool
+    let play: (ClosedRange<Double>) -> Void
+    let playAll: () -> Void
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            row
+            ScrollView(.horizontal, showsIndicators: false) { row }
+        }
+    }
+
+    private var row: some View {
+        HStack(spacing: 6) {
+            ForEach(Array(spots.enumerated()), id: \.offset) { index, spot in
+                Button {
+                    play(spot)
+                } label: {
+                    Text(String(format: "%d · %.1fs", index + 1, spot.lowerBound))
+                        .font(.caption2).monospacedDigit()
+                }
+                .buttonStyle(.borderedProminent).controlSize(.small)
+            }
+            if spots.isEmpty {
+                Button(isPlaying ? "Stop" : "Play the original") { playAll() }
+                    .buttonStyle(.borderedProminent).controlSize(.small)
+            } else {
+                Button(isPlaying ? "Stop" : "Whole recording") { playAll() }
+                    .buttonStyle(.bordered).controlSize(.small)
             }
         }
     }

@@ -12,9 +12,9 @@ struct GroundTruthVerdict: Identifiable, Hashable {
     /// Cross-script pairs this file would need confirmed before the engines
     /// could agree — proposals only, never applied on their own.
     let terms: [TermPair]
-    /// Seconds of audio the disagreement actually falls in, when the tier-one
-    /// decode produced word timestamps. Nil means play the whole recording.
-    let span: ClosedRange<Double>?
+    /// One clip per disputed word cluster, from the tier-one decode's word
+    /// timestamps. Empty means nothing narrower than the whole recording.
+    let spots: [ClosedRange<Double>]
     var id: String { file }
 
     var isReview: Bool { status == "review" }
@@ -102,12 +102,14 @@ final class GroundTruthRunner: ObservableObject {
                                   reason: object["reason"] as? String ?? "",
                                   edits: object["edits"] as? Int ?? 0,
                                   candidates: object["candidates"] as? [String: String] ?? [:],
-                                  terms: pairs, span: Self.span(object["span_seconds"]))
+                                  terms: pairs, spots: Self.spots(object["spot_seconds"]))
     }
 
-    private static func span(_ raw: Any?) -> ClosedRange<Double>? {
-        guard let pair = raw as? [Double], pair.count == 2, pair[1] > pair[0] else { return nil }
-        return pair[0]...pair[1]
+    private static func spots(_ raw: Any?) -> [ClosedRange<Double>] {
+        (raw as? [[Double]] ?? []).compactMap { pair in
+            guard pair.count == 2, pair[1] > pair[0] else { return nil }
+            return pair[0]...pair[1]
+        }
     }
 
     private func recount() {
@@ -264,7 +266,7 @@ final class GroundTruthRunner: ObservableObject {
         verdicts.append(GroundTruthVerdict(file: file, status: status,
                                            reason: event["reason"] as? String ?? "",
                                            edits: event["edits"] as? Int ?? 0,
-                                           candidates: [:], terms: [], span: nil))
+                                           candidates: [:], terms: [], spots: []))
     }
 
     private func applyTotals(_ event: [String: Any]) {

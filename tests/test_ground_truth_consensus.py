@@ -191,12 +191,29 @@ def test_the_weaker_head_cannot_veto_what_the_stronger_one_settles():
     assert verdict["confidence"] == "medium"     # one head dissenting costs the high grade
 
 
-def test_a_review_verdict_points_at_the_words_under_dispute():
-    # The span is what lets the panel play four seconds instead of two minutes.
+def test_a_review_verdict_points_at_each_disputed_spot():
+    # One range per recording could not work: disagreements scatter, so a
+    # min-max either starts after the first disputed word or covers everything.
     verdict = decide({"w-greedy": "раз два три четыре пять", "gigaam": "раз два сто четыре пять"},
                      None, SPEECH)
     assert verdict["status"] == "review"
-    assert verdict["span"] == [2.0, 2.0]
+    assert verdict["spots"] == [[2, 2]]
+
+
+def test_scattered_disagreements_become_separate_spots():
+    # The case that exposed the old behaviour: the first disputed word sat at
+    # index 0 and the clip began several seconds in, past it.
+    verdict = decide({"w-greedy": "альфа два три четыре пять шесть семь восемь омега",
+                      "gigaam": "бета два три четыре пять шесть семь восемь сигма"},
+                     None, SPEECH)
+    assert verdict["spots"] == [[0, 0], [8, 8]], "the ends must not be merged into one range"
+
+
+def test_neighbouring_disagreements_share_one_spot():
+    # Separate buttons for adjacent words are worse than one slightly wider clip.
+    verdict = decide({"w-greedy": "раз два три четыре пять",
+                      "gigaam": "раз сто сорок четыре пять"}, None, SPEECH)
+    assert verdict["spots"] == [[1, 2]]
 
 
 def test_evenly_split_gigaam_heads_go_to_a_human_not_to_the_alphabet():

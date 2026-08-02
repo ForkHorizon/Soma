@@ -13,6 +13,7 @@ venv, and the voting rules are the part worth unit-testing.
 """
 from __future__ import annotations
 
+import difflib
 import math
 
 from ground_truth_text import (Glossary, agrees, cross_script,   # noqa: F401
@@ -121,7 +122,7 @@ def _adjudicate(candidates: dict[str, str | None], norm: dict[str, str],
             else "no engine pair agrees"
         return _verdict("review", "", f"{hint} ({edits} word(s) differ, best WER {closest[0]:.3f} via {closest[1]})",
                         candidates=candidates, wer=round(closest[0], 4), edits=edits, terms=terms,
-                        span=_disputed_span(candidates, reference, PRIMARY, glossary))
+                        spots=disputed_spots(candidates, glossary))
 
     text = candidates[agreeing[0]] or ""
     if repeats_itself(norm[agreeing[0]]):
@@ -136,7 +137,7 @@ def _adjudicate(candidates: dict[str, str | None], norm: dict[str, str],
     if len(agreeing) < 2 and not exact:
         return _verdict("review", "", f"only {agreeing[0]} matches {best_russian}; the other whisper decodes disagree",
                         candidates=candidates, wer=round(closest[0], 4), edits=edits, terms=terms,
-                        span=_disputed_span(candidates, reference, PRIMARY, glossary))
+                        spots=disputed_spots(candidates, glossary))
     strong = exact or (len(agreeing) >= 3 and heads == len(russian))
     return _verdict("accepted", text,
                     f"{best_russian} matches {len(agreeing)}/{len(tried)} whisper decodes "
@@ -166,30 +167,43 @@ def _deadlocked_heads(scored: list[tuple[int, str]], norm: dict[str, str],
                     f"the two gigaam heads read this differently and draw {top} whisper "
                     f"decode(s) each — the independent evidence is split, so a human decides",
                     candidates=candidates, wer=1.0, edits=top, terms=[],
-                    span=_disputed_span(candidates, norm[GIGAAM], PRIMARY, glossary))
+                    spots=disputed_spots(candidates, glossary))
 
 
-def _disputed_span(candidates: dict[str, str | None], reference: str,
-                   closest: str, glossary: Glossary | None) -> list[float] | None:
-    """Word index range of the disagreement in the closest Whisper decode.
+def disputed_spots(candidates: dict[str, str | None], glossary: Glossary | None) -> list[list[int]]:
+    """Word-index clusters in the tier-one decode that ANY engine disagrees on.
 
-    One wrong word in a two-minute recording currently costs a full listen. The
-    orchestrator turns these indices into seconds using the tier-one word
-    timestamps, so the panel can play just the seconds in question."""
-    import difflib
+    One min-max range was the wrong shape. Disagreements are usually scattered,
+    so a single span either lies about where they are or swallows the whole
+    recording — and it was computed against one engine while the panel
+    highlighted the union of all of them, so the coloured word and the audio
+    that played were answering different questions.
 
-    hypothesis = normalize(candidates.get(closest) or "").split()
-    reference_words = reference.split()
-    marks = [j for tag, i1, i2, j1, j2 in
-             difflib.SequenceMatcher(a=reference_words, b=hypothesis).get_opcodes()
-             if tag != "equal"
-             for j in range(j1, max(j2, j1 + 1))]
-    unforgiven = [j for j in marks if j >= len(hypothesis)
-                  or not any(same_word(r, hypothesis[j], glossary) for r in reference_words)]
-    interesting = unforgiven or marks
-    if not interesting:
-        return None
-    return [float(min(interesting)), float(max(interesting))]
+    Indices are the tier-one decode's, because that is the only pass carrying
+    word timestamps. Neighbours within three words join one cluster: separate
+    buttons for adjacent words would be worse than one slightly wider clip."""
+    primary = normalize(candidates.get(PRIMARY) or "").split()
+    if not primary:
+        return []
+    disputed: set[int] = set()
+    for name, text in candidates.items():
+        if name == PRIMARY or text is None:
+            continue
+        other = normalize(text).split()
+        for tag, i1, i2, _, _ in difflib.SequenceMatcher(a=primary, b=other).get_opcodes():
+            if tag != "equal":
+                disputed.update(range(i1, min(i2, len(primary))))
+    if not disputed:
+        return []
+    clusters, run = [], [min(disputed)]
+    for index in sorted(disputed)[1:]:
+        if index - run[-1] <= 3:
+            run.append(index)
+        else:
+            clusters.append([run[0], run[-1]])
+            run = [index]
+    clusters.append([run[0], run[-1]])
+    return clusters
 
 
 def needs_second_tier(candidates: dict[str, str | None], glossary: Glossary | None = None) -> bool:

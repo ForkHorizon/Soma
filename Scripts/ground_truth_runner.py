@@ -23,7 +23,7 @@ TIER_ONE = "w-greedy"
 TIER_TWO = "w-prompt,w-fallback,w-sample,w-offset"
 TIER_TWO_FASTER = "fw-beam"
 TIER_TWO_GIGAAM = "gigaam-ctc"
-SPAN_PADDING = 1.5
+SPOT_PADDING = 0.8
 
 
 def emit(obj: dict) -> None:
@@ -182,18 +182,25 @@ class Runner:
         row = self.decoded.get((name, PRIMARY)) or {}
         return {key: row[key] for key in ("no_speech", "peak_db", "avg_logprob") if key in row}
 
-    def span_seconds(self, name: str, span: list | None) -> list[float] | None:
-        """Turn disputed word indices into a clip the panel can play. Indices
-        are the tier-one decode's own; out-of-range ones widen the clip rather
-        than drop it, since a long clip still beats replaying two minutes."""
+    def spot_seconds(self, name: str, spots: list | None) -> list[list[float]] | None:
+        """Turn each disputed word cluster into its own clip.
+
+        One range per recording could not work: disagreements scatter, so a
+        single min-max either starts after the first disputed word or covers
+        everything. Indices are the tier-one decode's own, the only pass with
+        word timestamps; out-of-range ones widen a clip rather than drop it."""
         words = (self.decoded.get((name, PRIMARY)) or {}).get("words")
-        if not span or not words:
+        if not spots or not words:
             return None
-        first, last = int(span[0]), int(span[1])
-        first, last = max(0, min(first, len(words) - 1)), max(0, min(last, len(words) - 1))
-        start = max(0.0, float(words[first][1]) - SPAN_PADDING)
-        end = float(words[last][2]) + SPAN_PADDING
-        return [round(start, 2), round(end, 2)] if end > start else None
+        clips = []
+        for spot in spots:
+            first = max(0, min(int(spot[0]), len(words) - 1))
+            last = max(first, min(int(spot[1]), len(words) - 1))
+            start = max(0.0, float(words[first][1]) - SPOT_PADDING)
+            end = float(words[last][2]) + SPOT_PADDING
+            if end > start:
+                clips.append([round(start, 2), round(end, 2)])
+        return clips or None
 
     def can_settle(self, name: str) -> bool:
         """A verdict is final, so it may only be written once every engine has
@@ -221,9 +228,9 @@ class Runner:
             return None
         every = [TIER_ONE, *TIER_TWO.split(","), TIER_TWO_FASTER, "gigaam", TIER_TWO_GIGAAM]
         verdict = decide(self.candidates(path.name, every), self.glossary, self.metrics(path.name))
-        seconds = self.span_seconds(path.name, verdict.pop("span", None))
-        if seconds:
-            verdict["span_seconds"] = seconds
+        clips = self.spot_seconds(path.name, verdict.pop("spots", None))
+        if clips:
+            verdict["spot_seconds"] = clips
         return self.write(path, verdict, publish)
 
 

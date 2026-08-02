@@ -28,8 +28,9 @@ enum GroundTruthDiff {
     /// found on the anchor's side back into the anchor itself — otherwise the
     /// transcript everything is compared against would be the one place a
     /// disagreement stays invisible.
-    static func mark(_ candidates: [(String, String)]) -> [String: Marked] {
-        guard let anchorName = candidates.first(where: { !$0.1.isEmpty })?.0 else {
+    static func mark(_ candidates: [(String, String)], anchor preferred: String? = nil) -> [String: Marked] {
+        let named = preferred.flatMap { name in candidates.first { $0.0 == name && !$0.1.isEmpty }?.0 }
+        guard let anchorName = named ?? candidates.first(where: { !$0.1.isEmpty })?.0 else {
             return candidates.reduce(into: [:]) { $0[$1.0] = Marked(words: [], differing: []) }
         }
         let anchor = words(of: candidates.first { $0.0 == anchorName }?.1 ?? "")
