@@ -52,6 +52,25 @@ enum GroundTruthDiff {
         return marked
     }
 
+    /// Byte-identical transcripts folded into one entry, first occurrence
+    /// keeping its position.
+    ///
+    /// Grouping is on the EXACT text, not the normalised form: two candidates
+    /// that differ only in punctuation still have to be told apart, because
+    /// whichever one is adopted becomes the reference and its punctuation goes
+    /// with it. Only transcripts that are the same string are the same choice.
+    static func group(_ candidates: [(String, String)]) -> [(names: [String], text: String)] {
+        var groups: [(names: [String], text: String)] = []
+        for (name, text) in candidates {
+            if let index = groups.firstIndex(where: { $0.text == text }) {
+                groups[index].names.append(name)
+            } else {
+                groups.append((names: [name], text: text))
+            }
+        }
+        return groups
+    }
+
     private static func words(of text: String) -> [String] {
         text.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
     }

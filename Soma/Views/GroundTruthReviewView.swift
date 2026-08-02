@@ -136,8 +136,8 @@ struct GroundTruthReviewDetail: View {
 
             Text("Coloured words are where this transcript disagrees with the others; the rest is common to all of them.")
                 .font(.caption2).foregroundStyle(.secondary)
-            ForEach(ordered, id: \.0) { name, text in
-                candidate(name: name, text: text)
+            ForEach(GroundTruthDiff.group(ordered), id: \.text) { group in
+                candidate(names: group.names, text: group.text)
             }
 
             if !item.terms.isEmpty {
@@ -161,21 +161,26 @@ struct GroundTruthReviewDetail: View {
     /// marked against the same anchor, so the highlights line up across them.
     private var marked: [String: GroundTruthDiff.Marked] { GroundTruthDiff.mark(ordered) }
 
-    private func candidate(name: String, text: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+    private func candidate(names: [String], text: String) -> some View {
+        let lead = names[0]
+        let independent = names.contains { $0.hasPrefix("gigaam") }
+        return VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(name).font(.caption2).monospaced()
-                    .foregroundStyle(name.hasPrefix("gigaam") ? .blue : .secondary)
+                Text(names.joined(separator: " · ")).font(.caption2).monospaced()
+                    .foregroundStyle(independent ? .blue : .secondary)
+                if names.count > 1 {
+                    Text("identical").font(.caption2).foregroundStyle(.secondary)
+                }
                 Spacer()
                 Button("Use this as the reference") {
-                    GroundTruthGold.write(file: item.file, text: text, source: name)
+                    GroundTruthGold.write(file: item.file, text: text, source: names.joined(separator: "+"))
                     asr.stopPlayback()
                     onSettled()
                 }
                 .buttonStyle(.link).font(.caption2)
             }
-            GroundTruthDiff.render(marked[name] ?? .init(words: [], differing: []),
-                                   tint: name.hasPrefix("gigaam") ? .blue : .orange)
+            GroundTruthDiff.render(marked[lead] ?? .init(words: [], differing: []),
+                                   tint: independent ? .blue : .orange)
                 .font(.callout)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)

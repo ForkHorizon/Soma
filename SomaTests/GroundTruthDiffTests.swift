@@ -42,3 +42,28 @@ final class GroundTruthDiffTests: XCTestCase {
         XCTAssertEqual(marked["w-greedy"]?.differing, [0, 1], "nothing to agree with, so all of it differs")
     }
 }
+
+extension GroundTruthDiffTests {
+    /// Three of the eight engines routinely land on the same string, so the
+    /// reviewer reads the same paragraph three times before reaching a
+    /// difference.
+    func testIdenticalTranscriptsCollapseIntoOneEntry() {
+        let groups = GroundTruthDiff.group([
+            ("gigaam", "привет мир"), ("gigaam-ctc", "привет мир"),
+            ("w-greedy", "привет мор"), ("fw-beam", "привет мир"),
+        ])
+        XCTAssertEqual(groups.count, 2)
+        XCTAssertEqual(groups[0].names, ["gigaam", "gigaam-ctc", "fw-beam"])
+        XCTAssertEqual(groups[1].names, ["w-greedy"])
+        XCTAssertEqual(groups[0].text, "привет мир", "first occurrence keeps its position")
+    }
+
+    /// Punctuation is not cosmetic here: whichever transcript is adopted
+    /// becomes the reference, and its punctuation goes with it.
+    func testPunctuationDifferencesStaySeparateChoices() {
+        let groups = GroundTruthDiff.group([
+            ("gigaam", "привет мир"), ("w-prompt", "Привет, мир."),
+        ])
+        XCTAssertEqual(groups.count, 2)
+    }
+}
