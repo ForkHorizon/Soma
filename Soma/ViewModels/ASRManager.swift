@@ -65,7 +65,6 @@ final class ASRManager: ObservableObject {
     @Published var lastTranscriptionSource: ASRTranscriptionSource = .inApp
     @Published var voiceServerConnectionState: VoiceServerConnectionState = .unknown
     @Published var voiceServerStatusDetail = "Not checked"
-    @Published var inputLevel: Double = 0
     @Published var importJobs: [MediaImportJob] = []
     @Published var importHistory: [MediaImportHistory] = []
 
@@ -155,8 +154,6 @@ final class ASRManager: ObservableObject {
     var remoteCapabilityIdentity = ""
     var recordingBeganAt: Date?
     var receivedAudioSignal = false
-    var smoothedInputLevel = 0.0
-    var lastInputLevelPublishTime = 0.0
     let audioQueue = DispatchQueue(label: "soma.asr.audio")
     let targetSampleRate = 16000.0
     let initialRecordingsLimit = 5

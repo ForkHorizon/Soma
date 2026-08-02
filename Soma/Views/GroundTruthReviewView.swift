@@ -134,6 +134,8 @@ struct GroundTruthReviewDetail: View {
             }
             .disabled(!FileManager.default.fileExists(atPath: audioURL.path))
 
+            Text("Coloured words are where this transcript disagrees with the others; the rest is common to all of them.")
+                .font(.caption2).foregroundStyle(.secondary)
             ForEach(ordered, id: \.0) { name, text in
                 candidate(name: name, text: text)
             }
@@ -155,6 +157,10 @@ struct GroundTruthReviewDetail: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
+    /// Computed once per recording, not per candidate: every transcript is
+    /// marked against the same anchor, so the highlights line up across them.
+    private var marked: [String: GroundTruthDiff.Marked] { GroundTruthDiff.mark(ordered) }
+
     private func candidate(name: String, text: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
@@ -168,8 +174,10 @@ struct GroundTruthReviewDetail: View {
                 }
                 .buttonStyle(.link).font(.caption2)
             }
-            Text(text.isEmpty ? "(nothing)" : text)
-                .font(.callout).textSelection(.enabled)
+            GroundTruthDiff.render(marked[name] ?? .init(words: [], differing: []),
+                                   tint: name.hasPrefix("gigaam") ? .blue : .orange)
+                .font(.callout)
+                .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
