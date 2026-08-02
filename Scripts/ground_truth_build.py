@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ground_truth_consensus import needs_second_tier   # noqa: E402
+from ground_truth_consensus import PRIMARY, needs_second_tier   # noqa: E402
 from ground_truth_corpus import (claim_lock, has_audio, pick,   # noqa: E402
                                  read_rows, release_lock, replace_atomically)
 from ground_truth_runner import (TIER_ONE, TIER_TWO, TIER_TWO_FASTER,   # noqa: E402
@@ -72,13 +72,18 @@ def readjudicate(runner: Runner, files: list[Path]) -> int:
     than it started."""
     previous = read_rows(runner.verdicts)
     runner.done.clear()
+    # Verdicts reached without any decode — the zero-frame preflight — have
+    # nothing to re-vote and would simply vanish from a rebuilt set, taking the
+    # count with them. They are carried across unchanged.
+    undecodable = [row for row in previous if (row["file"], PRIMARY) not in runner.decoded]
+    runner.done.update({row["file"]: row for row in undecodable})
     decided = [p for p in files if (p.name, PRIMARY) in runner.decoded]
     emit({"event": "plan", "files": len(files), "pending": 0, "blocks": 0,
           "tier_one": TIER_ONE,
           "tier_two": ",".join([TIER_TWO, TIER_TWO_FASTER, TIER_TWO_GIGAAM])})
     emit({"event": "stage", "text": f"Re-voting {len(decided)} decoded recordings under the glossary"})
     rebuilt = [runner.settle(path, publish=False) for path in decided]
-    rows = [row for row in rebuilt if row]
+    rows = undecodable + [row for row in rebuilt if row]
     if not rows and previous:
         emit({"event": "warn", "text": "re-vote produced nothing; keeping the previous verdicts"})
         runner.done = {row["file"]: row for row in previous}
