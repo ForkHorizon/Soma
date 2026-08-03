@@ -54,10 +54,39 @@ final class GroundTruthRunner: ObservableObject {
     var progress: Double { files > 0 ? Double(decided) / Double(files) : 0 }
     var remaining: Int { max(0, files - decided) }
 
-    /// Cheapest review cases first: most disagreements come down to one or two
-    /// words, and clearing those first is what makes the queue finishable.
-    var reviewQueue: [GroundTruthVerdict] {
-        verdicts.filter(\.isReview).sorted { ($0.edits, $0.file) < ($1.edits, $1.file) }
+    var reviewQueue: [GroundTruthVerdict] { Self.stratified(verdicts.filter(\.isReview)) }
+
+    /// Rounds of one file from each difficulty band, easiest first within a
+    /// round.
+    ///
+    /// Sorting purely by cost put all 200 one-and-two-word cases at the top,
+    /// so working down the list built a sample of nothing but easy recordings —
+    /// and easy recordings are where every decode configuration looks alike.
+    /// The queue exists to measure those configurations against each other, so
+    /// it has to stay representative at whatever point the listener stops,
+    /// which is the realistic outcome: 589 files is hours, and roughly 200 is
+    /// already enough for the interval this measurement needs.
+    nonisolated static func stratified(_ items: [GroundTruthVerdict]) -> [GroundTruthVerdict] {
+        let bands = Dictionary(grouping: items) { band($0.edits) }
+            .sorted { $0.key < $1.key }
+            .map { $0.value.sorted { ($0.edits, $0.file) < ($1.edits, $1.file) } }
+        var mixed: [GroundTruthVerdict] = []
+        var depth = 0
+        while mixed.count < items.count {
+            for band in bands where depth < band.count { mixed.append(band[depth]) }
+            depth += 1
+        }
+        return mixed
+    }
+
+    nonisolated static func band(_ edits: Int) -> Int {
+        switch edits {
+        case ...1: return 0
+        case 2: return 1
+        case 3...5: return 2
+        case 6...10: return 3
+        default: return 4
+        }
     }
 
     static var outputDirectory: URL {

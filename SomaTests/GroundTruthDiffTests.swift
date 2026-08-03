@@ -67,3 +67,33 @@ extension GroundTruthDiffTests {
         XCTAssertEqual(groups.count, 2)
     }
 }
+
+final class GroundTruthQueueTests: XCTestCase {
+    private func verdict(_ file: String, edits: Int) -> GroundTruthVerdict {
+        GroundTruthVerdict(file: file, status: "review", reason: "", edits: edits,
+                           candidates: [:], terms: [], spots: [])
+    }
+
+    /// Sorting by cost alone put every one- and two-word case first, so a
+    /// listener who stopped partway — the realistic outcome at 589 files —
+    /// ended up with a sample of only easy recordings, which is exactly where
+    /// every decode configuration looks the same.
+    func testTheQueueStaysRepresentativeWhereverYouStop() {
+        let items = (1...5).flatMap { band in
+            (1...4).map { verdict("b\(band)-\($0).wav", edits: [1, 2, 4, 8, 20][band - 1]) }
+        }
+        let queue = GroundTruthRunner.stratified(items)
+        let firstRound = Set(queue.prefix(5).map { GroundTruthRunner.band($0.edits) })
+        XCTAssertEqual(firstRound, [0, 1, 2, 3, 4], "the first five must span every band")
+        XCTAssertEqual(queue.count, items.count, "nothing may be dropped")
+        XCTAssertEqual(Set(queue.map(\.file)).count, items.count, "nor duplicated")
+    }
+
+    /// Bands run out at different rates; the rest must still all appear.
+    func testUnevenBandsDrainWithoutLoss() {
+        let items = [verdict("a.wav", edits: 1), verdict("b.wav", edits: 1),
+                     verdict("c.wav", edits: 1), verdict("d.wav", edits: 20)]
+        let queue = GroundTruthRunner.stratified(items)
+        XCTAssertEqual(queue.map(\.file), ["a.wav", "d.wav", "b.wav", "c.wav"])
+    }
+}

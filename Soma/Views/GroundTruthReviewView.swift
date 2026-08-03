@@ -37,7 +37,7 @@ struct GroundTruthReviewList: View {
             }
             .padding(.top, 8)
         } label: {
-            Text("Needs review (\(pending.count)) — fewest differing words first")
+            Text("Needs review (\(pending.count)) — mixed difficulty, so stopping anywhere still leaves a fair sample")
         }
         .padding(14)
         .background(Color.primary.opacity(0.04))
