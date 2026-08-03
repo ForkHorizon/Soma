@@ -265,3 +265,24 @@ def test_a_short_genuine_repetition_is_not_a_loop():
     # recordings into a queue that only works while it stays finishable.
     assert decide({"w-greedy": "да да да", "gigaam": "да да да"},
                   None, SPEECH)["status"] == "accepted"
+
+
+def test_how_a_number_is_written_is_not_a_disagreement():
+    # Whisper writes digits, GigaAM writes words. The engines agreed on the
+    # number and differed only on notation in a third of the review queue.
+    verdict = decide({"w-greedy": "последних 24 часа", "gigaam": "последних двадцать четыре часа"},
+                     None, SPEECH)
+    assert verdict["status"] == "accepted"
+
+
+def test_a_different_number_still_is_one():
+    # "5" against "6" is a question about what was said, and stays a question.
+    assert decide({"w-greedy": "нужно 5 штук", "gigaam": "нужно 6 штук"},
+                  None, SPEECH)["status"] == "review"
+
+
+def test_separate_digits_are_not_summed_into_agreement():
+    # Spelled numerals fold ("два три" -> 5) but digit tokens do not, so the
+    # asymmetry can only miss a unification, never invent one.
+    assert decide({"w-greedy": "возьми 2 3", "gigaam": "возьми два три"},
+                  None, SPEECH)["status"] == "review"

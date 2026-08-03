@@ -52,10 +52,61 @@ def same_word(reference_word: str, hypothesis_word: str, glossary: Glossary | No
     return hypothesis_word in (glossary or {}).get(reference_word, ())
 
 
+_UNITS = {"ноль": 0, "один": 1, "одна": 1, "одну": 1, "два": 2, "две": 2, "три": 3, "четыре": 4,
+          "пять": 5, "шесть": 6, "семь": 7, "восемь": 8, "девять": 9, "десять": 10,
+          "одиннадцать": 11, "двенадцать": 12, "тринадцать": 13, "четырнадцать": 14,
+          "пятнадцать": 15, "шестнадцать": 16, "семнадцать": 17, "восемнадцать": 18,
+          "девятнадцать": 19, "двадцать": 20, "тридцать": 30, "сорок": 40, "пятьдесят": 50,
+          "шестьдесят": 60, "семьдесят": 70, "восемьдесят": 80, "девяносто": 90, "сто": 100,
+          "двести": 200, "триста": 300, "четыреста": 400, "пятьсот": 500, "шестьсот": 600,
+          "семьсот": 700, "восемьсот": 800, "девятьсот": 900}
+_SCALE = {"тысяча": 1000, "тысячи": 1000, "тысяч": 1000,
+          "миллион": 10 ** 6, "миллиона": 10 ** 6, "миллионов": 10 ** 6}
+
+
+def canonical_numbers(words: list[str]) -> list[str]:
+    """Fold spelled-out numerals to digits so notation stops reading as
+    disagreement.
+
+    "5" against "6" is a question about what was said; "24" against "двадцать
+    четыре" is a question about how to write it, and only the first is worth a
+    person's attention. Whisper writes digits, GigaAM writes words, so the
+    engines differed on this in a third of the review queue while agreeing
+    perfectly on the number.
+
+    Digit tokens are deliberately NOT merged with each other: "2 3" stays two
+    tokens while "два три" folds to 5. The asymmetry only ever costs a missed
+    unification — it can never invent an agreement across the two notations,
+    which is the direction that would matter."""
+    folded: list[str] = []
+    index = 0
+    while index < len(words):
+        word = words[index]
+        if word.isdigit():
+            folded.append(str(int(word)))
+            index += 1
+            continue
+        if word not in _UNITS and word not in _SCALE:
+            folded.append(word)
+            index += 1
+            continue
+        total = group = 0
+        while index < len(words) and (words[index] in _UNITS or words[index] in _SCALE):
+            if words[index] in _SCALE:
+                group = (group or 1) * _SCALE[words[index]]
+                total += group
+                group = 0
+            else:
+                group += _UNITS[words[index]]
+            index += 1
+        folded.append(str(total + group))
+    return folded
+
+
 def unforgiven_edits(reference: str, hypothesis: str, glossary: Glossary | None = None) -> int:
     """Word-level edit distance where a substitution costs nothing if the
     glossary says the two words are the same word."""
-    ref, hyp = reference.split(), hypothesis.split()
+    ref, hyp = canonical_numbers(reference.split()), canonical_numbers(hypothesis.split())
     previous = list(range(len(hyp) + 1))
     for i, ref_word in enumerate(ref, start=1):
         current = [i]
@@ -87,7 +138,7 @@ def proposed_terms(reference: str, hypothesis: str, glossary: Glossary | None = 
 
 def wer(reference: str, hypothesis: str) -> float:
     """Levenshtein over words, normalised by reference length."""
-    ref, hyp = reference.split(), hypothesis.split()
+    ref, hyp = canonical_numbers(reference.split()), canonical_numbers(hypothesis.split())
     if not ref:
         return 0.0 if not hyp else 1.0
     previous = list(range(len(hyp) + 1))
