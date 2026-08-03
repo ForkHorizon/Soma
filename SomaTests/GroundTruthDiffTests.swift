@@ -58,11 +58,23 @@ extension GroundTruthDiffTests {
         XCTAssertEqual(groups[0].text, "привет мир", "first occurrence keeps its position")
     }
 
-    /// Punctuation is not cosmetic here: whichever transcript is adopted
-    /// becomes the reference, and its punctuation goes with it.
-    func testPunctuationDifferencesStaySeparateChoices() {
+    /// Three cards reading the same sentence with different commas is three
+    /// readings of one thing. WER strips punctuation, so which one is adopted
+    /// changes nothing that gets measured.
+    func testPunctuationAloneDoesNotSplitACard() {
         let groups = GroundTruthDiff.group([
-            ("gigaam", "привет мир"), ("w-prompt", "Привет, мир."),
+            ("gigaam", "хотя с другой стороны я не знаю"),
+            ("w-greedy", "Хотя с другой стороны я не знаю."),
+            ("w-sample", "Хотя, с другой стороны, я не знаю."),
+        ])
+        XCTAssertEqual(groups.count, 1)
+        XCTAssertEqual(groups[0].text, "Хотя, с другой стороны, я не знаю.",
+                       "the most punctuated variant is the one worth keeping")
+    }
+
+    func testDifferentWordsStillSplit() {
+        let groups = GroundTruthDiff.group([
+            ("gigaam", "привет мир"), ("w-greedy", "привет мор"),
         ])
         XCTAssertEqual(groups.count, 2)
     }

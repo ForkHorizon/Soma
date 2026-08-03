@@ -53,23 +53,39 @@ enum GroundTruthDiff {
         return marked
     }
 
-    /// Byte-identical transcripts folded into one entry, first occurrence
-    /// keeping its position.
+    /// Transcripts saying the same words folded into one entry, first
+    /// occurrence keeping its position.
     ///
-    /// Grouping is on the EXACT text, not the normalised form: two candidates
-    /// that differ only in punctuation still have to be told apart, because
-    /// whichever one is adopted becomes the reference and its punctuation goes
-    /// with it. Only transcripts that are the same string are the same choice.
+    /// Grouping ignores case and punctuation. It used to demand an exact
+    /// match, on the reasoning that whichever text is adopted carries its
+    /// punctuation into the reference — but the reference is measured with WER,
+    /// which strips punctuation, so that choice changes nothing and cost the
+    /// reviewer three readings of one sentence. Whether a comma belongs after
+    /// "Хотя" is a question for the cleanup stage, not for someone listening
+    /// for what was said.
+    ///
+    /// The kept text is the most punctuated variant in the group, since that is
+    /// the one worth having if the reference is ever read by a person.
     static func group(_ candidates: [(String, String)]) -> [(names: [String], text: String)] {
-        var groups: [(names: [String], text: String)] = []
+        var groups: [(names: [String], text: String, content: String)] = []
         for (name, text) in candidates {
-            if let index = groups.firstIndex(where: { $0.text == text }) {
+            let content = words(of: text).map(key).joined(separator: " ")
+            if let index = groups.firstIndex(where: { $0.content == content }) {
                 groups[index].names.append(name)
+                if polish(text) > polish(groups[index].text) { groups[index].text = text }
             } else {
-                groups.append((names: [name], text: text))
+                groups.append((names: [name], text: text, content: content))
             }
         }
-        return groups
+        return groups.map { (names: $0.names, text: $0.text) }
+    }
+
+    /// How finished a transcript looks: punctuation and capitals. GigaAM emits
+    /// neither, so this reliably prefers a Whisper rendering of the same words.
+    private static func polish(_ text: String) -> Int {
+        text.reduce(0) { count, character in
+            count + (character.isPunctuation || character.isUppercase ? 1 : 0)
+        }
     }
 
     private static func words(of text: String) -> [String] {
