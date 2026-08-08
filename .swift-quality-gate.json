@@ -22,7 +22,6 @@
     "out",
     "target",
     "vendor",
-    "scripts/swift-quality-gate.py",
     "*.designer.swift",
     "*.generated.*",
     "*.g.swift",

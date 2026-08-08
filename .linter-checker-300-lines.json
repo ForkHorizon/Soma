@@ -40,7 +40,6 @@
     "out",
     "target",
     "vendor",
-    "linter-checker-300-lines.py",
     "*.designer.cs",
     "*.generated.*",
     "*.g.cs",
