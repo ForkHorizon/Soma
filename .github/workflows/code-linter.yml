@@ -1,4 +1,4 @@
-name: Linter Checker 300 lines
+name: Code Linter
 
 on:
   pull_request:
@@ -21,13 +21,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: linter-checker-300-lines-${{ github.workflow }}-${{ github.ref }}
+  group: code-linter-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  readability:
-    uses: ForkHorizon/ci-gates/.github/workflows/readability.yml@main
+  code-linter:
+    uses: ForkHorizon/ci-gates/.github/workflows/code-linter.yml@main
     with:
       mode: ${{ inputs.mode || 'auto' }}
-      config: .linter-checker-300-lines.json
+      config: .code-linter.json
       runs-on: '["self-hosted", "macOS", "ARM64", "ci-scope-broker"]'
