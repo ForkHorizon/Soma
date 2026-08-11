@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# CI approval probe: harmless code-file comment; no runtime behavior change.
 """Portable readability gate for humans and AI coding agents.
 
 The checker intentionally uses only Python's standard library so this file can
