@@ -16,10 +16,13 @@ extension RusToPromptView {
             }
 
             HStack(spacing: 10) {
-                Toggle("Auto benchmark", isOn: Binding(
-                    get: { queueManager.settings.autoEnqueueEnabled },
-                    set: { queueManager.setAutoEnqueueEnabled($0) }
-                ))
+                Toggle(
+                    "Auto benchmark",
+                    isOn: Binding(
+                        get: { queueManager.settings.autoEnqueueEnabled },
+                        set: { queueManager.setAutoEnqueueEnabled($0) }
+                    )
+                )
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .help("After a successful Rus to Prompt transform, enqueue the real Russian prompt for local staged benchmarking.")
@@ -46,7 +49,9 @@ extension RusToPromptView {
                         ollama.launchOllama()
                     }
                 } label: {
-                    Label(ollama.isOllamaRunning ? "Refresh" : "Launch", systemImage: ollama.isOllamaRunning ? "arrow.clockwise" : "play.circle")
+                    Label(
+                        ollama.isOllamaRunning ? "Refresh" : "Launch",
+                        systemImage: ollama.isOllamaRunning ? "arrow.clockwise" : "play.circle")
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -65,7 +70,6 @@ extension RusToPromptView {
         .padding(.vertical, 12)
         .background(Color(NSColor.windowBackgroundColor))
     }
-
 
     var transformButton: some View {
         Button {
@@ -91,7 +95,6 @@ extension RusToPromptView {
         .keyboardShortcut(.return, modifiers: .command)
         .help(transformDisabled ? transformDisabledReason : "Transform prompt")
     }
-
 
     var inputPane: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -138,7 +141,6 @@ extension RusToPromptView {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.12)))
     }
 
-
     var outputPane: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
@@ -174,7 +176,6 @@ extension RusToPromptView {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.12)))
     }
 
-
     var statusLine: some View {
         HStack(spacing: 8) {
             if viewModel.isBusy {
@@ -194,13 +195,14 @@ extension RusToPromptView {
                 .truncationMode(.middle)
             if let confidence = viewModel.confidenceResult?.confidence {
                 StatusChip(text: String(format: "%.0f%%", confidence * 100), tone: confidenceTone(confidence))
-                    .help("Confidence score from \(viewModel.confidenceResult?.model ?? viewModel.confidenceModel), reasoning \(viewModel.confidenceResult?.reasoningEffort ?? RusToPromptSettingsStore.defaultConfidenceReasoning)")
+                    .help(
+                        "Confidence score from \(viewModel.confidenceResult?.model ?? viewModel.confidenceModel), reasoning \(viewModel.confidenceResult?.reasoningEffort ?? RusToPromptSettingsStore.defaultConfidenceReasoning)"
+                    )
             }
             Spacer(minLength: 0)
         }
         .frame(minHeight: 22)
     }
-
 
     var outputTextView: some View {
         ScrollView {

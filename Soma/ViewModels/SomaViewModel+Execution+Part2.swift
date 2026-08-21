@@ -4,8 +4,9 @@ import AppKit
 import Combine
 import UniformTypeIdentifiers
 extension SomaViewModel {
-func loadAuditReport() {
-        Task { [weak self] in guard let self else { return }
+    func loadAuditReport() {
+        Task { [weak self] in
+            guard let self else { return }
             let file = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".soma/audit/latest.json")
             guard FileManager.default.fileExists(atPath: file.path) else { return }
@@ -23,14 +24,15 @@ func loadAuditReport() {
             }
         }
     }
-func markAudit(status: String, notes: String = "") {
+    func markAudit(status: String, notes: String = "") {
         guard let runID = auditReport?.run_id else {
             auditError = "No audit run selected."
             return
         }
         auditMarkBusy = true
         auditError = nil
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let script = try scriptURL(named: "soma_audit")
                 let data = try await runScript(
@@ -67,8 +69,9 @@ func markAudit(status: String, notes: String = "") {
             return try JSONDecoder().decode(RelayResponse.self, from: output)
         }.value
     }
-func loadTokenBenchmarkReport() {
-        Task { [weak self] in guard let self else { return }
+    func loadTokenBenchmarkReport() {
+        Task { [weak self] in
+            guard let self else { return }
             let file = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".soma/token_stats.json")
             guard FileManager.default.fileExists(atPath: file.path) else { return }
@@ -86,8 +89,9 @@ func loadTokenBenchmarkReport() {
             }
         }
     }
-func loadAgentBenchmarkReport() {
-        Task { [weak self] in guard let self else { return }
+    func loadAgentBenchmarkReport() {
+        Task { [weak self] in
+            guard let self else { return }
             let file = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".soma/agent_benchmarks/latest.json")
             guard FileManager.default.fileExists(atPath: file.path) else { return }
@@ -105,7 +109,7 @@ func loadAgentBenchmarkReport() {
             }
         }
     }
-func runTokenBenchmark() {
+    func runTokenBenchmark() {
         guard !selectedProjectRoot.isEmpty else {
             tokenBenchmarkError = "Select a project root before measuring context reduction."
             return
@@ -113,7 +117,8 @@ func runTokenBenchmark() {
         tokenBenchmarkBusy = true
         tokenBenchmarkError = nil
         logActivity("Measuring estimated context reduction for \((selectedProjectRoot as NSString).lastPathComponent)...")
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let script = try scriptURL(named: "soma_token_benchmark")
                 let data = try await runScript(
@@ -130,7 +135,9 @@ func runTokenBenchmark() {
                     self.tokenBenchmarkReport = report
                     self.tokenBenchmarkBusy = false
                     self.tokenBenchmarkError = nil
-                    self.logActivity("Context benchmark \(report.status ?? "unknown"): reduced \(report.summary?.total_saved_tokens ?? 0) estimated tokens")
+                    self.logActivity(
+                        "Context benchmark \(report.status ?? "unknown"): reduced \(report.summary?.total_saved_tokens ?? 0) estimated tokens"
+                    )
                 }
             } catch {
                 await MainActor.run {
@@ -141,7 +148,7 @@ func runTokenBenchmark() {
             }
         }
     }
-func chooseAndRunAgentBenchmark() {
+    func chooseAndRunAgentBenchmark() {
         guard !selectedProjectRoot.isEmpty else {
             agentBenchmarkError = "Select a project root before running an A/B benchmark."
             return
@@ -156,11 +163,12 @@ func chooseAndRunAgentBenchmark() {
             runAgentBenchmark(scenarioPath: url.path)
         }
     }
-func runAgentBenchmark(scenarioPath: String) {
+    func runAgentBenchmark(scenarioPath: String) {
         agentBenchmarkBusy = true
         agentBenchmarkError = nil
         logActivity("Running agent A/B benchmark from \((scenarioPath as NSString).lastPathComponent)...")
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let script = try scriptURL(named: "soma_agent_ab_benchmark")
                 let data = try await runScript(
@@ -178,7 +186,8 @@ func runAgentBenchmark(scenarioPath: String) {
                     self.agentBenchmarkReport = report
                     self.agentBenchmarkBusy = false
                     self.agentBenchmarkError = nil
-                    self.logActivity("A/B benchmark \(report.status ?? "unknown"): \(report.summary?.paired_result_count ?? 0) accepted pairs")
+                    self.logActivity(
+                        "A/B benchmark \(report.status ?? "unknown"): \(report.summary?.paired_result_count ?? 0) accepted pairs")
                 }
             } catch {
                 await MainActor.run {
@@ -189,17 +198,17 @@ func runAgentBenchmark(scenarioPath: String) {
             }
         }
     }
-func runSomaHelper(args: [String]) async throws -> Data {
+    func runSomaHelper(args: [String]) async throws -> Data {
         let scriptPath = try scriptURL(named: "soma_mcp_server").path
         return try await runScript(path: pythonPath(), args: [scriptPath] + args)
     }
-nonisolated func scriptURL(named name: String) throws -> URL {
+    nonisolated func scriptURL(named name: String) throws -> URL {
         // Prefer source directory — gateway/ package must be co-located with soma_mcp_server.py.
         // #filePath resolves to: …/Soma/Soma/ViewModels/SomaViewModel+Execution.swift
         // Two .deletingLastPathComponent() calls reach: …/Soma/Soma/
         let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()   // drop SomaViewModel+Execution.swift → ViewModels/
-            .deletingLastPathComponent()   // drop ViewModels/ → Soma/ (contains gateway/)
+            .deletingLastPathComponent()  // drop SomaViewModel+Execution.swift → ViewModels/
+            .deletingLastPathComponent()  // drop ViewModels/ → Soma/ (contains gateway/)
             .appendingPathComponent("\(name).py")
         if FileManager.default.fileExists(atPath: sourceURL.path) {
             return sourceURL

@@ -47,7 +47,6 @@ extension TestsView {
         )
     }
 
-
     func statsRows(for role: TestModelRole) -> [TestModelRoleStats] {
         guard let modelStats else { return [] }
         switch role {
@@ -58,9 +57,9 @@ extension TestsView {
         }
     }
 
-
     func speedLabels(for rows: [TestModelRoleStats]) -> [String: String] {
-        let timedRows = rows
+        let timedRows =
+            rows
             .filter { ($0.avgSeconds ?? 0) > 0 }
             .sorted {
                 let lhs = $0.avgSeconds ?? .greatestFiniteMagnitude
@@ -89,14 +88,16 @@ extension TestsView {
         return labels
     }
 
-
     func qualityLabel(for stats: TestModelRoleStats?) -> String {
         guard let stats else { return "No data" }
         let attempts = max(stats.attempts, 0)
         let pipelineFailRate = attempts > 0 ? Double(stats.pipelineFailedCount) / Double(attempts) : 0
         let confidenceFailRate = attempts > 0 ? Double(stats.confidenceFailedCount) / Double(attempts) : 0
 
-        if attempts > 0 && (pipelineFailRate >= 0.50 || (stats.confidenceCount == 0 && (stats.pipelineFailedCount > 0 || stats.confidenceFailedCount > 0))) {
+        if attempts > 0
+            && (pipelineFailRate >= 0.50
+                || (stats.confidenceCount == 0 && (stats.pipelineFailedCount > 0 || stats.confidenceFailedCount > 0)))
+        {
             return "Broken"
         }
         guard let confidence = stats.qualityScore ?? stats.avgConfidence else { return "No data" }
@@ -112,13 +113,12 @@ extension TestsView {
         return "Good"
     }
 
-
     func benchmarkDetail(for preset: RusToPromptModelPreset, stats: TestModelRoleStats?, quality: String, speed: String) -> String {
         guard let stats else {
             return [
                 preset.detail,
                 "No benchmark data yet.",
-                "Run translation/staged tests to rank this model."
+                "Run translation/staged tests to rank this model.",
             ]
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .joined(separator: "\n")
@@ -132,12 +132,11 @@ extension TestsView {
             "Benchmark quality: \(quality); speed: \(speed).",
             "Attempts \(stats.attempts), confidence scores \(stats.confidenceCount), quality \(formatConfidence(stats.qualityScore)), avg \(formatConfidence(stats.avgConfidence)), median \(formatConfidence(stats.medianConfidence)), min \(formatConfidence(stats.minConfidence)).",
             "Low \(stats.lowConfidenceCount), confidence failed \(stats.confidenceFailedCount) (\(formatPercent(confidenceFailRate)), pipeline failed \(stats.pipelineFailedCount) (\(formatPercent(pipelineFailRate)), degraded \(stats.degradedCount).",
-            "Average runtime \(formatOptionalSeconds(stats.avgSeconds)); last tested \(shortDateTime(stats.lastTestedAt))."
+            "Average runtime \(formatOptionalSeconds(stats.avgSeconds)); last tested \(shortDateTime(stats.lastTestedAt)).",
         ]
         .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         .joined(separator: "\n")
     }
-
 
     func rankedModelPresets(
         role: TestModelRole,
@@ -153,7 +152,6 @@ extension TestsView {
         return ranked.sorted { compareRankedModel($0, $1, sort: sort) }
     }
 
-
     func modelStatsLookup(_ rows: [TestModelRoleStats]) -> [String: TestModelRoleStats] {
         var lookup: [String: TestModelRoleStats] = [:]
         for row in rows {
@@ -161,7 +159,6 @@ extension TestsView {
         }
         return lookup
     }
-
 
     func rankedRows(
         from presets: [RusToPromptModelPreset],
@@ -182,7 +179,6 @@ extension TestsView {
         }
     }
 
-
     func compareRankedModel(_ lhs: TestRankedModelPreset, _ rhs: TestRankedModelPreset, sort: TestModelSort) -> Bool {
         switch sort {
         case .smart:
@@ -195,7 +191,6 @@ extension TestsView {
             return compareRankedModelName(lhs, rhs)
         }
     }
-
 
     func compareSmartRankedModel(_ lhs: TestRankedModelPreset, _ rhs: TestRankedModelPreset) -> Bool {
         if lhs.hasStats != rhs.hasStats { return lhs.hasStats }
@@ -214,7 +209,6 @@ extension TestsView {
         return compareRankedModelName(lhs, rhs)
     }
 
-
     func compareQualityRankedModel(_ lhs: TestRankedModelPreset, _ rhs: TestRankedModelPreset) -> Bool {
         if lhs.qualityRank != rhs.qualityRank { return lhs.qualityRank > rhs.qualityRank }
         let lhsConfidence = lhs.qualityScore ?? lhs.avgConfidence ?? -1
@@ -223,7 +217,6 @@ extension TestsView {
         return compareRankedModelName(lhs, rhs)
     }
 
-
     func compareSpeedRankedModel(_ lhs: TestRankedModelPreset, _ rhs: TestRankedModelPreset) -> Bool {
         let lhsSeconds = lhs.avgSeconds ?? .greatestFiniteMagnitude
         let rhsSeconds = rhs.avgSeconds ?? .greatestFiniteMagnitude
@@ -231,7 +224,6 @@ extension TestsView {
         if lhs.qualityRank != rhs.qualityRank { return lhs.qualityRank > rhs.qualityRank }
         return compareRankedModelName(lhs, rhs)
     }
-
 
     func compareRankedModelName(_ lhs: TestRankedModelPreset, _ rhs: TestRankedModelPreset) -> Bool {
         lhs.preset.model.localizedStandardCompare(rhs.preset.model) == .orderedAscending

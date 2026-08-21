@@ -17,7 +17,8 @@ struct LocalAISettingsView: View {
         SomaPage {
             WorkflowHeader(
                 title: "Local AI",
-                subtitle: "Role-based Ollama model settings. Scout, planning/ranking, analysis, and translation can use different local models.",
+                subtitle:
+                    "Role-based Ollama model settings. Scout, planning/ranking, analysis, and translation can use different local models.",
                 icon: "cpu",
                 tone: .info,
                 trailing: AnyView(headerActions)
@@ -45,7 +46,12 @@ struct LocalAISettingsView: View {
     }
 
     private var roleTablePanel: some View {
-        SomaPanel(title: "Global model roles", subtitle: "These app-wide defaults apply to every project in v1. Project-specific overrides are intentionally not part of this redesign.", icon: "tablecells", tone: .info) {
+        SomaPanel(
+            title: "Global model roles",
+            subtitle:
+                "These app-wide defaults apply to every project in v1. Project-specific overrides are intentionally not part of this redesign.",
+            icon: "tablecells", tone: .info
+        ) {
             VStack(spacing: 0) {
                 roleTableHeader
                 Divider()
@@ -110,8 +116,11 @@ struct LocalAISettingsView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            StatusChip(text: installedStatusText(isAuto: isAuto, installed: installed), tone: installedStatusTone(isAuto: isAuto, installed: installed))
-                .frame(width: 86, alignment: .leading)
+            StatusChip(
+                text: installedStatusText(isAuto: isAuto, installed: installed),
+                tone: installedStatusTone(isAuto: isAuto, installed: installed)
+            )
+            .frame(width: 86, alignment: .leading)
 
             StatusChip(text: loadedStatusText(isAuto: isAuto, loaded: loaded), tone: loaded ? .good : .neutral)
                 .frame(width: 78, alignment: .leading)
@@ -155,7 +164,10 @@ struct LocalAISettingsView: View {
     }
 
     private var modelSummaryPanel: some View {
-        SomaPanel(title: "Configured Roles", subtitle: "These values are injected into Python runs as SOMA_* environment variables.", icon: "slider.horizontal.3", tone: .info) {
+        SomaPanel(
+            title: "Configured Roles", subtitle: "These values are injected into Python runs as SOMA_* environment variables.",
+            icon: "slider.horizontal.3", tone: .info
+        ) {
             ForEach(LocalModelRole.allCases) { role in
                 SomaKeyValueRow(
                     label: role.title,
@@ -167,19 +179,30 @@ struct LocalAISettingsView: View {
     }
 
     private var apiProvidersPanel: some View {
-        SomaPanel(title: "API Providers", subtitle: "Paid provider keys used by online Rus to Prompt models.", icon: "key", tone: .warning) {
+        SomaPanel(title: "API Providers", subtitle: "Paid provider keys used by online Rus to Prompt models.", icon: "key", tone: .warning)
+        {
             VStack(alignment: .leading, spacing: 10) {
-                apiKeySection(title: "DeepSeek", placeholder: "DeepSeek API key", input: $deepSeekAPIKeyInput, message: deepSeekCredentialMessage, hasEnv: DeepSeekCredentialStore.hasEnvironmentAPIKey(), hasSaved: DeepSeekCredentialStore.hasKeychainAPIKey(), save: saveDeepSeekAPIKey, clear: clearDeepSeekAPIKey)
+                apiKeySection(
+                    title: "DeepSeek", placeholder: "DeepSeek API key", input: $deepSeekAPIKeyInput, message: deepSeekCredentialMessage,
+                    hasEnv: DeepSeekCredentialStore.hasEnvironmentAPIKey(), hasSaved: DeepSeekCredentialStore.hasKeychainAPIKey(),
+                    save: saveDeepSeekAPIKey, clear: clearDeepSeekAPIKey)
 
                 Divider().padding(.vertical, 2)
 
-                apiKeySection(title: "Gemini", note: "AI Studio API key (aistudio.google.com) — not the AI Pro / gemini-cli login.", placeholder: "Gemini API key", input: $geminiAPIKeyInput, message: geminiCredentialMessage, hasEnv: GeminiCredentialStore.hasEnvironmentAPIKey(), hasSaved: GeminiCredentialStore.hasKeychainAPIKey(), save: saveGeminiAPIKey, clear: clearGeminiAPIKey)
+                apiKeySection(
+                    title: "Gemini", note: "AI Studio API key (aistudio.google.com) — not the AI Pro / gemini-cli login.",
+                    placeholder: "Gemini API key", input: $geminiAPIKeyInput, message: geminiCredentialMessage,
+                    hasEnv: GeminiCredentialStore.hasEnvironmentAPIKey(), hasSaved: GeminiCredentialStore.hasKeychainAPIKey(),
+                    save: saveGeminiAPIKey, clear: clearGeminiAPIKey)
             }
         }
     }
 
     @ViewBuilder
-    private func apiKeySection(title: String, note: String? = nil, placeholder: String, input: Binding<String>, message: String, hasEnv: Bool, hasSaved: Bool, save: @escaping () -> Void, clear: @escaping () -> Void) -> some View {
+    private func apiKeySection(
+        title: String, note: String? = nil, placeholder: String, input: Binding<String>, message: String, hasEnv: Bool, hasSaved: Bool,
+        save: @escaping () -> Void, clear: @escaping () -> Void
+    ) -> some View {
         HStack(spacing: 8) {
             Text(title).font(.subheadline.bold())
             StatusChip(text: hasEnv ? "Env active" : (hasSaved ? "Key saved" : "Not set"), tone: (hasEnv || hasSaved) ? .good : .warning)
@@ -268,7 +291,8 @@ struct LocalAISettingsView: View {
         if !ollama.isOllamaRunning {
             return StatusBanner(
                 title: "Ollama is offline",
-                detail: "Saved model selections still apply to future runs, but installed and loaded model status is unavailable until Ollama is running.",
+                detail:
+                    "Saved model selections still apply to future runs, but installed and loaded model status is unavailable until Ollama is running.",
                 tone: .warning
             )
         }
@@ -351,14 +375,21 @@ struct LocalAISettingsView: View {
             isExpanded: $showRuntimeDetails
         ) {
             VStack(alignment: .leading, spacing: 8) {
-                SomaKeyValueRow(label: "API", value: ollama.isOllamaRunning ? "127.0.0.1:11434 online" : "offline", tone: ollama.isOllamaRunning ? .good : .warning)
+                SomaKeyValueRow(
+                    label: "API", value: ollama.isOllamaRunning ? "127.0.0.1:11434 online" : "offline",
+                    tone: ollama.isOllamaRunning ? .good : .warning)
                 SomaKeyValueRow(label: "Installed source", value: "/api/tags", tone: .neutral)
                 SomaKeyValueRow(label: "Loaded source", value: "/api/ps", tone: .neutral)
-                SomaKeyValueRow(label: "Loaded models", value: ollama.loadedModelNames.isEmpty ? "None" : ollama.loadedModelNames.sorted().joined(separator: ", "), tone: ollama.loadedModelNames.isEmpty ? .neutral : .good)
-                Text("Memory, GPU, idle timers, auto-unload policies, and in-app model downloads are future scope; this screen only exposes the status Ollama provides today.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                SomaKeyValueRow(
+                    label: "Loaded models",
+                    value: ollama.loadedModelNames.isEmpty ? "None" : ollama.loadedModelNames.sorted().joined(separator: ", "),
+                    tone: ollama.loadedModelNames.isEmpty ? .neutral : .good)
+                Text(
+                    "Memory, GPU, idle timers, auto-unload policies, and in-app model downloads are future scope; this screen only exposes the status Ollama provides today."
+                )
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

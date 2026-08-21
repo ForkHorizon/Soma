@@ -90,7 +90,6 @@ extension TestsView {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.12)))
     }
 
-
     func modelSelectionPanel(
         title: String,
         icon: String,
@@ -122,7 +121,6 @@ extension TestsView {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.12)))
     }
 
-
     func modelSelectionHeader(title: String, icon: String, selection: Binding<Set<String>>) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
@@ -146,7 +144,6 @@ extension TestsView {
             StatusChip(text: "\(selection.wrappedValue.count) selected", tone: selection.wrappedValue.isEmpty ? .warning : .info)
         }
     }
-
 
     func modelSelectionButton(
         title: String,
@@ -185,7 +182,6 @@ extension TestsView {
         .disabled(rows.isEmpty)
     }
 
-
     func modelSelectionPopover(
         title: String,
         rows: [TestRankedModelPreset],
@@ -203,7 +199,6 @@ extension TestsView {
         .padding(12)
         .frame(width: 540)
     }
-
 
     func modelPopoverHeader(title: String, selection: Binding<Set<String>>) -> some View {
         HStack(spacing: 8) {
@@ -225,7 +220,6 @@ extension TestsView {
         }
     }
 
-
     func modelSortPicker(_ sort: Binding<TestModelSort>) -> some View {
         Picker("Sort", selection: sort) {
             ForEach(TestModelSort.allCases) { item in
@@ -235,7 +229,6 @@ extension TestsView {
         .pickerStyle(.segmented)
         .labelsHidden()
     }
-
 
     func customModelEntry(
         _ customModel: Binding<String>,
@@ -255,9 +248,10 @@ extension TestsView {
             .controlSize(.small)
             .disabled(customModel.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
-        .help("Add any model name supported by Ollama, Codex CLI, Gemini CLI, or DeepSeek API. Names starting with gpt-/o-/codex- run via Codex; gemini-/auto-gemini run via Gemini; deepseek- runs via DeepSeek.")
+        .help(
+            "Add any model name supported by Ollama, Codex CLI, Gemini CLI, or DeepSeek API. Names starting with gpt-/o-/codex- run via Codex; gemini-/auto-gemini run via Gemini; deepseek- runs via DeepSeek."
+        )
     }
-
 
     @ViewBuilder
     func modelRowsList(

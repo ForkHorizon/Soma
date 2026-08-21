@@ -8,25 +8,42 @@ nonisolated struct AnyCodable: Codable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        if container.decodeNil()                                          { self.value = JSONNull() }
-        else if let value = try? container.decode(String.self)            { self.value = value }
-        else if let value = try? container.decode(Int.self)               { self.value = value }
-        else if let value = try? container.decode(Double.self)            { self.value = value }
-        else if let value = try? container.decode(Bool.self)             { self.value = value }
-        else if let value = try? container.decode([String: AnyCodable].self) { self.value = value }
-        else if let value = try? container.decode([AnyCodable].self)     { self.value = value }
-        else { throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unknown type") }
+        if container.decodeNil() {
+            self.value = JSONNull()
+        } else if let value = try? container.decode(String.self) {
+            self.value = value
+        } else if let value = try? container.decode(Int.self) {
+            self.value = value
+        } else if let value = try? container.decode(Double.self) {
+            self.value = value
+        } else if let value = try? container.decode(Bool.self) {
+            self.value = value
+        } else if let value = try? container.decode([String: AnyCodable].self) {
+            self.value = value
+        } else if let value = try? container.decode([AnyCodable].self) {
+            self.value = value
+        } else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unknown type")
+        }
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
-        if let value = value as? String                     { try container.encode(value) }
-        else if let value = value as? Int                  { try container.encode(value) }
-        else if let value = value as? Double               { try container.encode(value) }
-        else if let value = value as? Bool                 { try container.encode(value) }
-        else if let value = value as? [String: AnyCodable] { try container.encode(value) }
-        else if let value = value as? [AnyCodable]         { try container.encode(value) }
-        else if value is JSONNull                          { try container.encodeNil() }
+        if let value = value as? String {
+            try container.encode(value)
+        } else if let value = value as? Int {
+            try container.encode(value)
+        } else if let value = value as? Double {
+            try container.encode(value)
+        } else if let value = value as? Bool {
+            try container.encode(value)
+        } else if let value = value as? [String: AnyCodable] {
+            try container.encode(value)
+        } else if let value = value as? [AnyCodable] {
+            try container.encode(value)
+        } else if value is JSONNull {
+            try container.encodeNil()
+        }
     }
 }
 

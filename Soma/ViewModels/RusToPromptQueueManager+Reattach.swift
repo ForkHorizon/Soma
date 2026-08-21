@@ -26,7 +26,8 @@ extension RusToPromptQueueManager {
 
     func pumpProgressLog() {
         guard let logURL = progressLogURL,
-              let handle = try? FileHandle(forReadingFrom: logURL) else { return }
+            let handle = try? FileHandle(forReadingFrom: logURL)
+        else { return }
         defer { try? handle.close() }
         do {
             try handle.seek(toOffset: progressLogOffset)
@@ -200,8 +201,9 @@ extension RusToPromptQueueManager {
         guard let text = try? String(contentsOf: logURL, encoding: .utf8) else { return nil }
         for line in text.split(separator: "\n").reversed() where line.contains("\"event\":\"run_finished\"") {
             guard let start = line.range(of: "SOMA_PROGRESS ")?.upperBound,
-                  let data = line[start...].data(using: .utf8),
-                  let event = try? JSONDecoder().decode(QueueProgressEvent.self, from: data) else { continue }
+                let data = line[start...].data(using: .utf8),
+                let event = try? JSONDecoder().decode(QueueProgressEvent.self, from: data)
+            else { continue }
             return event.status ?? "ok"
         }
         return nil

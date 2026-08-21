@@ -8,13 +8,19 @@ extension ASRManager {
     /// collide with other local servers the user runs.
     func ensureServerReady() async throws -> Int {
         if let p = port, await isOurServer(p) { return p }
-        if let p = readPortFile(), await isOurServer(p) { port = p; return p }
+        if let p = readPortFile(), await isOurServer(p) {
+            port = p
+            return p
+        }
 
         try launchServer()
         status = "Loading model… (first run is slow)"
         for _ in 0..<120 {  // up to ~60s for the server to bind and write its port
             try await Task.sleep(nanoseconds: 500_000_000)
-            if let p = readPortFile(), await isOurServer(p) { port = p; return p }
+            if let p = readPortFile(), await isOurServer(p) {
+                port = p
+                return p
+            }
         }
         let log = (try? String(contentsOf: logFileURL, encoding: .utf8))?.suffix(400) ?? ""
         throw SomaError("ASR server did not start. Check the engines folder and the '\(engine)' venv.\n\(log)")
@@ -31,8 +37,8 @@ extension ASRManager {
         var req = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/health")!)
         req.timeoutInterval = 2
         guard let (data, resp) = try? await URLSession.shared.data(for: req),
-              (resp as? HTTPURLResponse)?.statusCode == 200,
-              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            (resp as? HTTPURLResponse)?.statusCode == 200,
+            let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         else { return false }
         guard obj["ok"] as? Bool == true else { return false }
         // A live server running a different engine than the current selection is
@@ -69,8 +75,10 @@ extension ASRManager {
         // Xcode injects Metal API-validation vars into the app's env; if they leak into
         // the torch/MPS child its compute kernels abort (SIGABRT) under the stricter
         // validation layer. Strip them so the server runs like it does from a terminal.
-        for key in ["METAL_DEVICE_WRAPPER_TYPE", "METAL_DEBUG_ERROR_MODE", "METAL_ERROR_MODE",
-                    "MTL_DEBUG_LAYER", "MTL_SHADER_VALIDATION"] {
+        for key in [
+            "METAL_DEVICE_WRAPPER_TYPE", "METAL_DEBUG_ERROR_MODE", "METAL_ERROR_MODE",
+            "MTL_DEBUG_LAYER", "MTL_SHADER_VALIDATION",
+        ] {
             env.removeValue(forKey: key)
         }
         // A GUI app launched from Finder/Xcode inherits a minimal PATH (no /opt/homebrew/bin),
@@ -78,11 +86,11 @@ extension ASRManager {
         let basePath = env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
         env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:" + basePath
         env["ASR_ENGINE"] = engine
-        env["ASR_PORT"] = "0"   // OS picks a free port
+        env["ASR_PORT"] = "0"  // OS picks a free port
         env["ASR_PORT_FILE"] = portFileURL.path
         env["ASR_IDLE_SECONDS"] = String(keepLoadedMinutes * 60)
-        env["HF_HOME"] = "\(modelsRoot)/hf"                // Whisper (mlx) weights cache
-        env["ASR_GIGAAM_ROOT"] = "\(modelsRoot)/gigaam"    // GigaAM checkpoint dir
+        env["HF_HOME"] = "\(modelsRoot)/hf"  // Whisper (mlx) weights cache
+        env["ASR_GIGAAM_ROOT"] = "\(modelsRoot)/gigaam"  // GigaAM checkpoint dir
         env["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
         env["PYTHONUNBUFFERED"] = "1"
         process.environment = env

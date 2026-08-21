@@ -28,7 +28,6 @@ extension TestsView {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.10)))
     }
 
-
     var recentActivityPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -75,7 +74,6 @@ extension TestsView {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.10)))
     }
 
-
     var testResultsPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
@@ -115,12 +113,14 @@ extension TestsView {
                     .labelsHidden()
                     .frame(width: 260)
 
-                    Text(selectedResultsMode == .byModel
-                         ? "Each row is one translator/improver pair aggregated across all cases."
-                         : "Each row is one source prompt -> translation -> improved prompt operation.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
+                    Text(
+                        selectedResultsMode == .byModel
+                            ? "Each row is one translator/improver pair aggregated across all cases."
+                            : "Each row is one source prompt -> translation -> improved prompt operation."
+                    )
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
                     Spacer()
                 }
 
@@ -143,7 +143,6 @@ extension TestsView {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.12)))
     }
-
 
     var modelStatsSheet: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -214,7 +213,8 @@ extension TestsView {
 
                             modelStatsSection(
                                 title: "Improver Models",
-                                subtitle: "English translation -> final polished prompt. Attempts are counted per actual improve operation.",
+                                subtitle:
+                                    "English translation -> final polished prompt. Attempts are counted per actual improve operation.",
                                 rows: sortedImproverModelStats,
                                 selectedID: $selectedImproverStatsID,
                                 sort: $improverModelStatsSort

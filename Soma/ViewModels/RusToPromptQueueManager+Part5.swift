@@ -40,7 +40,6 @@ extension RusToPromptQueueManager {
         return title
     }
 
-
     func completedStageLabel(for event: QueueProgressEvent) -> String {
         switch event.stage {
         case "translating": return "Translated"
@@ -48,7 +47,6 @@ extension RusToPromptQueueManager {
         default: return displayStage(for: event)
         }
     }
-
 
     func progressStatus(for event: QueueProgressEvent) -> String {
         if event.status == "failed" || event.stage == "failed" {
@@ -89,7 +87,6 @@ extension RusToPromptQueueManager {
         }
         return "running"
     }
-
 
     func progressStep(for event: QueueProgressEvent, role: String) -> (index: Int, total: Int)? {
         let total = stageTotal(for: role, snapshot: activeSnapshot(), event: event)
@@ -137,7 +134,6 @@ extension RusToPromptQueueManager {
         return nil
     }
 
-
     func stageTotal(for role: String, snapshot: RusToPromptQueueItemSnapshot?, event: QueueProgressEvent? = nil) -> Int {
         let referee = snapshot?.confidenceReferee ?? settings.confidenceReferee
         if referee == "off" {
@@ -152,12 +148,10 @@ extension RusToPromptQueueManager {
         return 4
     }
 
-
     func activeSnapshot() -> RusToPromptQueueItemSnapshot? {
         guard let activeItemID else { return nil }
         return items.first(where: { $0.id == activeItemID })?.snapshot
     }
-
 
     func progressDetail(for event: QueueProgressEvent) -> String {
         var parts = [displayStage(for: event)]

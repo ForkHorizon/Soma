@@ -34,8 +34,8 @@ enum VoiceSessionPartialWatcher {
                     components.url!, token: token, clientID: clientID, engine: engine, idleSeconds: idleSeconds)
                 request.timeoutInterval = 30
                 guard let (data, response) = try? await URLSession.shared.data(for: request),
-                      (response as? HTTPURLResponse)?.statusCode == 200,
-                      let payload = try? JSONDecoder().decode(VoiceServerSessionResponse.self, from: data)
+                    (response as? HTTPURLResponse)?.statusCode == 200,
+                    let payload = try? JSONDecoder().decode(VoiceServerSessionResponse.self, from: data)
                 else { return }
                 seen = max(seen, payload.completed_chunks ?? seen)
                 if let partial = payload.partial_text, !partial.isEmpty, partial != lastText {

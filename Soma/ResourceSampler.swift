@@ -22,7 +22,7 @@ final class ResourceSampler {
         guard timer == nil else { return }
         sample("start")
         let t = Timer(timeInterval: interval, repeats: true) { [weak self] _ in self?.sample("tick") }
-        RunLoop.main.add(t, forMode: .common)   // keep sampling even during UI tracking
+        RunLoop.main.add(t, forMode: .common)  // keep sampling even during UI tracking
         timer = t
     }
 
@@ -71,7 +71,9 @@ final class ResourceSampler {
         var list: thread_act_array_t?
         var count = mach_msg_type_number_t(0)
         guard task_threads(mach_task_self_, &list, &count) == KERN_SUCCESS, let list else { return 0 }
-        defer { vm_deallocate(mach_task_self_, vm_address_t(UInt(bitPattern: list)), vm_size_t(Int(count) * MemoryLayout<thread_t>.stride)) }
+        defer {
+            vm_deallocate(mach_task_self_, vm_address_t(UInt(bitPattern: list)), vm_size_t(Int(count) * MemoryLayout<thread_t>.stride))
+        }
         var total = 0.0
         for i in 0..<Int(count) {
             var info = thread_basic_info()

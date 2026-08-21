@@ -20,7 +20,8 @@ final class SomaWindowLifecycleCoordinator: NSObject, ObservableObject, NSWindow
         guard self.mainWindow !== mainWindow else { return }
 
         if let previousWindow = self.mainWindow,
-           (previousWindow.delegate as AnyObject?) === self {
+            (previousWindow.delegate as AnyObject?) === self
+        {
             previousWindow.delegate = originalWindowDelegate
         }
 
@@ -42,7 +43,8 @@ final class SomaWindowLifecycleCoordinator: NSObject, ObservableObject, NSWindow
 
     override func forwardingTarget(for aSelector: Selector!) -> Any? {
         guard !super.responds(to: aSelector),
-              originalWindowDelegate?.responds(to: aSelector) == true else {
+            originalWindowDelegate?.responds(to: aSelector) == true
+        else {
             return super.forwardingTarget(for: aSelector)
         }
         return originalWindowDelegate

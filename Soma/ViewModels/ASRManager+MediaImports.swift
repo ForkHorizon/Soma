@@ -154,7 +154,8 @@ extension ASRManager {
                 }
                 replaceImport(job)
             }
-            let text = job.backend == "remote"
+            let text =
+                job.backend == "remote"
                 ? try await transcribeImportedRemotely(id)
                 : try await transcribeImportedLocally(id)
             try completeImport(id, transcript: text)

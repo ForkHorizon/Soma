@@ -10,24 +10,28 @@ final class StubVoiceServer: URLProtocol {
     nonisolated(unsafe) private static var failing: Set<String> = []
 
     static func reset() {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
         recorded = []
         delays = [:]
         failing = []
     }
 
     static func delay(_ path: String, _ seconds: TimeInterval) {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
         delays[path] = seconds
     }
 
     static func fail(_ path: String) {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
         failing.insert(path)
     }
 
     static var paths: [String] {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
         return recorded
     }
 
@@ -184,16 +188,18 @@ final class VoiceChunkPipelineStartTests: XCTestCase {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("stub-chunk.flac")
         try? Data("audio".utf8).write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
-        await pipeline.enqueue(VoiceChunk(
-            index: 0, url: url, reason: .final,
-            overlapMilliseconds: 0, durationMilliseconds: 500
-        ))
+        await pipeline.enqueue(
+            VoiceChunk(
+                index: 0, url: url, reason: .final,
+                overlapMilliseconds: 0, durationMilliseconds: 500
+            ))
 
         await fulfillment(of: [reported], timeout: 5)
         XCTAssertNil(seen.value, "an unreachable probe reports nil, not a capability set")
         XCTAssertEqual(StubVoiceServer.count("/v1/sessions"), 1)
-        XCTAssertEqual(StubVoiceServer.paths.filter { $0.contains("/chunks/") }.count, 1,
-                       "the chunk must still upload when only the health probe failed")
+        XCTAssertEqual(
+            StubVoiceServer.paths.filter { $0.contains("/chunks/") }.count, 1,
+            "the chunk must still upload when only the health probe failed")
     }
 }
 

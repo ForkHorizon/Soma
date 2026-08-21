@@ -99,17 +99,21 @@ actor VoiceChunkPipeline {
                     engine: engine,
                     idleSeconds: idleSeconds
                 )
-                VoiceMetrics.log("warmup_finished", [
-                    "engine": engine,
-                    "already_loaded": "\(result.already_loaded ?? false)",
-                    "load_seconds": "\(result.load_seconds ?? 0)",
-                    "request_milliseconds": "\(Int(Date().timeIntervalSince(warmStartedAt) * 1_000))",
-                ])
+                VoiceMetrics.log(
+                    "warmup_finished",
+                    [
+                        "engine": engine,
+                        "already_loaded": "\(result.already_loaded ?? false)",
+                        "load_seconds": "\(result.load_seconds ?? 0)",
+                        "request_milliseconds": "\(Int(Date().timeIntervalSince(warmStartedAt) * 1_000))",
+                    ])
             } catch {
-                VoiceMetrics.log("warmup_failed", [
-                    "engine": engine,
-                    "request_milliseconds": "\(Int(Date().timeIntervalSince(warmStartedAt) * 1_000))",
-                ])
+                VoiceMetrics.log(
+                    "warmup_failed",
+                    [
+                        "engine": engine,
+                        "request_milliseconds": "\(Int(Date().timeIntervalSince(warmStartedAt) * 1_000))",
+                    ])
             }
         }
     }
@@ -127,7 +131,8 @@ actor VoiceChunkPipeline {
         self.capabilityTask = nil
         let health = await capabilityTask.value
         let capabilities = Set(health?.capabilities ?? [])
-        let supported = (health?.version ?? 0) >= 2
+        let supported =
+            (health?.version ?? 0) >= 2
             && capabilities.isSuperset(of: ["warmup", "chunk_sessions", "long_poll"])
         supportsFinalChunkFinalize = supported && capabilities.contains("final_chunk_finalize")
         // Only a server that answered and said "no" invalidates the session. If
@@ -149,7 +154,10 @@ actor VoiceChunkPipeline {
                 try? await Task.sleep(nanoseconds: 20_000_000)
             }
         }
-        if let failure { cleanup(); throw failure }
+        if let failure {
+            cleanup()
+            throw failure
+        }
         guard uploaded.count == expectedChunkCount else {
             cleanup()
             throw VoiceChunkPipelineError.missingChunk(uploaded.count)
@@ -177,11 +185,13 @@ actor VoiceChunkPipeline {
         // long since in, and the client still wants it for its cache.
         await resolveCapabilities()
         let releasedAt = Date()
-        log("recording_released", [
-            "expected_chunks": "\(expectedChunkCount)",
-            "acknowledged_chunks": "\(uploaded.count)",
-            "pending_chunks": "\(max(0, expectedChunkCount - uploaded.count))",
-        ])
+        log(
+            "recording_released",
+            [
+                "expected_chunks": "\(expectedChunkCount)",
+                "acknowledged_chunks": "\(uploaded.count)",
+                "pending_chunks": "\(max(0, expectedChunkCount - uploaded.count))",
+            ])
         let sessionID = try await drainRemainingChunks(expectedChunkCount: expectedChunkCount)
         do {
             if !supportsFinalChunkFinalize || !sentFinalChunk {
@@ -196,14 +206,16 @@ actor VoiceChunkPipeline {
                 mergeSafe: response.merge_safe ?? false,
                 inferSeconds: response.metrics?.infer_seconds
             )
-            log("session_done", [
-                "accepted_chunks": "\(response.accepted_chunks ?? 0)",
-                "completed_chunks": "\(response.completed_chunks ?? 0)",
-                "queued_seconds": "\(response.metrics?.queued_seconds ?? 0)",
-                "infer_seconds": "\(response.metrics?.infer_seconds ?? 0)",
-                "duration_milliseconds": "\(response.metrics?.duration_milliseconds ?? 0)",
-                "release_to_final_milliseconds": "\(Int(Date().timeIntervalSince(releasedAt) * 1_000))",
-            ])
+            log(
+                "session_done",
+                [
+                    "accepted_chunks": "\(response.accepted_chunks ?? 0)",
+                    "completed_chunks": "\(response.completed_chunks ?? 0)",
+                    "queued_seconds": "\(response.metrics?.queued_seconds ?? 0)",
+                    "infer_seconds": "\(response.metrics?.infer_seconds ?? 0)",
+                    "duration_milliseconds": "\(response.metrics?.duration_milliseconds ?? 0)",
+                    "release_to_final_milliseconds": "\(Int(Date().timeIntervalSince(releasedAt) * 1_000))",
+                ])
             partialTask?.cancel()
             partialTask = nil
             cleanup()
@@ -245,12 +257,14 @@ actor VoiceChunkPipeline {
                 try await upload(chunk, to: sessionID)
                 uploaded.insert(next)
                 sentFinalChunk = sentFinalChunk || chunk.reason == .final
-                log("chunk_uploaded", [
-                    "index": "\(next)",
-                    "reason": chunk.reason.rawValue,
-                    "duration_milliseconds": "\(chunk.durationMilliseconds)",
-                    "upload_milliseconds": "\(Int(Date().timeIntervalSince(uploadStartedAt) * 1_000))",
-                ])
+                log(
+                    "chunk_uploaded",
+                    [
+                        "index": "\(next)",
+                        "reason": chunk.reason.rawValue,
+                        "duration_milliseconds": "\(chunk.durationMilliseconds)",
+                        "upload_milliseconds": "\(Int(Date().timeIntervalSince(uploadStartedAt) * 1_000))",
+                    ])
             } catch {
                 failure = error
                 return
@@ -265,7 +279,9 @@ actor VoiceChunkPipeline {
         request.timeoutInterval = 15
         let (data, response) = try await URLSession.shared.data(for: request)
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard (code == 200 || code == 201), let session = try? JSONDecoder().decode(VoiceServerSessionResponse.self, from: data), let sessionID = session.session_id else {
+        guard code == 200 || code == 201, let session = try? JSONDecoder().decode(VoiceServerSessionResponse.self, from: data),
+            let sessionID = session.session_id
+        else {
             throw VoiceChunkPipelineError.server(remoteErrorMessage(data, fallback: "Could not create voice session."))
         }
         return sessionID
@@ -325,7 +341,7 @@ actor VoiceChunkPipeline {
             request.timeoutInterval = 30
             let (data, response) = try await URLSession.shared.data(for: request)
             guard (response as? HTTPURLResponse)?.statusCode == 200,
-                  let payload = try? JSONDecoder().decode(VoiceServerSessionResponse.self, from: data)
+                let payload = try? JSONDecoder().decode(VoiceServerSessionResponse.self, from: data)
             else {
                 throw VoiceChunkPipelineError.server(remoteErrorMessage(data, fallback: "Voice session polling failed."))
             }

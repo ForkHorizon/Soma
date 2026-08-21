@@ -81,7 +81,8 @@ extension ASRManager {
             return
         }
         let capabilities = Set(health.capabilities ?? [])
-        remoteChunkCapability = (health.version ?? 0) >= 2
+        remoteChunkCapability =
+            (health.version ?? 0) >= 2
             && capabilities.isSuperset(of: ["warmup", "chunk_sessions", "long_poll"])
         remoteCapabilityIdentity = remoteCapabilityConfigIdentity
         voiceServerConnectionState = .online
@@ -109,18 +110,22 @@ extension ASRManager {
             }
             do {
                 let text = try await pollRemoteJob(base: base, jobID: jobID)
-                VoiceMetrics.log("whole_file_finished", [
-                    "release_to_final_milliseconds": "\(Int(Date().timeIntervalSince(startedAt) * 1_000))",
-                ])
+                VoiceMetrics.log(
+                    "whole_file_finished",
+                    [
+                        "release_to_final_milliseconds": "\(Int(Date().timeIntervalSince(startedAt) * 1_000))"
+                    ])
                 return text
             } catch let error as VoiceServerRemoteError where error.retryable || error.code == "job_not_found" {
                 await MainActor.run { status = "Voice Server lost job; retrying…" }
                 let retryJobID = try await submitRemoteJob(base: base, audio: audio, requestID: UUID().uuidString)
                 let text = try await pollRemoteJob(base: base, jobID: retryJobID)
-                VoiceMetrics.log("whole_file_finished", [
-                    "release_to_final_milliseconds": "\(Int(Date().timeIntervalSince(startedAt) * 1_000))",
-                    "retried": "true",
-                ])
+                VoiceMetrics.log(
+                    "whole_file_finished",
+                    [
+                        "release_to_final_milliseconds": "\(Int(Date().timeIntervalSince(startedAt) * 1_000))",
+                        "retried": "true",
+                    ])
                 return text
             }
         } catch {
@@ -149,8 +154,8 @@ extension ASRManager {
                 let (data, response) = try await URLSession.shared.data(for: req)
                 let code = (response as? HTTPURLResponse)?.statusCode ?? 0
                 guard code == 202,
-                      let payload = try? JSONDecoder().decode(VoiceServerJobResponse.self, from: data),
-                      let jobID = payload.job_id
+                    let payload = try? JSONDecoder().decode(VoiceServerJobResponse.self, from: data),
+                    let jobID = payload.job_id
                 else {
                     throw remoteError(data, fallback: "Upload failed (HTTP \(code)).", retryable: code >= 500)
                 }
@@ -170,14 +175,15 @@ extension ASRManager {
         let deadline = Date().addingTimeInterval(900)
         while Date() < deadline {
             do {
-                var components = URLComponents(url: base.appendingPathComponent("v1/transcriptions/\(jobID)"), resolvingAgainstBaseURL: false)!
+                var components = URLComponents(
+                    url: base.appendingPathComponent("v1/transcriptions/\(jobID)"), resolvingAgainstBaseURL: false)!
                 components.queryItems = [URLQueryItem(name: "wait", value: "25")]
                 var req = remoteRequest(components.url!)
                 req.timeoutInterval = 30
                 let (data, response) = try await URLSession.shared.data(for: req)
                 let code = (response as? HTTPURLResponse)?.statusCode ?? 0
                 guard code == 200,
-                      let payload = try? JSONDecoder().decode(VoiceServerJobResponse.self, from: data)
+                    let payload = try? JSONDecoder().decode(VoiceServerJobResponse.self, from: data)
                 else {
                     throw remoteError(data, fallback: "Polling failed (HTTP \(code)).", retryable: code >= 500)
                 }

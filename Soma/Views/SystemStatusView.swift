@@ -36,7 +36,8 @@ struct SystemStatusView: View {
     private var dashboardHeader: some View {
         WorkflowHeader(
             title: "System Status",
-            subtitle: "Attention-first observer view for project readiness, live MCP clients, optional graph context, local AI, and audit traces.",
+            subtitle:
+                "Attention-first observer view for project readiness, live MCP clients, optional graph context, local AI, and audit traces.",
             icon: "checklist.checked",
             tone: overallTone,
             trailing: AnyView(overallStatusBadge)
@@ -49,19 +50,34 @@ struct SystemStatusView: View {
     }
 
     private var attentionDashboard: some View {
-        SomaPanel(title: "Needs Attention", subtitle: "Start here before reading dense diagnostics.", icon: "exclamationmark.triangle.fill", tone: attentionTone) {
+        SomaPanel(
+            title: "Needs Attention", subtitle: "Start here before reading dense diagnostics.", icon: "exclamationmark.triangle.fill",
+            tone: attentionTone
+        ) {
             VStack(alignment: .leading, spacing: 8) {
                 if viewModel.selectedProjectRoot.isEmpty {
-                    StatusBanner(title: "No project selected", detail: "Choose a project in the sidebar to unlock readiness checks, graph state, and audit traces.", tone: .warning)
+                    StatusBanner(
+                        title: "No project selected",
+                        detail: "Choose a project in the sidebar to unlock readiness checks, graph state, and audit traces.", tone: .warning
+                    )
                 }
                 if !viewModel.somaServerRunning {
-                    StatusBanner(title: "MCP gateway is offline", detail: "Prepare Packet still works. Start MCP only when external clients need live Soma tools.", tone: viewModel.selectedProjectRoot.isEmpty ? .warning : .info)
+                    StatusBanner(
+                        title: "MCP gateway is offline",
+                        detail: "Prepare Packet still works. Start MCP only when external clients need live Soma tools.",
+                        tone: viewModel.selectedProjectRoot.isEmpty ? .warning : .info)
                 }
                 if viewModel.graphAvailable && viewModel.graphStale {
-                    StatusBanner(title: "Graph may be stale", detail: "Update Graphify before graph-heavy prompts if the project changed recently.", tone: .warning)
+                    StatusBanner(
+                        title: "Graph may be stale", detail: "Update Graphify before graph-heavy prompts if the project changed recently.",
+                        tone: .warning)
                 }
-                if viewModel.selectedProjectRoot.isEmpty == false && viewModel.somaServerRunning && !(viewModel.graphAvailable && viewModel.graphStale) {
-                    StatusBanner(title: "No immediate action", detail: "Runtime checks look usable. Detailed diagnostics remain available below.", tone: .good)
+                if viewModel.selectedProjectRoot.isEmpty == false && viewModel.somaServerRunning
+                    && !(viewModel.graphAvailable && viewModel.graphStale)
+                {
+                    StatusBanner(
+                        title: "No immediate action", detail: "Runtime checks look usable. Detailed diagnostics remain available below.",
+                        tone: .good)
                 }
             }
         }
@@ -74,13 +90,24 @@ struct SystemStatusView: View {
     }
 
     private var runtimeSnapshotPanel: some View {
-        SomaPanel(title: "Runtime Snapshot", subtitle: "Compact state for the selected project and local runtime.", icon: "gauge.with.dots.needle.67percent", tone: overallTone) {
-            SomaKeyValueRow(label: "Project", value: viewModel.selectedProjectRoot.isEmpty ? "Not selected" : (viewModel.selectedProjectRoot as NSString).lastPathComponent, tone: viewModel.selectedProjectRoot.isEmpty ? .warning : .info)
-            SomaKeyValueRow(label: "MCP", value: viewModel.somaServerRunning ? "Online" : "Offline", tone: viewModel.somaServerRunning ? .good : .danger)
+        SomaPanel(
+            title: "Runtime Snapshot", subtitle: "Compact state for the selected project and local runtime.",
+            icon: "gauge.with.dots.needle.67percent", tone: overallTone
+        ) {
+            SomaKeyValueRow(
+                label: "Project",
+                value: viewModel.selectedProjectRoot.isEmpty
+                    ? "Not selected" : (viewModel.selectedProjectRoot as NSString).lastPathComponent,
+                tone: viewModel.selectedProjectRoot.isEmpty ? .warning : .info)
+            SomaKeyValueRow(
+                label: "MCP", value: viewModel.somaServerRunning ? "Online" : "Offline", tone: viewModel.somaServerRunning ? .good : .danger
+            )
             SomaKeyValueRow(label: "Scout", value: ollama.modelName, tone: ollama.isModelLoaded ? .good : .warning)
             SomaKeyValueRow(label: "Ranker", value: ollama.rankerModelName, tone: .info)
             SomaKeyValueRow(label: "Analyst", value: ollama.analystModelName, tone: .info)
-            SomaKeyValueRow(label: "Graph", value: viewModel.graphAvailable ? (viewModel.graphStale ? "Stale" : "Fresh") : "Optional", tone: viewModel.graphAvailable ? (viewModel.graphStale ? .warning : .good) : .neutral)
+            SomaKeyValueRow(
+                label: "Graph", value: viewModel.graphAvailable ? (viewModel.graphStale ? "Stale" : "Fresh") : "Optional",
+                tone: viewModel.graphAvailable ? (viewModel.graphStale ? .warning : .good) : .neutral)
         }
     }
 
@@ -105,12 +132,14 @@ struct SystemStatusView: View {
         let hasProject = !viewModel.selectedProjectRoot.isEmpty
         let allOk = hasProject && viewModel.somaServerRunning
         let title = allOk ? "Runtime looks ready" : hasProject ? "Project selected, gateway optional" : "Choose a project to unlock checks"
-        let baseDetail = allOk
+        let baseDetail =
+            allOk
             ? "Live MCP checks and packet-mode diagnostics can run against the selected project."
             : hasProject
                 ? "Packet mode can still run. Start MCP only when external clients need live Soma tools."
                 : "Most status cards depend on a project root so Soma can validate configs, graph state, and traces."
-        let detail = baseDetail + " Local AI roles: Scout \(ollama.modelName), Ranker \(ollama.rankerModelName), Analyst \(ollama.analystModelName)."
+        let detail =
+            baseDetail + " Local AI roles: Scout \(ollama.modelName), Ranker \(ollama.rankerModelName), Analyst \(ollama.analystModelName)."
         return StatusBanner(
             title: title,
             detail: detail,
@@ -253,9 +282,11 @@ struct SystemStatusView: View {
             }
 
             if !failedTools.isEmpty || !configDegraded.isEmpty {
-                Text("Attention: \(failedTools.isEmpty ? "" : "failed tools: \(failedTools.joined(separator: ", "))")\(configDegraded.isEmpty ? "" : " config degraded: \(configDegraded.joined(separator: ", "))")")
-                    .font(.caption)
-                    .foregroundColor(.orange)
+                Text(
+                    "Attention: \(failedTools.isEmpty ? "" : "failed tools: \(failedTools.joined(separator: ", "))")\(configDegraded.isEmpty ? "" : " config degraded: \(configDegraded.joined(separator: ", "))")"
+                )
+                .font(.caption)
+                .foregroundColor(.orange)
             }
             if let error = viewModel.mcpSmokeError {
                 Text(error)
@@ -334,7 +365,8 @@ struct SystemStatusView: View {
         let benchmarkStale = benchmarkRoot != nil && !viewModel.projectPathsMatch(viewModel.selectedProjectRoot, benchmarkRoot)
         let agentBenchmark = viewModel.agentBenchmarkReport
         let agentSummary = agentBenchmark?.summary
-        let agentBenchmarkStale = agentBenchmark?.project_root != nil && !viewModel.projectPathsMatch(viewModel.selectedProjectRoot, agentBenchmark?.project_root)
+        let agentBenchmarkStale =
+            agentBenchmark?.project_root != nil && !viewModel.projectPathsMatch(viewModel.selectedProjectRoot, agentBenchmark?.project_root)
         let operationSaved = operation?.saved_tokens ?? savings?.saved_tokens
         let operationPct = operation?.savings_pct ?? savings?.savings_pct
         let responseTokens = operation?.soma_response_tokens ?? operation?.packet_tokens ?? savings?.packet_tokens
@@ -427,9 +459,11 @@ struct SystemStatusView: View {
             }
 
             if let contextSaved = benchmarkSummary?.total_saved_tokens {
-                Text("Latest opt-in context benchmark: \(contextSaved) estimated tokens reduced, \(String(format: "%.1f", benchmarkSummary?.avg_savings_pct ?? 0))% average.")
-                    .font(.caption)
-                    .foregroundColor(benchmarkStale ? .orange : .secondary)
+                Text(
+                    "Latest opt-in context benchmark: \(contextSaved) estimated tokens reduced, \(String(format: "%.1f", benchmarkSummary?.avg_savings_pct ?? 0))% average."
+                )
+                .font(.caption)
+                .foregroundColor(benchmarkStale ? .orange : .secondary)
             }
             if let error = viewModel.tokenBenchmarkError {
                 Text(error)
@@ -558,7 +592,9 @@ struct SystemStatusView: View {
         let ok = agentComparisons.filter { $0.status == "ok" }
         let saved = ok.reduce(0) { $0 + ($1.saved_tokens ?? 0) }
         let avg = ok.isEmpty ? nil : ok.reduce(0.0) { $0 + ($1.savings_pct ?? 0) } / Double(ok.count)
-        let failedAcceptance = agentComparisons.contains { $0.direct_acceptance_status == "failed" || $0.with_soma_acceptance_status == "failed" }
+        let failedAcceptance = agentComparisons.contains {
+            $0.direct_acceptance_status == "failed" || $0.with_soma_acceptance_status == "failed"
+        }
         let value = ok.isEmpty ? "—" : "\(saved)"
         let detail = avg.map { String(format: "%.1f%% saved", $0) } ?? (failedAcceptance ? "rubric failed" : "no accepted pair")
         let color: Color = ok.isEmpty ? (failedAcceptance ? .red : .secondary) : .blue
@@ -617,7 +653,10 @@ struct SystemStatusView: View {
                 readinessTile(
                     title: "Missing",
                     value: "\(unresolvedCount + notSelectedCount)",
-                    detail: unresolvedCount > 0 ? "\(unresolvedCount) files/symbols" : (notSelectedCount > 0 ? "\(notSelectedCount) not selected" : (conceptCount > 0 ? "\(conceptCount) concepts" : "none")),
+                    detail: unresolvedCount > 0
+                        ? "\(unresolvedCount) files/symbols"
+                        : (notSelectedCount > 0
+                            ? "\(notSelectedCount) not selected" : (conceptCount > 0 ? "\(conceptCount) concepts" : "none")),
                     color: (unresolvedCount + notSelectedCount) > 0 ? .orange : .green
                 )
                 readinessTile(
@@ -733,8 +772,7 @@ struct SystemStatusView: View {
                 actionDisabled: viewModel.selectedProjectRoot.isEmpty,
                 actionDestructive: viewModel.somaServerRunning,
                 action: {
-                    if viewModel.somaServerRunning { viewModel.stopSomaServer() }
-                    else { viewModel.startSomaServer() }
+                    if viewModel.somaServerRunning { viewModel.stopSomaServer() } else { viewModel.startSomaServer() }
                 }
             )
             graphifyCard
@@ -759,10 +797,12 @@ struct SystemStatusView: View {
 
     private var graphifyCard: some View {
         let iconColor: Color = viewModel.graphAvailable ? .purple : .secondary
-        let statusLabel = viewModel.graphAvailable
+        let statusLabel =
+            viewModel.graphAvailable
             ? (viewModel.graphStale ? "Stale" : "Fresh")
             : "No Graph"
-        let statusColor: Color = viewModel.graphAvailable
+        let statusColor: Color =
+            viewModel.graphAvailable
             ? (viewModel.graphStale ? .orange : .green)
             : .red
         let isGraphBusy = viewModel.graphifyBusy
@@ -1013,10 +1053,12 @@ struct SystemStatusView: View {
                 }
             }
 
-            Text("Analyze project-local Gemini/Codex prompts and configs, then add Soma-first routing with backups. Harden also updates backed-up global client configs so external CLIs route through Soma.")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                "Analyze project-local Gemini/Codex prompts and configs, then add Soma-first routing with backups. Harden also updates backed-up global client configs so external CLIs route through Soma."
+            )
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
 
             if let report = viewModel.projectSetupReport {
                 HStack(spacing: 14) {

@@ -22,7 +22,8 @@ extension TestsView {
         currentStageStartedAt = Date()
         currentStageElapsedSeconds = 0
         currentTestStatus = "Starting"
-        currentModelPair = selectedBenchmarkMode == .translation
+        currentModelPair =
+            selectedBenchmarkMode == .translation
             ? "\(translators.count) translator(s)"
             : "\(translators.count) x \(improvers.count)"
         progressLines = []
@@ -47,7 +48,6 @@ extension TestsView {
         runBenchmarkTests(translators: translators, improvers: improvers)
     }
 
-
     func stopTests() {
         activeTestProcess?.terminate()
         activeTestProcess = nil
@@ -59,7 +59,6 @@ extension TestsView {
         currentProgressEvent = nil
         appendProgressLine("Stopped by user")
     }
-
 
     func runBenchmarkTests(translators: [String], improvers: [String]) {
         currentStage = "Starting"
@@ -77,13 +76,11 @@ extension TestsView {
         startBenchmarkProcess(process, translators: translators, improvers: improvers)
     }
 
-
     func benchmarkOutputDirectory() -> URL {
         repoRootURL
             .appendingPathComponent(".stress")
             .appendingPathComponent("app-tests-\(runTimestamp())-\(selectedBenchmarkMode.cliValue)")
     }
-
 
     func makeBenchmarkProcess(translators: [String], improvers: [String], outDir: URL) -> Process {
         let process = Process()
@@ -94,14 +91,13 @@ extension TestsView {
         return process
     }
 
-
     func benchmarkArguments(translators: [String], improvers: [String], outDir: URL) -> [String] {
         var arguments = [
             stressScriptURL.path,
             "--benchmark-mode", selectedBenchmarkMode.cliValue,
             "--cases-file", casesURL.path,
             "--limit", "\(caseCount)",
-            "--translator-models"
+            "--translator-models",
         ]
         arguments.append(contentsOf: translators)
         if !improvers.isEmpty {
@@ -111,7 +107,6 @@ extension TestsView {
         arguments.append(contentsOf: benchmarkConfidenceArguments(outDir: outDir))
         return arguments
     }
-
 
     func benchmarkConfidenceArguments(outDir: URL) -> [String] {
         let confidenceReferee = selectedConfidenceReferee
@@ -128,7 +123,7 @@ extension TestsView {
             "--gemini-bin", geminiExecutablePath(),
             "--codex-stage-reasoning-effort", RusToPromptSettingsStore.defaultConfidenceReasoning,
             "--workers", "1",
-            "--out-dir", outDir.path
+            "--out-dir", outDir.path,
         ]
         if confidenceReferee == "hybrid" {
             arguments.append("--local-confidence-models")
@@ -143,7 +138,6 @@ extension TestsView {
         return arguments
     }
 
-
     func benchmarkEnvironment() -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
         environment.removeValue(forKey: "SOMA_PROJECT_ROOT")
@@ -152,7 +146,6 @@ extension TestsView {
         DeepSeekCredentialStore.apply(to: &environment)
         return environment
     }
-
 
     func attachBenchmarkOutput(_ pipe: Pipe, to process: Process) {
         process.standardOutput = pipe
@@ -166,7 +159,6 @@ extension TestsView {
         }
     }
 
-
     func attachBenchmarkTermination(_ pipe: Pipe, to process: Process, outDir: URL) {
         process.terminationHandler = { finishedProcess in
             pipe.fileHandleForReading.readabilityHandler = nil
@@ -175,7 +167,6 @@ extension TestsView {
             }
         }
     }
-
 
     func handleBenchmarkFinished(_ finishedProcess: Process, outDir: URL) {
         if !processOutputBuffer.isEmpty {
@@ -188,7 +179,6 @@ extension TestsView {
             markBenchmarkFailed(status: finishedProcess.terminationStatus, outDir: outDir)
         }
     }
-
 
     func markBenchmarkCompleted(outDir: URL) {
         isRunningTests = false
@@ -204,7 +194,6 @@ extension TestsView {
         selectedOutputTab = .results
     }
 
-
     func markBenchmarkFailed(status: Int32, outDir: URL) {
         isRunningTests = false
         currentStage = "Failed"
@@ -215,12 +204,12 @@ extension TestsView {
         loadResultsSummary(from: outDir)
     }
 
-
     func startBenchmarkProcess(_ process: Process, translators: [String], improvers: [String]) {
         do {
             try process.run()
             activeTestProcess = process
-            appendProgressLine("Started \(selectedBenchmarkMode.rawValue) run: \(translators.count) translator(s), \(improvers.count) improver(s)")
+            appendProgressLine(
+                "Started \(selectedBenchmarkMode.rawValue) run: \(translators.count) translator(s), \(improvers.count) improver(s)")
         } catch {
             isRunningTests = false
             currentStage = "Failed"
@@ -230,7 +219,6 @@ extension TestsView {
             appendProgressLine(currentTestStatus)
         }
     }
-
 
     func consumeProcessOutput(_ text: String) {
         processOutputBuffer += text
@@ -251,11 +239,9 @@ extension TestsView {
         }
     }
 
-
     var testProgressEventPrefix: String {
         "SOMA_PROGRESS "
     }
-
 
     func decodeProgressEvent(from line: String) -> TestProgressEvent? {
         guard line.hasPrefix(testProgressEventPrefix) else { return nil }

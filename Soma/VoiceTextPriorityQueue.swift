@@ -75,7 +75,8 @@ final class VoiceTextPriorityQueue: ObservableObject {
         startNextIfNeeded()
     }
 
-    func translateInteractive(_ text: String, mode: VoiceOutputMode, onPhase: ((VoiceTextWorkPhase) -> Void)? = nil) async throws -> String {
+    func translateInteractive(_ text: String, mode: VoiceOutputMode, onPhase: ((VoiceTextWorkPhase) -> Void)? = nil) async throws -> String
+    {
         guard mode != .original else { return text }
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return "" }
@@ -99,14 +100,15 @@ final class VoiceTextPriorityQueue: ObservableObject {
         // Avoid enqueueing the same restored import twice.
         guard !backgroundJobs.contains(where: { $0.importID == importID }) else { return }
         for (index, part) in parts.enumerated() {
-            backgroundJobs.append(BackgroundJob(
-                id: UUID(), importID: importID, index: index, total: parts.count,
-                text: part,
-                outputPath: destination.deletingPathExtension().appendingPathExtension("part-\(index).txt").path,
-                finalOutputPath: destination.path,
-                state: .queued,
-                errorMessage: nil
-            ))
+            backgroundJobs.append(
+                BackgroundJob(
+                    id: UUID(), importID: importID, index: index, total: parts.count,
+                    text: part,
+                    outputPath: destination.deletingPathExtension().appendingPathExtension("part-\(index).txt").path,
+                    finalOutputPath: destination.path,
+                    state: .queued,
+                    errorMessage: nil
+                ))
         }
         persist()
         refreshCount()
@@ -187,7 +189,9 @@ final class VoiceTextPriorityQueue: ObservableObject {
         }
     }
 
-    private func translate(_ text: String, mode: VoiceOutputMode, updatesPrompter: Bool, onPhase: ((VoiceTextWorkPhase) -> Void)? = nil) async throws -> String {
+    private func translate(_ text: String, mode: VoiceOutputMode, updatesPrompter: Bool, onPhase: ((VoiceTextWorkPhase) -> Void)? = nil)
+        async throws -> String
+    {
         guard let somaViewModel, let ollama, let prompter else { throw SomaError("Translation service is unavailable.") }
         if updatesPrompter {
             prompter.inputPrompt = text
@@ -204,7 +208,10 @@ final class VoiceTextPriorityQueue: ObservableObject {
             _ = await prompter.applyTranslationResult(translated, translatedText: translatedText, ollama: ollama)
         }
         guard mode == .prompt else {
-            if updatesPrompter { prompter.phase = .done; ollama.checkStatus() }
+            if updatesPrompter {
+                prompter.phase = .done
+                ollama.checkStatus()
+            }
             return translatedText
         }
         if updatesPrompter { prompter.phase = .analyzing }
@@ -241,7 +248,9 @@ final class VoiceTextPriorityQueue: ObservableObject {
     }
 
     private func restore() {
-        guard let data = try? Data(contentsOf: queueURL), let decoded = try? JSONDecoder().decode([BackgroundJob].self, from: data) else { return }
+        guard let data = try? Data(contentsOf: queueURL), let decoded = try? JSONDecoder().decode([BackgroundJob].self, from: data) else {
+            return
+        }
         backgroundJobs = decoded
     }
 
@@ -252,9 +261,11 @@ final class VoiceTextPriorityQueue: ObservableObject {
 
     private func refreshCount() {
         pendingBackgroundCount = backgroundJobs.filter { $0.state != .failed }.count
-        failedBackgroundImportIDs = Array(Set(
-            backgroundJobs.filter { $0.state == .failed }.map(\.importID)
-        )).sorted { $0.uuidString < $1.uuidString }
+        failedBackgroundImportIDs = Array(
+            Set(
+                backgroundJobs.filter { $0.state == .failed }.map(\.importID)
+            )
+        ).sorted { $0.uuidString < $1.uuidString }
     }
 
     static func splitForTranslation(_ text: String, limit: Int = 2_500) -> [String] {

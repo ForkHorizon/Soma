@@ -4,7 +4,7 @@ import XCTest
 @MainActor
 final class VoicePauseDetectorTests: XCTestCase {
     private let sampleRate = 16_000.0
-    private let frameCount = 160 // 10 ms
+    private let frameCount = 160  // 10 ms
 
     private func startSpeech(_ detector: VoicePauseDetector) {
         assertNone(detector.observe(dbfs: -20, frames: frameCount))

@@ -13,7 +13,6 @@ extension TestsView {
         }
     }
 
-
     func speedTone(_ speed: String) -> SomaStatusTone {
         switch speed {
         case "Fast", "Fastest": return .good
@@ -22,7 +21,6 @@ extension TestsView {
         default: return .neutral
         }
     }
-
 
     func openCasesInVSCode() {
         let process = Process()
