@@ -4,6 +4,7 @@
 Every handler here is thin — it parses the request and hands off to
 VoiceServerState. No handler may block on model work; see voice_asr_worker.
 """
+
 from __future__ import annotations
 
 import hmac
@@ -15,7 +16,6 @@ from urllib.parse import parse_qs, urlsplit
 
 if TYPE_CHECKING:  # `from __future__ import annotations` keeps this out of runtime
     from voice_server import VoiceServerState
-
 
 
 class VoiceHTTPHandler(BaseHTTPRequestHandler):
@@ -55,7 +55,9 @@ class VoiceHTTPHandler(BaseHTTPRequestHandler):
             body = self.rfile.read(content_length)
         except (TimeoutError, socket.timeout, OSError):
             self.close_connection = True
-            self._reply(*self.state.error(408, "upload_timeout", "Timed out while receiving audio bytes.", retryable=True))
+            self._reply(
+                *self.state.error(408, "upload_timeout", "Timed out while receiving audio bytes.", retryable=True)
+            )
             return None
         finally:
             try:
@@ -64,12 +66,14 @@ class VoiceHTTPHandler(BaseHTTPRequestHandler):
                 pass
         if len(body) != content_length:
             self.close_connection = True
-            self._reply(*self.state.error(
-                400,
-                "incomplete_upload",
-                "Upload ended before all audio bytes were received.",
-                retryable=True,
-            ))
+            self._reply(
+                *self.state.error(
+                    400,
+                    "incomplete_upload",
+                    "Upload ended before all audio bytes were received.",
+                    retryable=True,
+                )
+            )
             return None
         return body
 
@@ -114,12 +118,14 @@ class VoiceHTTPHandler(BaseHTTPRequestHandler):
         session_prefix = "/v1/sessions/"
         if parsed.path.startswith(session_prefix):
             query = parse_qs(parsed.query)
-            self._reply(*self.state.get_session(
-                parsed.path.removeprefix(session_prefix),
-                self._headers(),
-                self._wait_seconds(query),
-                self._since_completed(query),
-            ))
+            self._reply(
+                *self.state.get_session(
+                    parsed.path.removeprefix(session_prefix),
+                    self._headers(),
+                    self._wait_seconds(query),
+                    self._since_completed(query),
+                )
+            )
             return
         self._reply(*self.state.error(404, "not_found", "Endpoint not found.", retryable=False))
 

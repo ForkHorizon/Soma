@@ -17,28 +17,8 @@ concurrency:
 
 jobs:
   go-quality-gate:
-    name: Go Quality Gate
-    runs-on: [self-hosted, macOS, ARM64, ci-scope]
-    defaults:
-      run:
-        working-directory: Soma/go_scanner
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Ensure Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: Soma/go_scanner/go.mod
-
-      - name: Download modules
-        run: go mod download
-
-      - name: go vet
-        run: go vet ./...
-
-      - name: gofmt check
-        run: |
-          unformatted=$(gofmt -l .)
-          test -z "$unformatted" || { echo "$unformatted"; exit 1; }
+    uses: ForkHorizon/ci-gates/.github/workflows/go-quality.yml@main
+    with:
+      working-directory: Soma/go_scanner
+      gates-ref: main
+      runs-on: '["self-hosted", "macOS", "ARM64", "ci-scope", "ci-scope-v2"]'

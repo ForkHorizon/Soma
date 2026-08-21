@@ -32,11 +32,9 @@ extension TestsView {
         sortedModelStatsRows(modelStats?.translationModels ?? [], sort: translationModelStatsSort)
     }
 
-
     var sortedImproverModelStats: [TestModelRoleStats] {
         sortedModelStatsRows(modelStats?.improverModels ?? [], sort: improverModelStatsSort)
     }
-
 
     func toggleModelStatsSort(_ column: TestModelStatsSortColumn, sort: Binding<TestModelStatsSort?>) {
         if let current = sort.wrappedValue, current.column == column {
@@ -46,14 +44,12 @@ extension TestsView {
         }
     }
 
-
     func sortedModelStatsRows(_ rows: [TestModelRoleStats], sort: TestModelStatsSort?) -> [TestModelRoleStats] {
         guard let sort else { return rows }
         return rows.sorted { lhs, rhs in
             compareModelStatsRows(lhs, rhs, sort: sort)
         }
     }
-
 
     func compareModelStatsRows(_ lhs: TestModelRoleStats, _ rhs: TestModelRoleStats, sort: TestModelStatsSort) -> Bool {
         switch sort.column {
@@ -76,7 +72,6 @@ extension TestsView {
         }
     }
 
-
     func compareModelStatsInts(
         _ lhsValue: Int,
         _ rhsValue: Int,
@@ -89,7 +84,6 @@ extension TestsView {
         }
         return modelStatsNameTieBreak(lhs, rhs)
     }
-
 
     func compareModelStatsDoubles(
         _ lhsValue: Double?,
@@ -105,7 +99,6 @@ extension TestsView {
         }
         return modelStatsNameTieBreak(lhs, rhs)
     }
-
 
     func compareModelStatsOptionalStrings(
         _ lhsValue: String?,
@@ -124,7 +117,6 @@ extension TestsView {
         return modelStatsNameTieBreak(lhs, rhs)
     }
 
-
     func compareModelStatsStrings(
         _ lhsValue: String,
         _ rhsValue: String,
@@ -138,7 +130,6 @@ extension TestsView {
         return providerTie.0.localizedStandardCompare(providerTie.1) == .orderedAscending
     }
 
-
     func modelStatsNameTieBreak(_ lhs: TestModelRoleStats, _ rhs: TestModelRoleStats) -> Bool {
         let modelComparison = lhs.model.localizedStandardCompare(rhs.model)
         if modelComparison != .orderedSame {
@@ -147,18 +138,16 @@ extension TestsView {
         return lhs.provider.localizedStandardCompare(rhs.provider) == .orderedAscending
     }
 
-
     func modelStatsOKRate(_ row: TestModelRoleStats) -> Double? {
         row.attempts > 0 ? Double(row.confidenceCount) / Double(row.attempts) : nil
     }
 
-
     func modelStatsProblemCount(_ row: TestModelRoleStats) -> Int {
-        row.problemCount ?? row.worstCases.filter { item in
-            item.confidenceFailed == true || item.status != "ok"
-        }.count
+        row.problemCount
+            ?? row.worstCases.filter { item in
+                item.confidenceFailed == true || item.status != "ok"
+            }.count
     }
-
 
     func modelStatsCleanRate(_ row: TestModelRoleStats) -> Double? {
         guard row.attempts > 0 else { return nil }
@@ -166,12 +155,10 @@ extension TestsView {
         return Double(cleanCount) / Double(row.attempts)
     }
 
-
     func modelStatsCleanLabel(_ row: TestModelRoleStats) -> String {
         guard let rate = modelStatsCleanRate(row) else { return "n/a" }
         return formatPercent(rate)
     }
-
 
     func modelStatsWorstEffectiveScore(_ row: TestModelRoleStats) -> Double? {
         row.worstEffectiveScore ?? row.worstCases.compactMap { $0.effectiveScore ?? $0.confidence }.min()

@@ -171,7 +171,9 @@ extension TestsView {
                     StatusChip(text: row.status, tone: row.tone)
                     Text(queueConfidenceText(row.confidence, status: row.status))
                         .font(.system(.caption2, design: .monospaced))
-                        .foregroundColor(confidenceTone(row.confidence?.usableConfidence, failed: row.confidence?.isFailed == true ? 1 : 0).color)
+                        .foregroundColor(
+                            confidenceTone(row.confidence?.usableConfidence, failed: row.confidence?.isFailed == true ? 1 : 0).color
+                        )
                         .lineLimit(1)
                 }
                 .frame(width: 92, alignment: .trailing)
@@ -220,11 +222,13 @@ extension TestsView {
             $0.translatorModel == model && $0.analyzerModel == "translation-only"
         }
         if let state = queueManager.queueModelProgress(itemID: item.id, role: "Translate", model: model),
-           state.status != "completed" || result == nil {
+            state.status != "completed" || result == nil
+        {
             return progressQueueRow(role: "Translate", model: model, state: state, confidence: result?.translationConfidence)
         }
         if let result {
-            return completedQueueRow(role: "Translate", model: model, result: result, confidence: result.translationConfidence, snapshot: snapshot)
+            return completedQueueRow(
+                role: "Translate", model: model, result: result, confidence: result.translationConfidence, snapshot: snapshot)
         }
         return pendingQueueRow(role: "Translate", model: model, item: item, snapshot: snapshot)
     }
@@ -239,8 +243,10 @@ extension TestsView {
             $0.analyzerModel == model && $0.analyzerModel != "translation-only"
         }
         if let state = queueManager.queueModelProgress(itemID: item.id, role: "Improve", model: model),
-           state.status != "completed" || result == nil {
-            return progressQueueRow(role: "Improve", model: model, state: state, confidence: result?.improveConfidence ?? result?.overallConfidence)
+            state.status != "completed" || result == nil
+        {
+            return progressQueueRow(
+                role: "Improve", model: model, state: state, confidence: result?.improveConfidence ?? result?.overallConfidence)
         }
         if let result {
             return completedQueueRow(
@@ -313,7 +319,9 @@ extension TestsView {
         )
     }
 
-    func pendingQueueRow(role: String, model: String, item: RusToPromptQueueItem, snapshot: RusToPromptQueueItemSnapshot) -> QueueModelProgressRow {
+    func pendingQueueRow(role: String, model: String, item: RusToPromptQueueItem, snapshot: RusToPromptQueueItemSnapshot)
+        -> QueueModelProgressRow
+    {
         let terminal = [.completed, .failed, .blocked, .interrupted].contains(item.status)
         let status = terminal ? "not run" : "queued"
         let detail = terminal ? "No result was written for this model." : "Still waiting in the queue."

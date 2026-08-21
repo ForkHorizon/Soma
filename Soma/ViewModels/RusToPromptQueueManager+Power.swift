@@ -113,8 +113,9 @@ extension RusToPromptQueueManager {
         var sawBattery = false
         for source in sources {
             guard let descriptionRef = IOPSGetPowerSourceDescription(info, source as CFTypeRef),
-                  let description = descriptionRef.takeUnretainedValue() as? [String: Any],
-                  let state = description[kIOPSPowerSourceStateKey] as? String else {
+                let description = descriptionRef.takeUnretainedValue() as? [String: Any],
+                let state = description[kIOPSPowerSourceStateKey] as? String
+            else {
                 continue
             }
             if state == kIOPSACPowerValue {

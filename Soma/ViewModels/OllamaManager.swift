@@ -45,7 +45,8 @@ final class OllamaManager: ObservableObject {
             MainActor.assumeIsolated {
                 ResourceSampler.shared.mark(critical ? "mem_pressure_critical/ollama" : "mem_pressure_warning/ollama")
                 guard let self, !self.isBusy else { return }
-                for model in Set([self.modelName, self.rankerModelName, self.analystModelName, self.translatorModelName]) where !model.isEmpty {
+                for model in Set([self.modelName, self.rankerModelName, self.analystModelName, self.translatorModelName])
+                where !model.isEmpty {
                     self.unloadModel(model)
                 }
             }
@@ -54,7 +55,7 @@ final class OllamaManager: ObservableObject {
         memoryPressureSource = source
     }
     func startPolling() {
-        timer?.invalidate()   // never stack a second poll timer if called again
+        timer?.invalidate()  // never stack a second poll timer if called again
         timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
             self?.checkStatus()
         }
@@ -153,8 +154,7 @@ final class OllamaManager: ObservableObject {
             }
 
             let loaded: Set<String>
-            if
-                let data,
+            if let data,
                 let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                 let models = json["models"] as? [[String: Any]]
             {

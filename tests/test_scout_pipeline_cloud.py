@@ -15,13 +15,16 @@ class ScoutPipelineCloudTests(ScoutPipelineTestCase):
 
     def test_openai_cloud_referee_uses_compact_metadata_only(self):
         response = cloud_referee_response()
-        with patch.dict(
-            os.environ,
-            cloud_referee_env(),
-        ), patch(
-            "scout_pipeline_module.cloud_referee.urllib.request.urlopen",
-            return_value=response,
-        ) as urlopen:
+        with (
+            patch.dict(
+                os.environ,
+                cloud_referee_env(),
+            ),
+            patch(
+                "scout_pipeline_module.cloud_referee.urllib.request.urlopen",
+                return_value=response,
+            ) as urlopen,
+        ):
             result, stage = asyncio.run(
                 scout_pipeline.referee_evidence_with_cloud_model(
                     "Review graph version and changelog.",
@@ -52,8 +55,12 @@ class ScoutPipelineCloudTests(ScoutPipelineTestCase):
             clear=False,
         ):
             self.assertFalse(scout_pipeline.cloud_referee_should_run({"status": "ok", "plan_alignment_status": "ok"}))
-            self.assertTrue(scout_pipeline.cloud_referee_should_run({"status": "degraded", "plan_alignment_status": "ok"}))
-            self.assertTrue(scout_pipeline.cloud_referee_should_run({"status": "ok", "missing_required_evidence": ["changelog"]}))
+            self.assertTrue(
+                scout_pipeline.cloud_referee_should_run({"status": "degraded", "plan_alignment_status": "ok"})
+            )
+            self.assertTrue(
+                scout_pipeline.cloud_referee_should_run({"status": "ok", "missing_required_evidence": ["changelog"]})
+            )
 
     def test_cloud_referee_can_degrade_packet_without_blocking_generation(self):
         tmp, root = self.make_repo()
@@ -72,33 +79,38 @@ class ScoutPipelineCloudTests(ScoutPipelineTestCase):
                 }
             )
         )
-        with tmp, patch.dict(
-            os.environ,
-            {
-                "SOMA_CLOUD_REFEREE_PROVIDER": "openai",
-                "SOMA_OPENAI_API_KEY": "test-key",
-                "SOMA_OPENAI_REFEREE_MODEL": "gpt-test-referee",
-                "SOMA_CLOUD_REFEREE_POLICY": "always",
-            },
-        ), patch(
-            "scout_pipeline_module.cloud_referee.urllib.request.urlopen",
-            return_value=response,
+        with (
+            tmp,
+            patch.dict(
+                os.environ,
+                {
+                    "SOMA_CLOUD_REFEREE_PROVIDER": "openai",
+                    "SOMA_OPENAI_API_KEY": "test-key",
+                    "SOMA_OPENAI_REFEREE_MODEL": "gpt-test-referee",
+                    "SOMA_CLOUD_REFEREE_POLICY": "always",
+                },
+            ),
+            patch(
+                "scout_pipeline_module.cloud_referee.urllib.request.urlopen",
+                return_value=response,
+            ),
         ):
             bundle = self.run_gather("Review graph version and all changelogs.", root, "balanced", False)
 
         self.assertTrue(bundle["codex_packet"])
         self.assertEqual(bundle["status"], "degraded")
-        self.assertTrue(any(stage["stage"] == "cloud_referee" and stage["status"] == "ok" for stage in bundle["analysis_stages"]))
+        self.assertTrue(
+            any(stage["stage"] == "cloud_referee" and stage["status"] == "ok" for stage in bundle["analysis_stages"])
+        )
         self.assertIn("All available changelogs", bundle["evidence_quality"].get("referee_missing_context", []))
 
     def test_ollama_query_logs_local_model_usage_without_raw_prompt(self):
-        response = FakeHTTPResponse(json.dumps({"message": {"content": "{\"ordered_ids\":[0]}"}}))
-        with tempfile.TemporaryDirectory() as log_tmp, patch.object(
-            llama.urllib.request, "urlopen", return_value=response
-        ), patch.object(
-            soma_logger, "SOMA_LOG_DIR", Path(log_tmp)
-        ), patch.object(
-            soma_logger, "SOMA_SESSION_STATS_FILE", Path(log_tmp) / "session_stats.json"
+        response = FakeHTTPResponse(json.dumps({"message": {"content": '{"ordered_ids":[0]}'}}))
+        with (
+            tempfile.TemporaryDirectory() as log_tmp,
+            patch.object(llama.urllib.request, "urlopen", return_value=response),
+            patch.object(soma_logger, "SOMA_LOG_DIR", Path(log_tmp)),
+            patch.object(soma_logger, "SOMA_SESSION_STATS_FILE", Path(log_tmp) / "session_stats.json"),
         ):
             result = asyncio.run(
                 llama.query_ollama_model(
@@ -121,5 +133,5 @@ if __name__ == "__main__":
     unittest.main()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

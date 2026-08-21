@@ -62,7 +62,6 @@ extension TestsView {
         .padding(.top, 12)
     }
 
-
     var queueSheet: some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 9) {
@@ -127,16 +126,18 @@ extension TestsView {
         .background(SomaDesign.pageBackground)
     }
 
-
     var queueSettingsPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Settings")
                 .font(.headline)
 
-            Toggle("Auto benchmark real prompts", isOn: Binding(
-                get: { queueManager.settings.autoEnqueueEnabled },
-                set: { queueManager.setAutoEnqueueEnabled($0) }
-            ))
+            Toggle(
+                "Auto benchmark real prompts",
+                isOn: Binding(
+                    get: { queueManager.settings.autoEnqueueEnabled },
+                    set: { queueManager.setAutoEnqueueEnabled($0) }
+                )
+            )
             .toggleStyle(.switch)
 
             HStack {
@@ -146,7 +147,9 @@ extension TestsView {
                 StatusChip(text: queueManager.powerSource.label, tone: queuePowerTone)
             }
             .font(.caption)
-            .help("Automatic queue starts wait for adapter power. Manual Start, Resume, and Run Now can override battery mode for the current run.")
+            .help(
+                "Automatic queue starts wait for adapter power. Manual Start, Resume, and Run Now can override battery mode for the current run."
+            )
 
             queueCandidatePanel(
                 title: "Translators",
@@ -164,17 +167,21 @@ extension TestsView {
 
             queueConfidencePanel
 
-            Stepper(value: Binding(
-                get: { Int(queueManager.settings.cooldownSeconds) },
-                set: { queueManager.updateCooldown(seconds: Double($0)) }
-            ), in: 0...600, step: 5) {
+            Stepper(
+                value: Binding(
+                    get: { Int(queueManager.settings.cooldownSeconds) },
+                    set: { queueManager.updateCooldown(seconds: Double($0)) }
+                ), in: 0...600, step: 5
+            ) {
                 Text("Cooldown \(Int(queueManager.settings.cooldownSeconds))s")
             }
 
-            Stepper(value: Binding(
-                get: { Int(queueManager.settings.ramWarningGB) },
-                set: { queueManager.updateRAMWarning(gb: Double($0)) }
-            ), in: 0...64, step: 1) {
+            Stepper(
+                value: Binding(
+                    get: { Int(queueManager.settings.ramWarningGB) },
+                    set: { queueManager.updateRAMWarning(gb: Double($0)) }
+                ), in: 0...64, step: 1
+            ) {
                 Text("RAM warning \(Int(queueManager.settings.ramWarningGB)) GB")
             }
 

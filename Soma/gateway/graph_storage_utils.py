@@ -32,8 +32,7 @@ def diagnostic_degraded_reason(summary: dict[str, Any]) -> tuple[bool, str | Non
         int(summary.get("undirected_same_endpoint_collapsed_edges") or 0),
     )
     malformed = sum(
-        int(summary.get(key) or 0)
-        for key in ("non_object_edges", "missing_endpoint_edges", "dangling_endpoint_edges")
+        int(summary.get(key) or 0) for key in ("non_object_edges", "missing_endpoint_edges", "dangling_endpoint_edges")
     )
     post_build_error = str(summary.get("post_build_error") or "").strip()
     if post_build_error:

@@ -77,7 +77,10 @@ extension ASRManager {
             guard let manager = self else { return }
             Task { @MainActor in
                 guard token == manager.recordingStartToken else { return }
-                guard granted else { manager.status = "Microphone access denied (System Settings → Privacy → Microphone)"; return }
+                guard granted else {
+                    manager.status = "Microphone access denied (System Settings → Privacy → Microphone)"
+                    return
+                }
                 manager.beginStreamingRecording(
                     allowWhileTranscribing: allowWhileTranscribing,
                     useChunkedRemoteCapture: useChunkedRemoteCapture
@@ -88,9 +91,11 @@ extension ASRManager {
 
     var wavSettings: [String: Any] {
         // 16 kHz mono PCM WAV — what the ASR models want, and libsndfile reads it directly.
-        [AVFormatIDKey: Int(kAudioFormatLinearPCM), AVSampleRateKey: targetSampleRate,
-         AVNumberOfChannelsKey: 1, AVLinearPCMBitDepthKey: 16,
-         AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false]
+        [
+            AVFormatIDKey: Int(kAudioFormatLinearPCM), AVSampleRateKey: targetSampleRate,
+            AVNumberOfChannelsKey: 1, AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false,
+        ]
     }
 
     var transportFLACSettings: [String: Any] {
@@ -118,7 +123,7 @@ extension ASRManager {
                 idleSeconds: keepLoadedMinutes * 60,
                 workClass: .interactive,
                 capabilityHint: capabilityHint,
-                onCapabilities: { health in
+                onCapabilities: { [weak self] health in
                     // Inner [weak self]: Swift 6 rejects reading the outer captured var.
                     Task { @MainActor [weak self] in self?.applyRemoteCapabilities(health) }
                 }
@@ -133,7 +138,7 @@ extension ASRManager {
         if usesRemoteServer {
             Task { await checkVoiceServer(silent: true) }
         } else {
-            Task { _ = try? await ensureServerReady() }   // warm the model while recording
+            Task { _ = try? await ensureServerReady() }  // warm the model while recording
         }
     }
 
@@ -145,7 +150,10 @@ extension ASRManager {
         engineNode = AVAudioEngine()
         let input = engineNode.inputNode
         let inFormat = input.outputFormat(forBus: 0)
-        guard inFormat.sampleRate > 0 else { status = "No audio input available"; return }
+        guard inFormat.sampleRate > 0 else {
+            status = "No audio input available"
+            return
+        }
         resetRecordingState()
         startChunkPipelineOrWarmBackend(useChunkedRemoteCapture: useChunkedRemoteCapture)
         // Milliseconds, not seconds: AVAudioFile(forWriting:) truncates, so two
@@ -159,7 +167,8 @@ extension ASRManager {
 
     @MainActor
     func resetRecordingState() {
-        transcript = ""; lastInferSeconds = nil
+        transcript = ""
+        lastInferSeconds = nil
         receivedAudioSignal = false
         inputLevel = 0
         audioQueue.async { [weak self] in
@@ -199,10 +208,12 @@ extension ASRManager {
             isRecording = true
             if !allowWhileTranscribing { isTranscribing = false }
             recordingBeganAt = Date()
-            VoiceMetrics.log("recording_started", [
-                "backend": usesRemoteServer ? "remote" : "local",
-                "engine": engine,
-            ])
+            VoiceMetrics.log(
+                "recording_started",
+                [
+                    "backend": usesRemoteServer ? "remote" : "local",
+                    "engine": engine,
+                ])
             status = "Recording…"
         } catch {
             input.removeTap(onBus: 0)
@@ -242,10 +253,12 @@ extension ASRManager {
         inputLevel = 0
         let recordedMilliseconds = recordingBeganAt.map { Int(Date().timeIntervalSince($0) * 1_000) } ?? 0
         recordingBeganAt = nil
-        VoiceMetrics.log("recording_released", [
-            "source": source == .global ? "global" : "in_app",
-            "recorded_milliseconds": "\(recordedMilliseconds)",
-        ])
+        VoiceMetrics.log(
+            "recording_released",
+            [
+                "source": source == .global ? "global" : "in_app",
+                "recorded_milliseconds": "\(recordedMilliseconds)",
+            ])
         status = "Finishing transcription…"
         let capture = activeChunkCapture
         let pipeline = activeChunkPipeline
@@ -276,7 +289,10 @@ extension ASRManager {
             let activeURL = activeRecordingURL
             activeRecordingURL = nil
             audioQueue.async { [weak self] in
-                guard let self else { continuation.resume(returning: (activeURL, 0, false)); return }
+                guard let self else {
+                    continuation.resume(returning: (activeURL, 0, false))
+                    return
+                }
                 let chunkCount = capture?.finish() ?? 0
                 self.fullFile = nil
                 continuation.resume(returning: (activeURL, chunkCount, self.receivedAudioSignal))

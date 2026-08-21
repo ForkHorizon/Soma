@@ -4,6 +4,7 @@
 This process runs inside the selected engine venv. The public network server
 never imports Whisper/GigaAM directly; it forwards local temp WAV paths here.
 """
+
 from __future__ import annotations
 
 import gc
@@ -180,13 +181,16 @@ class Handler(BaseHTTPRequestHandler):
                 # Record-start fires this on every recording. A warm model must
                 # answer immediately, never behind an in-flight decode.
                 _last_used = time.monotonic()
-                self._reply(200, {
-                    "ok": True,
-                    "engine": ENGINE,
-                    "loaded": True,
-                    "already_loaded": True,
-                    "load_seconds": 0.0,
-                })
+                self._reply(
+                    200,
+                    {
+                        "ok": True,
+                        "engine": ENGINE,
+                        "loaded": True,
+                        "already_loaded": True,
+                        "load_seconds": 0.0,
+                    },
+                )
                 return
             self._reply(200, _on_model_thread(_warm_job))
         except Exception as exc:

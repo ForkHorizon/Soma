@@ -3,7 +3,7 @@ from scout_pipeline_test_helpers import *
 
 class ScoutPipelinePromptCompilerTests(ScoutPipelineTestCase):
     def test_candidate_filter_normalizes_string_notes(self):
-        response = {"message": {"content": "{\"selected_ids\":[1],\"notes\":\"picked manifest\"}"}}
+        response = {"message": {"content": '{"selected_ids":[1],"notes":"picked manifest"}'}}
         evidence = [
             {"path": "/repo/A.cs", "kind": "source", "reason": "", "preview": "", "symbols": []},
             {"path": "/repo/AndroidManifest.xml", "kind": "config", "reason": "", "preview": "", "symbols": []},
@@ -41,8 +41,8 @@ class ScoutPipelinePromptCompilerTests(ScoutPipelineTestCase):
                 "GraphicsSettings:\n  m_CustomRenderPipeline: {fileID: 0}\n"
             )
             (root / "Assets" / "Plugins" / "Android" / "AndroidManifest.xml").write_text(
-                "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n"
-                "  <application android:icon=\"@mipmap/app_icon\" />\n"
+                '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n'
+                '  <application android:icon="@mipmap/app_icon" />\n'
                 "</manifest>\n"
             )
             (root / "Assets" / "Visual" / "Sprites" / "Icon" / "Icon.png.meta").write_text(
@@ -89,5 +89,5 @@ class ScoutPipelinePromptCompilerTests(ScoutPipelineTestCase):
         self.assertNotIn("Graph context (from Graphify):", packet)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

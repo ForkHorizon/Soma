@@ -150,10 +150,10 @@ final class VoiceServerMonitor: ObservableObject {
 
     private func connection() -> ServerConnection? {
         guard let data = try? Data(contentsOf: launchAgentURL),
-              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
-              let arguments = plist["ProgramArguments"] as? [String],
-              let portText = value(after: "--port", in: arguments),
-              let port = Int(portText), (1...65535).contains(port)
+            let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+            let arguments = plist["ProgramArguments"] as? [String],
+            let portText = value(after: "--port", in: arguments),
+            let port = Int(portText), (1...65535).contains(port)
         else { return nil }
         let environment = plist["EnvironmentVariables"] as? [String: String]
         let token = environment?["SOMA_VOICE_TOKEN"] ?? value(after: "--token", in: arguments) ?? ""

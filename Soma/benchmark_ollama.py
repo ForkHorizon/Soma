@@ -5,6 +5,7 @@ benchmark_ollama.py
 Benchmarks Soma's current Ollama paths and records wall time plus Ollama timing
 metadata so local model regressions are visible.
 """
+
 import argparse
 import asyncio
 import json
@@ -74,9 +75,7 @@ def build_trimmed_bundle(bundle):
         for item in trimmed["evidence_items"]
         if item.get("path")
     }
-    trimmed["enriched_prompt"] = scout_pipeline.build_enriched_prompt(
-        trimmed.get("original_prompt", ""), trimmed
-    )
+    trimmed["enriched_prompt"] = scout_pipeline.build_enriched_prompt(trimmed.get("original_prompt", ""), trimmed)
     trimmed["codex_packet"] = trimmed["enriched_prompt"]
     trimmed["estimated_tokens"] = scout_pipeline.estimate_tokens(trimmed["codex_packet"])
     return trimmed
@@ -198,7 +197,9 @@ def main():
     )
     args = parser.parse_args()
 
-    report = asyncio.run(benchmark(args.model, args.prompt, str(Path(args.project_root).resolve()), args.analysis_depth))
+    report = asyncio.run(
+        benchmark(args.model, args.prompt, str(Path(args.project_root).resolve()), args.analysis_depth)
+    )
     print(json.dumps(report, indent=2))
 
 

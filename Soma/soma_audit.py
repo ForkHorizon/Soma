@@ -4,6 +4,7 @@
 Audit reports correlate a user task, Soma packet, selected evidence, tool calls,
 and quality review without writing raw private content by default.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -82,10 +83,14 @@ def context_from_arguments(arguments: dict[str, Any] | None) -> dict[str, Any]:
     return {key: raw.get(key) for key in AUDIT_ARGUMENT_KEYS if raw.get(key) is not None}
 
 
-def ensure_context(*, workflow: str = "packet_mode", task_id: str | None = None, run_id: str | None = None, client: str | None = None) -> dict[str, Any]:
+def ensure_context(
+    *, workflow: str = "packet_mode", task_id: str | None = None, run_id: str | None = None, client: str | None = None
+) -> dict[str, Any]:
     context = current_context()
     resolved_run_id = run_id or context.get("run_id") or os.environ.get("SOMA_AUDIT_RUN_ID") or new_run_id()
-    resolved_task_id = task_id or context.get("task_id") or os.environ.get("SOMA_AUDIT_TASK_ID") or f"task_{resolved_run_id[-8:]}"
+    resolved_task_id = (
+        task_id or context.get("task_id") or os.environ.get("SOMA_AUDIT_TASK_ID") or f"task_{resolved_run_id[-8:]}"
+    )
     return {
         "run_id": str(resolved_run_id),
         "task_id": str(resolved_task_id),
@@ -132,7 +137,14 @@ def _write_report(report: dict[str, Any]) -> dict[str, Any]:
     return report
 
 
-def _write_raw_artifacts(run_id: str, *, prompt: str | None = None, normalized_prompt: str | None = None, packet: str | None = None, transcript: str | None = None) -> dict[str, str]:
+def _write_raw_artifacts(
+    run_id: str,
+    *,
+    prompt: str | None = None,
+    normalized_prompt: str | None = None,
+    packet: str | None = None,
+    transcript: str | None = None,
+) -> dict[str, str]:
     if not raw_capture_enabled():
         return {}
     raw_dir = SOMA_AUDIT_RAW_DIR / _safe_id(run_id)
@@ -157,9 +169,16 @@ def _reference_fragments(text: str) -> list[str]:
     fragments: list[str] = []
     for match in re.findall(r"`([^`]+)`|\"([^\"]+)\"|'([^']+)'", text or ""):
         fragments.extend([part.strip() for part in match if part and part.strip()])
-    fragments.extend(re.findall(r"\b[A-Za-z0-9_./-]+\.(?:swift|py|ts|tsx|js|jsx|go|rs|cpp|cc|h|hpp|java|kt|php|rb|json|jsonl|yaml|yml|toml|md|txt|log)\b", text or ""))
+    fragments.extend(
+        re.findall(
+            r"\b[A-Za-z0-9_./-]+\.(?:swift|py|ts|tsx|js|jsx|go|rs|cpp|cc|h|hpp|java|kt|php|rb|json|jsonl|yaml|yml|toml|md|txt|log)\b",
+            text or "",
+        )
+    )
     fragments.extend(re.findall(r"(?:^|\s)((?:\./|\../)?[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+)", text or ""))
-    fragments.extend(re.findall(r"\b(?=[A-Za-z0-9_]*[a-z])(?=[A-Za-z0-9_]*[A-Z][A-Za-z0-9_]*[A-Z])[A-Z][A-Za-z0-9_]*\b", text or ""))
+    fragments.extend(
+        re.findall(r"\b(?=[A-Za-z0-9_]*[a-z])(?=[A-Za-z0-9_]*[A-Z][A-Za-z0-9_]*[A-Z])[A-Z][A-Za-z0-9_]*\b", text or "")
+    )
     cleaned: list[str] = []
     for fragment in fragments:
         value = fragment.strip().strip(".,:)(")
@@ -168,7 +187,9 @@ def _reference_fragments(text: str) -> list[str]:
     return cleaned[:40]
 
 
-def _candidate_rows(project_root: str, discovered: list[dict[str, Any]] | None, repo_index: dict[str, Any] | None) -> list[dict[str, Any]]:
+def _candidate_rows(
+    project_root: str, discovered: list[dict[str, Any]] | None, repo_index: dict[str, Any] | None
+) -> list[dict[str, Any]]:
     rows = (repo_index or {}).get("files") or discovered or []
     result: list[dict[str, Any]] = []
     for item in rows:
@@ -267,21 +288,35 @@ def build_missing_evidence(
                 missing_symbols.append(item)
                 unresolved.append(item)
             else:
-                unresolved_concepts.append({"reference": reference, "reason": "concept_not_resolved_to_project_file", "kind": kind})
+                unresolved_concepts.append(
+                    {"reference": reference, "reason": "concept_not_resolved_to_project_file", "kind": kind}
+                )
         elif not any(path in selected for path in matches):
-            found_not_selected.append({"reference": reference, "matched_paths": matches, "reason": "found_but_not_selected", "kind": kind})
+            found_not_selected.append(
+                {"reference": reference, "matched_paths": matches, "reason": "found_but_not_selected", "kind": kind}
+            )
         else:
-            resolved.append({"reference": reference, "matched_paths": [path for path in matches if path in selected], "kind": kind})
+            resolved.append(
+                {"reference": reference, "matched_paths": [path for path in matches if path in selected], "kind": kind}
+            )
 
     skipped_stages: list[dict[str, Any]] = []
     if graph_result is not None and not graph_result.get("graphs"):
         skipped_stages.append({"stage": "graphify", "status": "skipped", "reason": "no_project_graph"})
     for stage in analysis_stages or []:
         if isinstance(stage, dict) and stage.get("status") not in {None, "ok"}:
-            skipped_stages.append({"stage": stage.get("stage"), "status": stage.get("status"), "reason": stage.get("error") or stage.get("reason")})
+            skipped_stages.append(
+                {
+                    "stage": stage.get("stage"),
+                    "status": stage.get("status"),
+                    "reason": stage.get("error") or stage.get("reason"),
+                }
+            )
 
     return {
-        "status": "ok" if not missing_files and not missing_symbols and (evidence_quality or {}).get("status") == "ok" else "degraded",
+        "status": "ok"
+        if not missing_files and not missing_symbols and (evidence_quality or {}).get("status") == "ok"
+        else "degraded",
         "unresolved_references": unresolved[:12],
         "missing_files": missing_files[:12],
         "missing_symbols": missing_symbols[:12],
@@ -326,7 +361,9 @@ def build_prepare_audit(
     language_optimization: dict[str, Any] | None,
 ) -> dict[str, Any]:
     run_id = str(context["run_id"])
-    raw_artifacts = _write_raw_artifacts(run_id, prompt=original_prompt, normalized_prompt=normalized_prompt, packet=packet)
+    raw_artifacts = _write_raw_artifacts(
+        run_id, prompt=original_prompt, normalized_prompt=normalized_prompt, packet=packet
+    )
     created_at = _now()
     return {
         "run_id": run_id,
@@ -471,7 +508,12 @@ def write_audit_log_event(
         payload = {"run_id": run_id, "task_id": task_id, "workflow": workflow}
         if extra:
             payload.update(extra)
-        log_mcp_event(event=event, status=status, project_root=project_root, extra={k: v for k, v in payload.items() if v is not None})
+        log_mcp_event(
+            event=event,
+            status=status,
+            project_root=project_root,
+            extra={k: v for k, v in payload.items() if v is not None},
+        )
     except Exception:
         pass
 

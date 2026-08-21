@@ -27,7 +27,6 @@ extension TestsView {
         }
     }
 
-
     var translationGateTone: SomaStatusTone {
         switch translationGateStateText {
         case "Gate accepted":
@@ -40,7 +39,6 @@ extension TestsView {
             return .neutral
         }
     }
-
 
     var activeImproverOrBatchText: String {
         guard let event = currentProgressEvent else {
@@ -65,18 +63,15 @@ extension TestsView {
         return analyzerFromPair
     }
 
-
     var translatorFromPair: String {
         currentModelPair.components(separatedBy: " -> ").first ?? currentModelPair
     }
-
 
     var analyzerFromPair: String {
         let parts = currentModelPair.components(separatedBy: " -> ")
         guard parts.count > 1 else { return "-" }
         return parts[1]
     }
-
 
     var casesDirectoryURL: URL {
         URL(fileURLWithPath: #filePath)
@@ -87,11 +82,9 @@ extension TestsView {
             .appendingPathComponent("rus_to_prompt_tests")
     }
 
-
     var casesURL: URL {
         casesDirectoryURL.appendingPathComponent(selectedCasesFileName)
     }
-
 
     var repoRootURL: URL {
         casesDirectoryURL
@@ -99,13 +92,11 @@ extension TestsView {
             .deletingLastPathComponent()
     }
 
-
     var stressScriptURL: URL {
         repoRootURL
             .appendingPathComponent("Scripts")
             .appendingPathComponent("rus_to_prompt_stress.py")
     }
-
 
     var modelStatsScriptURL: URL {
         repoRootURL
@@ -113,23 +104,19 @@ extension TestsView {
             .appendingPathComponent("rus_to_prompt_stats.py")
     }
 
-
     var stressDirectoryURL: URL {
         repoRootURL.appendingPathComponent(".stress")
     }
-
 
     var selectedResultRow: TestModelCombinationSummary? {
         guard let selectedResultRowID else { return resultRows.first }
         return resultRows.first(where: { $0.id == selectedResultRowID }) ?? resultRows.first
     }
 
-
     var selectedRunRow: TestRunResult? {
         guard let selectedRunRowID else { return resultRunRows.first }
         return resultRunRows.first(where: { $0.id == selectedRunRowID }) ?? resultRunRows.first
     }
-
 
     var resultCaseGroups: [TestCaseRunGroup] {
         let grouped = Dictionary(grouping: resultRunRows, by: \.caseID)
@@ -150,7 +137,6 @@ extension TestsView {
         }
     }
 
-
     var canStartTests: Bool {
         caseCount > 0
             && FileManager.default.fileExists(atPath: casesURL.path)
@@ -158,7 +144,6 @@ extension TestsView {
             && !selectedTranslatorModels.isEmpty
             && (selectedBenchmarkMode == .translation || !selectedImproverModels.isEmpty)
     }
-
 
     var transformOperationCount: Int {
         switch selectedBenchmarkMode {
@@ -171,7 +156,6 @@ extension TestsView {
         }
     }
 
-
     var logicalConfidenceCheckCount: Int {
         switch selectedBenchmarkMode {
         case .translation:
@@ -183,7 +167,6 @@ extension TestsView {
             return translationChecks + (transformOperationCount * 2)
         }
     }
-
 
     var estimatedConfidenceRequestCount: Int {
         guard caseCount > 0, !selectedTranslatorModels.isEmpty else { return 0 }
@@ -203,18 +186,17 @@ extension TestsView {
         }
     }
 
-
     var benchmarkEstimateText: String {
         switch selectedBenchmarkMode {
         case .translation:
             return "\(transformOperationCount) translation operations, \(logicalConfidenceCheckCount) confidence checks"
         case .staged:
-            return "\(transformOperationCount) operations: \(caseCount * selectedTranslatorModels.count) translations + \(caseCount * selectedImproverModels.count) improver runs"
+            return
+                "\(transformOperationCount) operations: \(caseCount * selectedTranslatorModels.count) translations + \(caseCount * selectedImproverModels.count) improver runs"
         case .matrix:
             return "\(transformOperationCount) full matrix operations"
         }
     }
-
 
     var runReadinessText: String {
         if isRunningTests { return "Running \(totalCasesToRun) transform operations; confidence workers x\(effectiveConfidenceWorkers)." }
@@ -222,11 +204,12 @@ extension TestsView {
         if selectedTranslatorModels.isEmpty { return "Choose at least one translator model." }
         if selectedBenchmarkMode != .translation && selectedImproverModels.isEmpty { return "Choose at least one improver model." }
         if hybridConfidenceActive {
-            return "\(selectedBenchmarkMode.rawValue): \(transformOperationCount) operations, \(logicalConfidenceCheckCount) confidence items, two local judges first; \(providerDisplayName(selectedConfidenceFallbackReferee)) only on issues."
+            return
+                "\(selectedBenchmarkMode.rawValue): \(transformOperationCount) operations, \(logicalConfidenceCheckCount) confidence items, two local judges first; \(providerDisplayName(selectedConfidenceFallbackReferee)) only on issues."
         }
-        return "\(selectedBenchmarkMode.rawValue): \(transformOperationCount) operations, \(logicalConfidenceCheckCount) checks as ~\(estimatedConfidenceRequestCount) batched requests x\(effectiveConfidenceWorkers)."
+        return
+            "\(selectedBenchmarkMode.rawValue): \(transformOperationCount) operations, \(logicalConfidenceCheckCount) checks as ~\(estimatedConfidenceRequestCount) batched requests x\(effectiveConfidenceWorkers)."
     }
-
 
     var activeConfidenceSummary: String {
         if hybridConfidenceActive {

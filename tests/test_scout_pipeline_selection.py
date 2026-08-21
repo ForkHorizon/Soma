@@ -36,7 +36,7 @@ class ScoutPipelineSelectionTests(ScoutPipelineTestCase):
             project_settings = root / "ProjectSettings" / "ProjectSettings.asset"
             manifest = root / "Assets" / "Plugins" / "Android" / "AndroidManifest.xml"
             project_settings.write_text("PlayerSettings:\n")
-            manifest.write_text("<manifest><application android:icon=\"@mipmap/app_icon\" /></manifest>\n")
+            manifest.write_text('<manifest><application android:icon="@mipmap/app_icon" /></manifest>\n')
             repo_index = {
                 "files": [
                     {
@@ -99,15 +99,21 @@ class ScoutPipelineSelectionTests(ScoutPipelineTestCase):
             (root / "Assets" / "Scripts").mkdir(parents=True)
             (root / "ProjectSettings").mkdir()
             (root / "Library" / "PackageCache" / "com.unity.timeline").mkdir(parents=True)
-            (root / "Assets" / "Scripts" / "NexusBridge.cs").write_text("public class NexusBridge { void CompileRuntime() {} }\n")
+            (root / "Assets" / "Scripts" / "NexusBridge.cs").write_text(
+                "public class NexusBridge { void CompileRuntime() {} }\n"
+            )
             (root / "ProjectSettings" / "ProjectSettings.asset").write_text("m_Name: UnityTest\n")
             package_file = root / "Library" / "PackageCache" / "com.unity.timeline" / "RuntimeTrack.cs"
             package_file.write_text("public class RuntimeTrack { void CompileRuntime() {} }\n")
 
             discovered = scout_pipeline.iter_project_files(str(root))
             repo_index = scout_pipeline.build_repo_index(str(root), discovered)
-            preflight = scout_pipeline.build_preflight("review compile runtime NexusBridge", str(root), "unity", discovered, repo_index, "", {})
-            evidence = scout_pipeline.select_evidence(str(root), "review compile runtime NexusBridge", "unity", repo_index, preflight)
+            preflight = scout_pipeline.build_preflight(
+                "review compile runtime NexusBridge", str(root), "unity", discovered, repo_index, "", {}
+            )
+            evidence = scout_pipeline.select_evidence(
+                str(root), "review compile runtime NexusBridge", "unity", repo_index, preflight
+            )
             paths = [item["path"] for item in evidence]
 
         self.assertTrue(any(path.endswith("Assets/Scripts/NexusBridge.cs") for path in paths))
@@ -127,7 +133,9 @@ class ScoutPipelineSelectionTests(ScoutPipelineTestCase):
             prompt = "inspect `Library/PackageCache/com.unity.timeline/RuntimeTrack.cs`"
             explicit = scout_pipeline.gather_external_evidence(prompt, str(root), ["runtime"], discovered, repo_index)
 
-        self.assertTrue(any(item["path"].endswith("Library/PackageCache/com.unity.timeline/RuntimeTrack.cs") for item in explicit))
+        self.assertTrue(
+            any(item["path"].endswith("Library/PackageCache/com.unity.timeline/RuntimeTrack.cs") for item in explicit)
+        )
 
     def test_graphify_version_prompt_adds_command_evidence(self):
         tmp, root = self.make_repo()
@@ -137,7 +145,9 @@ class ScoutPipelineSelectionTests(ScoutPipelineTestCase):
             if "graphify --version" in joined:
                 return subprocess.CompletedProcess(cmd, 0, stdout="graphify 0.8.18\n", stderr="")
             if "pip index versions graphifyy" in joined:
-                return subprocess.CompletedProcess(cmd, 0, stdout="graphifyy (0.8.18)\nAvailable versions: 0.8.18, 0.8.17\n", stderr="")
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout="graphifyy (0.8.18)\nAvailable versions: 0.8.18, 0.8.17\n", stderr=""
+                )
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with tmp, patch("scout_pipeline_module.gather.subprocess.run", side_effect=fake_run):
@@ -150,5 +160,5 @@ class ScoutPipelineSelectionTests(ScoutPipelineTestCase):
         self.assertIn("Graphify changelog/release notes", bundle["codex_packet"])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

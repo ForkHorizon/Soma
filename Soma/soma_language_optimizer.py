@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Prompt language optimization facade."""
+
 from __future__ import annotations
 
 import subprocess

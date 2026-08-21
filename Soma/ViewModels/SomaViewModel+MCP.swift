@@ -6,10 +6,9 @@ import AppKit
 
 import Combine
 
-
 extension SomaViewModel {
 
-func startSomaServer() {
+    func startSomaServer() {
         guard !selectedProjectRoot.isEmpty else { return }
         if let process = somaServerProcess, process.isRunning {
             somaServerRunning = true
@@ -73,7 +72,7 @@ func startSomaServer() {
         }
     }
 
-func stopSomaServer() {
+    func stopSomaServer() {
         let pid = somaServerPID
         somaServerInput?.fileHandleForWriting.closeFile()
         if let process = somaServerProcess, process.isRunning {
@@ -91,14 +90,15 @@ func stopSomaServer() {
         loadStructuredLogs()
     }
 
-func drainProcessPipe(_ pipe: Pipe) {
+    func drainProcessPipe(_ pipe: Pipe) {
         DispatchQueue.global(qos: .utility).async {
             _ = pipe.fileHandleForReading.readDataToEndOfFile()
         }
     }
 
-func logServerStop(pid: Int32) {
-        Task { [weak self] in guard let self else { return }
+    func logServerStop(pid: Int32) {
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let logger = try scriptURL(named: "soma_logger")
                 _ = try await runScript(path: pythonPath(), args: [logger.path, "--server-stop-pid", "\(pid)", "--reason", "swift_stop"])
@@ -110,50 +110,54 @@ func logServerStop(pid: Int32) {
         }
     }
 
-func copyMCPConfig(client: String) {
+    func copyMCPConfig(client: String) {
         guard !selectedProjectRoot.isEmpty else {
             mcpInstallStatus = "Select a project root before copying MCP config."
             return
         }
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--print-client-config", client, "--project-root", selectedProjectRoot])
-                guard let config = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !config.isEmpty else {
+                guard let config = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !config.isEmpty
+                else {
                     throw SomaError("Empty MCP config")
                 }
-	                await MainActor.run {
-	                    let pb = NSPasteboard.general
-	                    pb.clearContents()
-	                    pb.setString(config, forType: .string)
-	                    self.mcpConfigPreview = config
-	                    self.mcpInstallStatus = "\(client.capitalized) MCP config copied. Merge it into the client config and remove direct Nexus entries."
-	                }
-	            } catch {
-	                await MainActor.run {
-	                    self.mcpInstallStatus = "Config generation failed: \(error.localizedDescription)"
-	                }
+                await MainActor.run {
+                    let pb = NSPasteboard.general
+                    pb.clearContents()
+                    pb.setString(config, forType: .string)
+                    self.mcpConfigPreview = config
+                    self.mcpInstallStatus =
+                        "\(client.capitalized) MCP config copied. Merge it into the client config and remove direct Nexus entries."
+                }
+            } catch {
+                await MainActor.run {
+                    self.mcpInstallStatus = "Config generation failed: \(error.localizedDescription)"
+                }
             }
         }
     }
 
-func copyGeminiConfig() { copyMCPConfig(client: "gemini") }
+    func copyGeminiConfig() { copyMCPConfig(client: "gemini") }
 
-func copyHermesConfig() { copyMCPConfig(client: "hermes") }
+    func copyHermesConfig() { copyMCPConfig(client: "hermes") }
 
-func copyClaudeConfig() { copyMCPConfig(client: "claude") }
+    func copyClaudeConfig() { copyMCPConfig(client: "claude") }
 
-func verifyClientConfigs() {
+    func verifyClientConfigs() {
         verifyCodexConfig(updateStatusText: false)
         verifyGeminiConfig(updateStatusText: false)
         verifyHermesConfig(updateStatusText: false)
     }
 
-func verifyCodexConfig() {
+    func verifyCodexConfig() {
         verifyCodexConfig(updateStatusText: true)
     }
 
-func verifyCodexConfig(updateStatusText: Bool) {
-        Task { [weak self] in guard let self else { return }
+    func verifyCodexConfig(updateStatusText: Bool) {
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 var args = ["--verify-client-config", "codex"]
                 if !selectedProjectRoot.isEmpty {
@@ -162,29 +166,30 @@ func verifyCodexConfig(updateStatusText: Bool) {
                 let data = try await runSomaHelper(args: args)
                 let status = try JSONDecoder().decode(ClientConfigStatus.self, from: data)
                 await MainActor.run {
-	                    self.codexConfigStatus = status
-	                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-	                    if updateStatusText {
-	                        let issueText = status.issues.isEmpty ? "no issues" : status.issues.joined(separator: ", ")
-	                        self.mcpInstallStatus = "Codex config \(status.status): \(status.summary) (\(issueText))."
-	                    }
-	                }
-	            } catch {
-	                await MainActor.run {
-	                    if updateStatusText {
-	                        self.mcpInstallStatus = "Codex config verification failed: \(error.localizedDescription)"
-	                    }
-	                }
+                    self.codexConfigStatus = status
+                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if updateStatusText {
+                        let issueText = status.issues.isEmpty ? "no issues" : status.issues.joined(separator: ", ")
+                        self.mcpInstallStatus = "Codex config \(status.status): \(status.summary) (\(issueText))."
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    if updateStatusText {
+                        self.mcpInstallStatus = "Codex config verification failed: \(error.localizedDescription)"
+                    }
+                }
             }
         }
     }
 
-func verifyGeminiConfig() {
+    func verifyGeminiConfig() {
         verifyGeminiConfig(updateStatusText: true)
     }
 
-func verifyGeminiConfig(updateStatusText: Bool) {
-        Task { [weak self] in guard let self else { return }
+    func verifyGeminiConfig(updateStatusText: Bool) {
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 var args = ["--verify-client-config", "gemini"]
                 if !selectedProjectRoot.isEmpty {
@@ -193,29 +198,30 @@ func verifyGeminiConfig(updateStatusText: Bool) {
                 let data = try await runSomaHelper(args: args)
                 let status = try JSONDecoder().decode(ClientConfigStatus.self, from: data)
                 await MainActor.run {
-	                    self.geminiConfigStatus = status
-	                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-	                    if updateStatusText {
-	                        let issueText = status.issues.isEmpty ? "no issues" : status.issues.joined(separator: ", ")
-	                        self.mcpInstallStatus = "Gemini config \(status.status): \(status.summary) (\(issueText))."
-	                    }
-	                }
-	            } catch {
-	                await MainActor.run {
-	                    if updateStatusText {
-	                        self.mcpInstallStatus = "Gemini config verification failed: \(error.localizedDescription)"
-	                    }
-	                }
+                    self.geminiConfigStatus = status
+                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if updateStatusText {
+                        let issueText = status.issues.isEmpty ? "no issues" : status.issues.joined(separator: ", ")
+                        self.mcpInstallStatus = "Gemini config \(status.status): \(status.summary) (\(issueText))."
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    if updateStatusText {
+                        self.mcpInstallStatus = "Gemini config verification failed: \(error.localizedDescription)"
+                    }
+                }
             }
         }
     }
 
-func verifyHermesConfig() {
+    func verifyHermesConfig() {
         verifyHermesConfig(updateStatusText: true)
     }
 
-func verifyHermesConfig(updateStatusText: Bool) {
-        Task { [weak self] in guard let self else { return }
+    func verifyHermesConfig(updateStatusText: Bool) {
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 var args = ["--verify-client-config", "hermes"]
                 if !selectedProjectRoot.isEmpty {
@@ -224,34 +230,35 @@ func verifyHermesConfig(updateStatusText: Bool) {
                 let data = try await runSomaHelper(args: args)
                 let status = try JSONDecoder().decode(ClientConfigStatus.self, from: data)
                 await MainActor.run {
-	                    self.hermesConfigStatus = status
-	                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-	                    if updateStatusText {
-	                        let issueText = status.issues.isEmpty ? "no issues" : status.issues.joined(separator: ", ")
-	                        self.mcpInstallStatus = "Hermes config \(status.status): \(status.summary) (\(issueText))."
-	                    }
-	                }
-	            } catch {
-	                await MainActor.run {
-	                    if updateStatusText {
-	                        self.mcpInstallStatus = "Hermes config verification failed: \(error.localizedDescription)"
-	                    }
-	                }
+                    self.hermesConfigStatus = status
+                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if updateStatusText {
+                        let issueText = status.issues.isEmpty ? "no issues" : status.issues.joined(separator: ", ")
+                        self.mcpInstallStatus = "Hermes config \(status.status): \(status.summary) (\(issueText))."
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    if updateStatusText {
+                        self.mcpInstallStatus = "Hermes config verification failed: \(error.localizedDescription)"
+                    }
+                }
             }
         }
     }
 
-func installCodexConfig() {
+    func installCodexConfig() {
         guard !selectedProjectRoot.isEmpty else {
             mcpInstallStatus = "Select a project root before installing Codex config."
             return
         }
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--install-codex-config", "--project-root", selectedProjectRoot])
                 let status = try JSONDecoder().decode(ClientConfigInstallStatus.self, from: data)
                 await MainActor.run {
-	                    self.codexConfigStatus = ClientConfigStatus(
+                    self.codexConfigStatus = ClientConfigStatus(
                         status: status.status,
                         summary: status.summary,
                         config_path: status.config_path,
@@ -263,29 +270,30 @@ func installCodexConfig() {
                         project_matches: status.project_matches,
                         issues: status.issues
                     )
-	                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-	                    let backupText = status.backup_path == nil ? "no previous config backup needed" : "backup: \(status.backup_path ?? "")"
-	                    self.mcpInstallStatus = "Codex config \(status.status): \(status.summary) \(backupText)."
-	                }
-	            } catch {
-	                await MainActor.run {
-	                    self.mcpInstallStatus = "Codex config install failed: \(error.localizedDescription)"
-	                }
+                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let backupText = status.backup_path == nil ? "no previous config backup needed" : "backup: \(status.backup_path ?? "")"
+                    self.mcpInstallStatus = "Codex config \(status.status): \(status.summary) \(backupText)."
+                }
+            } catch {
+                await MainActor.run {
+                    self.mcpInstallStatus = "Codex config install failed: \(error.localizedDescription)"
+                }
             }
         }
     }
 
-func installGeminiConfig() {
+    func installGeminiConfig() {
         guard !selectedProjectRoot.isEmpty else {
             mcpInstallStatus = "Select a project root before installing Gemini config."
             return
         }
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--install-gemini-config", "--project-root", selectedProjectRoot])
                 let status = try JSONDecoder().decode(ClientConfigInstallStatus.self, from: data)
                 await MainActor.run {
-	                    self.geminiConfigStatus = ClientConfigStatus(
+                    self.geminiConfigStatus = ClientConfigStatus(
                         status: status.status,
                         summary: status.summary,
                         config_path: status.config_path,
@@ -297,29 +305,30 @@ func installGeminiConfig() {
                         project_matches: status.project_matches,
                         issues: status.issues
                     )
-	                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-	                    let backupText = status.backup_path == nil ? "no previous config backup needed" : "backup: \(status.backup_path ?? "")"
-	                    self.mcpInstallStatus = "Gemini config \(status.status): \(status.summary) \(backupText)."
-	                }
-	            } catch {
-	                await MainActor.run {
-	                    self.mcpInstallStatus = "Gemini config install failed: \(error.localizedDescription)"
-	                }
+                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let backupText = status.backup_path == nil ? "no previous config backup needed" : "backup: \(status.backup_path ?? "")"
+                    self.mcpInstallStatus = "Gemini config \(status.status): \(status.summary) \(backupText)."
+                }
+            } catch {
+                await MainActor.run {
+                    self.mcpInstallStatus = "Gemini config install failed: \(error.localizedDescription)"
+                }
             }
         }
     }
 
-func installHermesConfig() {
+    func installHermesConfig() {
         guard !selectedProjectRoot.isEmpty else {
             mcpInstallStatus = "Select a project root before installing Hermes config."
             return
         }
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--install-hermes-config", "--project-root", selectedProjectRoot])
                 let status = try JSONDecoder().decode(ClientConfigInstallStatus.self, from: data)
                 await MainActor.run {
-	                    self.hermesConfigStatus = ClientConfigStatus(
+                    self.hermesConfigStatus = ClientConfigStatus(
                         status: status.status,
                         summary: status.summary,
                         config_path: status.config_path,
@@ -331,19 +340,19 @@ func installHermesConfig() {
                         project_matches: status.project_matches,
                         issues: status.issues
                     )
-	                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-	                    let backupText = status.backup_path == nil ? "no previous config backup needed" : "backup: \(status.backup_path ?? "")"
-	                    self.mcpInstallStatus = "Hermes config \(status.status): \(status.summary) \(backupText)."
-	                }
-	            } catch {
-	                await MainActor.run {
-	                    self.mcpInstallStatus = "Hermes config install failed: \(error.localizedDescription)"
-	                }
+                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let backupText = status.backup_path == nil ? "no previous config backup needed" : "backup: \(status.backup_path ?? "")"
+                    self.mcpInstallStatus = "Hermes config \(status.status): \(status.summary) \(backupText)."
+                }
+            } catch {
+                await MainActor.run {
+                    self.mcpInstallStatus = "Hermes config install failed: \(error.localizedDescription)"
+                }
             }
         }
     }
 
-func useSelectedProjectWithHermes() {
+    func useSelectedProjectWithHermes() {
         guard !selectedProjectRoot.isEmpty else {
             hermesSetupError = "Select a project root before setting up Hermes."
             mcpInstallStatus = "Select a project root before setting up Hermes."
@@ -354,7 +363,8 @@ func useSelectedProjectWithHermes() {
         mcpInstallStatus = "Hermes project setup started."
         logActivity("Setting up Hermes for \((selectedProjectRoot as NSString).lastPathComponent)...")
 
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let installData = try await runSomaHelper(args: ["--install-hermes-config", "--project-root", selectedProjectRoot])
                 let install = try JSONDecoder().decode(ClientConfigInstallStatus.self, from: installData)
@@ -375,7 +385,8 @@ func useSelectedProjectWithHermes() {
                 let smoke = try JSONDecoder().decode(MCPSmokeReport.self, from: smokeData)
 
                 let packet = try await runGather(
-                    prompt: "Prepare Hermes setup context for this project. Identify README, docs, project manifests, AI agent config files, MCP/Soma integration files, current git state, risks, and the first project-owned files Hermes should trust before making edits.",
+                    prompt:
+                        "Prepare Hermes setup context for this project. Identify README, docs, project manifests, AI agent config files, MCP/Soma integration files, current git state, risks, and the first project-owned files Hermes should trust before making edits.",
                     projectRoot: selectedProjectRoot,
                     recentRoots: recentProjectRoots,
                     rawCapture: false
@@ -402,9 +413,11 @@ func useSelectedProjectWithHermes() {
                     let degraded = smoke.summary?.config_degraded ?? []
                     let packetStatus = packet.audit?.evidence_quality?.status ?? (packet.error == nil ? "ok" : "degraded")
                     if degraded.isEmpty {
-                        self.mcpInstallStatus = "Hermes ready: config installed (\(backupText)), MCP smoke \(smokeStatus), starter packet \(packetStatus). Prompt copied; run `\(command)`."
+                        self.mcpInstallStatus =
+                            "Hermes ready: config installed (\(backupText)), MCP smoke \(smokeStatus), starter packet \(packetStatus). Prompt copied; run `\(command)`."
                     } else {
-                        self.mcpInstallStatus = "Hermes degraded: \(degraded.joined(separator: ", ")). Starter packet \(packetStatus). Prompt copied; run `\(command)` after fixing readiness."
+                        self.mcpInstallStatus =
+                            "Hermes degraded: \(degraded.joined(separator: ", ")). Starter packet \(packetStatus). Prompt copied; run `\(command)` after fixing readiness."
                     }
                     self.loadStructuredLogs()
                     self.loadAuditReport()
@@ -421,7 +434,7 @@ func useSelectedProjectWithHermes() {
         }
     }
 
-func copyHermesStarterPrompt() {
+    func copyHermesStarterPrompt() {
         guard let prompt = hermesStarterPrompt, !prompt.isEmpty else {
             mcpInstallStatus = "Run Hermes setup before copying the starter prompt."
             return
@@ -432,7 +445,7 @@ func copyHermesStarterPrompt() {
         mcpInstallStatus = "Hermes starter prompt copied. Launch Hermes with `\(hermesLaunchCommand ?? "hermes --tui")`."
     }
 
-func buildHermesStarterPrompt(packet: GatherBundle, command: String) -> String {
+    func buildHermesStarterPrompt(packet: GatherBundle, command: String) -> String {
         let packetStatus = packet.audit?.evidence_quality?.status ?? (packet.error == nil ? "ok" : "degraded")
         let evidenceCount = packet.evidence_items?.count ?? 0
         let tokenText = packet.estimated_tokens.map(String.init) ?? "unknown"
@@ -445,90 +458,95 @@ func buildHermesStarterPrompt(packet: GatherBundle, command: String) -> String {
             .compactMap { $0.path }
             .map { "- \($0)" }
             .joined(separator: "\n")
-        let evidenceSection = evidencePaths.isEmpty ? "- No selected evidence paths were returned. Treat this as degraded and gather targeted files only." : evidencePaths
+        let evidenceSection =
+            evidencePaths.isEmpty
+            ? "- No selected evidence paths were returned. Treat this as degraded and gather targeted files only." : evidencePaths
 
         return """
-        You are working in this project through Hermes:
-        \(selectedProjectRoot)
+            You are working in this project through Hermes:
+            \(selectedProjectRoot)
 
-        Launch command:
-        \(command)
+            Launch command:
+            \(command)
 
-        Before editing or running broad scans, call Soma's MCP tool `soma_prepare_context` for the user's concrete task.
+            Before editing or running broad scans, call Soma's MCP tool `soma_prepare_context` for the user's concrete task.
 
-        Rules:
-        - Treat Soma as the evidence/context backend and the first source of truth.
-        - Do not broadly scan the repo unless Soma returns `degraded` or the packet clearly misses required files/symbols.
-        - If Soma returns `degraded`, gather only targeted files needed to repair the missing evidence.
-        - Do not rely on invented files, managers, configs, or APIs.
-        - Keep raw prompts/transcripts private unless explicitly asked to capture them.
-        - After edits, run the smallest relevant tests/build checks and report exact commands and results.
+            Rules:
+            - Treat Soma as the evidence/context backend and the first source of truth.
+            - Do not broadly scan the repo unless Soma returns `degraded` or the packet clearly misses required files/symbols.
+            - If Soma returns `degraded`, gather only targeted files needed to repair the missing evidence.
+            - Do not rely on invented files, managers, configs, or APIs.
+            - Keep raw prompts/transcripts private unless explicitly asked to capture them.
+            - After edits, run the smallest relevant tests/build checks and report exact commands and results.
 
-        Bootstrap packet:
-        - status: \(packetStatus)
-        - estimated tokens: \(tokenText)
-        - evidence items: \(evidenceCount)
-        - strong matches: \(strong)
-        - weak matches: \(weak)
-        - summary: \(summary)
+            Bootstrap packet:
+            - status: \(packetStatus)
+            - estimated tokens: \(tokenText)
+            - evidence items: \(evidenceCount)
+            - strong matches: \(strong)
+            - weak matches: \(weak)
+            - summary: \(summary)
 
-        Selected evidence:
-        \(evidenceSection)
+            Selected evidence:
+            \(evidenceSection)
 
-        User task:
-        """
+            User task:
+            """
     }
 
-func shellQuoted(_ value: String) -> String {
+    func shellQuoted(_ value: String) -> String {
         "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
 
-func rollbackCodexConfig() {
-        Task { [weak self] in guard let self else { return }
+    func rollbackCodexConfig() {
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--rollback-codex-config"])
                 let status = try JSONDecoder().decode(ClientConfigRollbackStatus.self, from: data)
                 await MainActor.run {
-	                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-	                    let backupText = status.backup_path ?? "no backup"
-	                    self.mcpInstallStatus = "Codex rollback \(status.status): \(status.summary) \(backupText)."
-	                    self.verifyCodexConfig(updateStatusText: false)
-	                }
-	            } catch {
-	                await MainActor.run {
-	                    self.mcpInstallStatus = "Codex rollback failed: \(error.localizedDescription)"
-	                }
+                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let backupText = status.backup_path ?? "no backup"
+                    self.mcpInstallStatus = "Codex rollback \(status.status): \(status.summary) \(backupText)."
+                    self.verifyCodexConfig(updateStatusText: false)
+                }
+            } catch {
+                await MainActor.run {
+                    self.mcpInstallStatus = "Codex rollback failed: \(error.localizedDescription)"
+                }
             }
         }
     }
 
-func rollbackGeminiConfig() {
-        Task { [weak self] in guard let self else { return }
+    func rollbackGeminiConfig() {
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--rollback-gemini-config"])
                 let status = try JSONDecoder().decode(ClientConfigRollbackStatus.self, from: data)
                 await MainActor.run {
-	                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-	                    let backupText = status.backup_path ?? "no backup"
-	                    self.mcpInstallStatus = "Gemini rollback \(status.status): \(status.summary) \(backupText)."
-	                    self.verifyGeminiConfig(updateStatusText: false)
-	                }
-	            } catch {
-	                await MainActor.run {
-	                    self.mcpInstallStatus = "Gemini rollback failed: \(error.localizedDescription)"
-	                }
+                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let backupText = status.backup_path ?? "no backup"
+                    self.mcpInstallStatus = "Gemini rollback \(status.status): \(status.summary) \(backupText)."
+                    self.verifyGeminiConfig(updateStatusText: false)
+                }
+            } catch {
+                await MainActor.run {
+                    self.mcpInstallStatus = "Gemini rollback failed: \(error.localizedDescription)"
+                }
             }
         }
     }
 
-func analyzeProjectAISetup() {
+    func analyzeProjectAISetup() {
         guard !selectedProjectRoot.isEmpty else {
             projectSetupError = "Select a project root before analyzing project AI setup."
             return
         }
         projectSetupBusy = true
         projectSetupError = nil
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--analyze-project-ai-setup", "--project-root", selectedProjectRoot])
                 let report = try JSONDecoder().decode(ProjectAISetupReport.self, from: data)
@@ -537,7 +555,9 @@ func analyzeProjectAISetup() {
                     self.projectSetupBusy = false
                     self.projectSetupError = nil
                     self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let riskText = (report.remaining_risks ?? report.issues ?? []).isEmpty ? "no risks" : (report.remaining_risks ?? report.issues ?? []).joined(separator: ", ")
+                    let riskText =
+                        (report.remaining_risks ?? report.issues ?? []).isEmpty
+                        ? "no risks" : (report.remaining_risks ?? report.issues ?? []).joined(separator: ", ")
                     self.mcpInstallStatus = "Project AI setup \(report.status ?? "unknown"): \(report.summary ?? "") (\(riskText))."
                     self.loadStructuredLogs()
                 }
@@ -551,14 +571,15 @@ func analyzeProjectAISetup() {
         }
     }
 
-func hardenProjectAISetup() {
+    func hardenProjectAISetup() {
         guard !selectedProjectRoot.isEmpty else {
             projectSetupError = "Select a project root before hardening project AI setup."
             return
         }
         projectSetupBusy = true
         projectSetupError = nil
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--harden-project-ai-setup", "--project-root", selectedProjectRoot])
                 let report = try JSONDecoder().decode(ProjectAISetupReport.self, from: data)
@@ -569,7 +590,8 @@ func hardenProjectAISetup() {
                     self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
                     let changed = report.files_changed?.count ?? 0
                     let risks = report.remaining_risks?.count ?? 0
-                    self.mcpInstallStatus = "Project AI setup \(report.status ?? "unknown"): changed \(changed) files, remaining risks \(risks)."
+                    self.mcpInstallStatus =
+                        "Project AI setup \(report.status ?? "unknown"): changed \(changed) files, remaining risks \(risks)."
                     self.verifyCodexConfig(updateStatusText: false)
                     self.verifyGeminiConfig(updateStatusText: false)
                     self.verifyHermesConfig(updateStatusText: false)
@@ -585,14 +607,15 @@ func hardenProjectAISetup() {
         }
     }
 
-func rollbackProjectAISetup() {
+    func rollbackProjectAISetup() {
         guard !selectedProjectRoot.isEmpty else {
             projectSetupError = "Select a project root before rolling back project AI setup."
             return
         }
         projectSetupBusy = true
         projectSetupError = nil
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--rollback-project-ai-setup", "--project-root", selectedProjectRoot])
                 let report = try JSONDecoder().decode(ProjectAISetupReport.self, from: data)
@@ -618,7 +641,7 @@ func rollbackProjectAISetup() {
         }
     }
 
-func runSomaFirstSetup() {
+    func runSomaFirstSetup() {
         guard !selectedProjectRoot.isEmpty else {
             projectSetupError = "Select a project root before running Soma First setup."
             return
@@ -626,12 +649,14 @@ func runSomaFirstSetup() {
         projectSetupBusy = true
         projectSetupError = nil
         mcpInstallStatus = "Soma First setup started."
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let analysisData = try await runSomaHelper(args: ["--analyze-project-ai-setup", "--project-root", selectedProjectRoot])
                 let setupReport = try JSONDecoder().decode(ProjectAISetupReport.self, from: analysisData)
                 let memoryData = try await runSomaHelper(args: ["--setup-memory-tools", "--project-root", selectedProjectRoot])
-                let memoryStatus = (try? JSONSerialization.jsonObject(with: memoryData) as? [String: Any])?["status"] as? String ?? "unknown"
+                let memoryStatus =
+                    (try? JSONSerialization.jsonObject(with: memoryData) as? [String: Any])?["status"] as? String ?? "unknown"
 
                 let codexData = try await runSomaHelper(args: ["--install-codex-config", "--project-root", selectedProjectRoot])
                 let codexInstall = try JSONDecoder().decode(ClientConfigInstallStatus.self, from: codexData)
@@ -655,7 +680,7 @@ func runSomaFirstSetup() {
                 let packetData = try await runSomaHelper(args: [
                     "--project-root", selectedProjectRoot,
                     "--run-tool", "soma_prepare_context",
-                    #"{"goal":"Soma First setup smoke: identify project structure and current git state.","budget":"micro","depth":"deterministic","client":"swift","workflow":"soma_first_setup"}"#
+                    #"{"goal":"Soma First setup smoke: identify project structure and current git state.","budget":"micro","depth":"deterministic","client":"swift","workflow":"soma_first_setup"}"#,
                 ])
                 let packet = try JSONDecoder().decode(GatherBundle.self, from: packetData)
 
@@ -704,7 +729,8 @@ func runSomaFirstSetup() {
                     self.mcpConfigPreview = String(data: smokeData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
                     let degraded = smoke.summary?.config_degraded ?? []
                     let packetStatus = packet.error == nil ? "ready" : "degraded"
-                    self.mcpInstallStatus = degraded.isEmpty
+                    self.mcpInstallStatus =
+                        degraded.isEmpty
                         ? "Soma First setup ready: memory \(memoryStatus), configs installed, MCP smoke passed, first packet \(packetStatus)."
                         : "Soma First setup degraded: memory \(memoryStatus), \(degraded.joined(separator: ", ")). First packet \(packetStatus)."
                     self.loadStructuredLogs()
@@ -720,8 +746,9 @@ func runSomaFirstSetup() {
         }
     }
 
-func loadMCPSmokeReport() {
-        Task { [weak self] in guard let self else { return }
+    func loadMCPSmokeReport() {
+        Task { [weak self] in
+            guard let self else { return }
             let file = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".soma/mcp_smoke/latest.json")
             guard FileManager.default.fileExists(atPath: file.path) else { return }
@@ -743,7 +770,7 @@ func loadMCPSmokeReport() {
         }
     }
 
-func runMCPSmoke() {
+    func runMCPSmoke() {
         guard !selectedProjectRoot.isEmpty else {
             mcpSmokeError = "Select a project root before running MCP smoke."
             return
@@ -751,7 +778,8 @@ func runMCPSmoke() {
         mcpSmokeBusy = true
         mcpSmokeError = nil
         logActivity("Running guarded MCP smoke for \((selectedProjectRoot as NSString).lastPathComponent)...")
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let script = try scriptURL(named: "verify_soma_mcp_clients")
                 let data = try await runScript(
@@ -774,7 +802,8 @@ func runMCPSmoke() {
                     self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
                     let failed = report.summary?.failed_tools?.joined(separator: ", ") ?? ""
                     let failedSuffix = failed.isEmpty ? "" : ", failed: \(failed)"
-                    self.mcpInstallStatus = "MCP smoke \(report.status ?? "unknown"): \(report.summary?.smoked_tools ?? 0) tools ok, \(report.summary?.skipped_tools ?? 0) skipped\(failedSuffix)."
+                    self.mcpInstallStatus =
+                        "MCP smoke \(report.status ?? "unknown"): \(report.summary?.smoked_tools ?? 0) tools ok, \(report.summary?.skipped_tools ?? 0) skipped\(failedSuffix)."
                     self.loadStructuredLogs()
                 }
             } catch {
@@ -788,12 +817,13 @@ func runMCPSmoke() {
         }
     }
 
-func runLiveVerify() {
+    func runLiveVerify() {
         guard !selectedProjectRoot.isEmpty else {
             mcpInstallStatus = "Select a project root before running live verification."
             return
         }
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let script = try scriptURL(named: "verify_soma_live_workflow")
                 let data = try await runScript(
@@ -808,32 +838,35 @@ func runLiveVerify() {
                 )
                 let status = try JSONDecoder().decode(LiveVerifyStatus.self, from: data)
                 await MainActor.run {
-	                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-	                    self.mcpInstallStatus = self.summarizeLiveVerify(status)
-	                    self.nexusConnected = status.nexus?.connected ?? self.nexusConnected
-	                    self.graphAvailable = status.graph?.project_graph_available ?? status.graph?.available ?? self.graphAvailable
-	                    self.graphStale = status.graph?.stale ?? self.graphStale
-	                }
-	            } catch {
-	                await MainActor.run {
-	                    self.mcpInstallStatus = "Live verify failed: \(error.localizedDescription)"
-	                }
+                    self.mcpConfigPreview = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    self.mcpInstallStatus = self.summarizeLiveVerify(status)
+                    self.nexusConnected = status.nexus?.connected ?? self.nexusConnected
+                    self.graphAvailable = status.graph?.project_graph_available ?? status.graph?.available ?? self.graphAvailable
+                    self.graphStale = status.graph?.stale ?? self.graphStale
+                }
+            } catch {
+                await MainActor.run {
+                    self.mcpInstallStatus = "Live verify failed: \(error.localizedDescription)"
+                }
             }
         }
     }
 
-func summarizeLiveVerify(_ status: LiveVerifyStatus) -> String {
+    func summarizeLiveVerify(_ status: LiveVerifyStatus) -> String {
         let tools = "\(status.tools?.count ?? 0)/\(status.tools?.expected_count ?? 12) tools"
         let unityTools = status.tools?.unity_exposed?.isEmpty == false ? "unity exposed" : "no unity tools"
         let nexus = status.nexus?.connected == true ? "nexus connected" : "nexus offline"
-        let graph = status.graph?.project_graph_available == true ? ((status.graph?.stale == true) ? "graph stale" : "graph ready") : "graph missing"
+        let graph =
+            status.graph?.project_graph_available == true
+            ? ((status.graph?.stale == true) ? "graph stale" : "graph ready") : "graph missing"
         let calls = status.calls ?? [:]
         let scene = calls["soma_scene"]?.status ?? "missing"
         let inspect = calls["soma_inspect"]?.status ?? "missing"
         let apply = calls["soma_apply"]?.status ?? "missing"
         let cleanup = calls["cleanup_apply"]?.status ?? "missing"
         let issueText = (status.issues ?? []).isEmpty ? "no issues" : (status.issues ?? []).joined(separator: ", ")
-        return "Live verify \(status.status): \(tools), \(unityTools), \(nexus), \(graph), scene \(scene), inspect \(inspect), apply \(apply), cleanup \(cleanup). \(issueText)."
+        return
+            "Live verify \(status.status): \(tools), \(unityTools), \(nexus), \(graph), scene \(scene), inspect \(inspect), apply \(apply), cleanup \(cleanup). \(issueText)."
     }
 
 }

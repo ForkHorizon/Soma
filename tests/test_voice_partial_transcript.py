@@ -4,6 +4,7 @@ Chunks decode while the user is still speaking; a measured median of 86% of the
 final text is on the server by the time they release the key. These pin down
 that it is reachable, and reachable in time to be useful.
 """
+
 import json
 import threading
 import time
@@ -21,8 +22,7 @@ from test_soma_voice_server import FakeBroker
 
 class VoicePartialTranscriptTests(unittest.TestCase):
     def start_server(self):
-        state = voice_server.VoiceServerState(
-            token="secret", broker=FakeBroker(), idle_seconds=1, completed_ttl=60)
+        state = voice_server.VoiceServerState(token="secret", broker=FakeBroker(), idle_seconds=1, completed_ttl=60)
         server = ThreadingHTTPServer(("127.0.0.1", 0), voice_server.make_handler(state))
         threading.Thread(target=server.serve_forever, daemon=True).start()
         self.addCleanup(lambda: (server.shutdown(), server.server_close()))
@@ -42,13 +42,16 @@ class VoicePartialTranscriptTests(unittest.TestCase):
         of it until the merge, and nothing downstream can start early."""
         base, _state = self.start_server()
         _status, session = self.request(
-            "POST", f"{base}/v1/sessions",
+            "POST",
+            f"{base}/v1/sessions",
             headers={"X-Soma-Client-ID": "client-a", "X-Soma-Request-ID": "session-partial"},
         )
         session_id = session["session_id"]
         for index, body in enumerate((b"first phrase", b"second phrase")):
             status, _payload = self.request(
-                "PUT", f"{base}/v1/sessions/{session_id}/chunks/{index}", body=body,
+                "PUT",
+                f"{base}/v1/sessions/{session_id}/chunks/{index}",
+                body=body,
                 headers={
                     "Content-Type": "audio/flac",
                     "X-Soma-Client-ID": "client-a",
@@ -60,7 +63,8 @@ class VoicePartialTranscriptTests(unittest.TestCase):
 
         for _ in range(50):
             _status, live = self.request(
-                "GET", f"{base}/v1/sessions/{session_id}", headers={"X-Soma-Client-ID": "client-a"})
+                "GET", f"{base}/v1/sessions/{session_id}", headers={"X-Soma-Client-ID": "client-a"}
+            )
             if live.get("partial_text"):
                 break
             time.sleep(0.02)
@@ -73,14 +77,15 @@ class VoicePartialTranscriptTests(unittest.TestCase):
         # partial usable while the user is still speaking.
         began = time.monotonic()
         _status, progressed = self.request(
-            "GET", f"{base}/v1/sessions/{session_id}?wait=5&since_completed=0",
-            headers={"X-Soma-Client-ID": "client-a"})
+            "GET", f"{base}/v1/sessions/{session_id}?wait=5&since_completed=0", headers={"X-Soma-Client-ID": "client-a"}
+        )
         self.assertLess(time.monotonic() - began, 2.0, "progress poll blocked for the full wait")
         self.assertGreater(progressed["completed_chunks"], 0)
 
         self.request("POST", f"{base}/v1/sessions/{session_id}/finalize", headers={"X-Soma-Client-ID": "client-a"})
         _status, done = self.request(
-            "GET", f"{base}/v1/sessions/{session_id}?wait=2", headers={"X-Soma-Client-ID": "client-a"})
+            "GET", f"{base}/v1/sessions/{session_id}?wait=2", headers={"X-Soma-Client-ID": "client-a"}
+        )
         self.assertEqual(done["status"], "done")
         self.assertEqual(done["text"], "first phrase second phrase")
         self.assertNotIn("partial_text", done, "a finished session reports text, not a partial")

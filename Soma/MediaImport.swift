@@ -122,19 +122,23 @@ enum MediaImportTools {
 
     static func probeDuration(_ sourceURL: URL) async throws -> Double {
         guard let ffprobe = ffprobeURL() else { throw MediaImportError.ffprobeUnavailable }
-        let audioStream = try await run(ffprobe, [
-            "-v", "error", "-select_streams", "a:0",
-            "-show_entries", "stream=index", "-of", "default=nokey=1:noprint_wrappers=1",
-            sourceURL.path,
-        ])
+        let audioStream = try await run(
+            ffprobe,
+            [
+                "-v", "error", "-select_streams", "a:0",
+                "-show_entries", "stream=index", "-of", "default=nokey=1:noprint_wrappers=1",
+                sourceURL.path,
+            ])
         guard !audioStream.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw MediaImportError.noAudioStream
         }
-        let output = try await run(ffprobe, [
-            "-v", "error", "-select_streams", "a:0",
-            "-show_entries", "format=duration", "-of", "default=nokey=1:noprint_wrappers=1",
-            sourceURL.path,
-        ])
+        let output = try await run(
+            ffprobe,
+            [
+                "-v", "error", "-select_streams", "a:0",
+                "-show_entries", "format=duration", "-of", "default=nokey=1:noprint_wrappers=1",
+                sourceURL.path,
+            ])
         guard let duration = Double(output.trimmingCharacters(in: .whitespacesAndNewlines)), duration > 0 else {
             throw MediaImportError.noAudioStream
         }
@@ -144,12 +148,14 @@ enum MediaImportTools {
     static func exportChunk(sourceURL: URL, startSeconds: Double, durationSeconds: Double, to outputURL: URL) async throws {
         guard let ffmpeg = ffmpegURL() else { throw MediaImportError.ffmpegUnavailable }
         try? FileManager.default.removeItem(at: outputURL)
-        _ = try await run(ffmpeg, [
-            "-hide_banner", "-loglevel", "error", "-y",
-            "-ss", String(format: "%.3f", startSeconds), "-i", sourceURL.path,
-            "-map", "0:a:0", "-vn", "-t", String(format: "%.3f", durationSeconds),
-            "-ac", "1", "-ar", "16000", "-c:a", "flac", outputURL.path,
-        ])
+        _ = try await run(
+            ffmpeg,
+            [
+                "-hide_banner", "-loglevel", "error", "-y",
+                "-ss", String(format: "%.3f", startSeconds), "-i", sourceURL.path,
+                "-map", "0:a:0", "-vn", "-t", String(format: "%.3f", durationSeconds),
+                "-ac", "1", "-ar", "16000", "-c:a", "flac", outputURL.path,
+            ])
         guard FileManager.default.fileExists(atPath: outputURL.path) else {
             throw MediaImportError.processFailed("FFmpeg did not create the audio chunk.")
         }
@@ -165,10 +171,12 @@ enum MediaImportTools {
 
     static func planChunks(sourceURL: URL, duration: Double) async throws -> [MediaImportChunk] {
         guard let ffmpeg = ffmpegURL() else { throw MediaImportError.ffmpegUnavailable }
-        let report = try await run(ffmpeg, [
-            "-hide_banner", "-i", sourceURL.path,
-            "-map", "0:a:0", "-af", "silencedetect=n=-40dB:d=0.65", "-f", "null", "-",
-        ])
+        let report = try await run(
+            ffmpeg,
+            [
+                "-hide_banner", "-i", sourceURL.path,
+                "-map", "0:a:0", "-af", "silencedetect=n=-40dB:d=0.65", "-f", "null", "-",
+            ])
         let silenceEnds = report.split(whereSeparator: \.isNewline).compactMap { line -> Double? in
             guard let range = line.range(of: "silence_end:") else { return nil }
             return Double(line[range.upperBound...].split(whereSeparator: { $0 == " " || $0 == "|" }).first ?? "")
@@ -182,16 +190,22 @@ enum MediaImportTools {
         while start < duration {
             let remaining = duration - start
             if remaining <= 70 {
-                chunks.append(MediaImportChunk(startSeconds: start, durationSeconds: remaining, reason: VoiceChunkReason.pause.rawValue, overlapSeconds: 0))
+                chunks.append(
+                    MediaImportChunk(
+                        startSeconds: start, durationSeconds: remaining, reason: VoiceChunkReason.pause.rawValue, overlapSeconds: 0))
                 break
             }
             let target = start + 60
             let boundary = silenceEnds.filter { $0 >= start + 50 && $0 <= start + 70 }.min { abs($0 - target) < abs($1 - target) }
             if let boundary {
-                chunks.append(MediaImportChunk(startSeconds: start, durationSeconds: boundary - start, reason: VoiceChunkReason.pause.rawValue, overlapSeconds: 0))
+                chunks.append(
+                    MediaImportChunk(
+                        startSeconds: start, durationSeconds: boundary - start, reason: VoiceChunkReason.pause.rawValue, overlapSeconds: 0))
                 start = boundary
             } else {
-                chunks.append(MediaImportChunk(startSeconds: start, durationSeconds: 60, reason: VoiceChunkReason.forced.rawValue, overlapSeconds: overlapSeconds))
+                chunks.append(
+                    MediaImportChunk(
+                        startSeconds: start, durationSeconds: 60, reason: VoiceChunkReason.forced.rawValue, overlapSeconds: overlapSeconds))
                 start += chunkSeconds - overlapSeconds
             }
         }
@@ -272,7 +286,9 @@ enum MediaImportTools {
                 if process.terminationStatus == 0 {
                     continuation.resume(returning: message)
                 } else {
-                    continuation.resume(throwing: MediaImportError.processFailed(message.isEmpty ? "FFmpeg failed with exit code \(process.terminationStatus)." : message))
+                    continuation.resume(
+                        throwing: MediaImportError.processFailed(
+                            message.isEmpty ? "FFmpeg failed with exit code \(process.terminationStatus)." : message))
                 }
             }
             do {

@@ -118,7 +118,8 @@ nonisolated struct SomaLogEntry: Identifiable, Sendable {
 
     init?(from dict: [String: Any]) {
         guard let ts = dict["ts"] as? String,
-              let event = dict["event"] as? String else { return nil }
+            let event = dict["event"] as? String
+        else { return nil }
         self.ts = ts
         self.event = event
         self.tool = dict["tool"] as? String
@@ -177,8 +178,9 @@ nonisolated struct SomaLogEntry: Identifiable, Sendable {
     static func prettyPayload(from dict: [String: Any]) -> String? {
         let redacted = redactSensitiveValues(in: dict)
         guard JSONSerialization.isValidJSONObject(redacted),
-              let data = try? JSONSerialization.data(withJSONObject: redacted, options: [.prettyPrinted, .sortedKeys]),
-              let text = String(data: data, encoding: .utf8) else {
+            let data = try? JSONSerialization.data(withJSONObject: redacted, options: [.prettyPrinted, .sortedKeys]),
+            let text = String(data: data, encoding: .utf8)
+        else {
             return nil
         }
         return text
@@ -189,7 +191,9 @@ nonisolated struct SomaLogEntry: Identifiable, Sendable {
             var output: [String: Any] = [:]
             for (key, nestedValue) in dict {
                 let lower = key.lowercased()
-                if lower.contains("token") || lower.contains("secret") || lower.contains("password") || lower.contains("apikey") || lower.contains("api_key") || lower.contains("authorization") {
+                if lower.contains("token") || lower.contains("secret") || lower.contains("password") || lower.contains("apikey")
+                    || lower.contains("api_key") || lower.contains("authorization")
+                {
                     output[key] = "[REDACTED]"
                 } else {
                     output[key] = redactSensitiveValues(in: nestedValue)

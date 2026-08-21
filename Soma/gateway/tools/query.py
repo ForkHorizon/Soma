@@ -31,7 +31,9 @@ async def soma_ask(question: str) -> str:
         "degraded",
         "No graph answer available.",
         omitted={"graphs_consulted": result["graphs"], "warnings": result["warnings"][:3]},
-        next_calls=codex_next_calls("Run Graphify for the project or call soma_code_context for deterministic snippets."),
+        next_calls=codex_next_calls(
+            "Run Graphify for the project or call soma_code_context for deterministic snippets."
+        ),
     )
 
 
@@ -50,7 +52,9 @@ async def soma_debug(symptom: str) -> str:
         else:
             base.setdefault("omitted", {})["nexus_lint_error"] = err
     base["summary"] = f"Debug packet for: {symptom}"
-    base["next_calls"] = codex_next_calls("Use packet first.", "Call soma_inspect for the object/component named by errors.")
+    base["next_calls"] = codex_next_calls(
+        "Use packet first.", "Call soma_inspect for the object/component named by errors."
+    )
     return _json(base)
 
 

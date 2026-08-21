@@ -6,6 +6,7 @@ override global Soma MCP setup and steer agents toward raw Unity/Nexus tools.
 It preserves unrelated settings, writes backups before mutation, and emits a
 small report that the Swift dashboard can show.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -93,7 +94,11 @@ def _path_mentions_wrong_root(text: str, expected_root: str) -> bool:
     for match in re.findall(r"/Users/[A-Za-z0-9_./ -]+", text or ""):
         if "soma_mcp_server.py" in match:
             continue
-        if "UnityProjects" in match and normalize_path(match) != expected_root and expected_root not in normalize_path(match):
+        if (
+            "UnityProjects" in match
+            and normalize_path(match) != expected_root
+            and expected_root not in normalize_path(match)
+        ):
             return True
     return False
 
@@ -160,13 +165,19 @@ def _rewrite_gemini_settings(text: str, project_root: str, python_executable: st
     removed: list[str] = []
     for name in list(servers.keys()):
         rendered = json.dumps(servers.get(name), default=str).lower()
-        if name != "soma" and any(marker in name.lower() or marker in rendered for marker in ("nexus", "unity", "nexus_unity_bridge", "unity_")):
+        if name != "soma" and any(
+            marker in name.lower() or marker in rendered
+            for marker in ("nexus", "unity", "nexus_unity_bridge", "unity_")
+        ):
             removed.append(name)
             servers.pop(name, None)
 
     snippet = json.loads(build_client_config("gemini", project_root, python_executable or sys.executable))
     servers["soma"] = snippet["mcpServers"]["soma"]
-    return json.dumps(settings, indent=2, sort_keys=False) + "\n", {"removed_direct_mcp_servers": removed, "installed_soma": True}
+    return json.dumps(settings, indent=2, sort_keys=False) + "\n", {
+        "removed_direct_mcp_servers": removed,
+        "installed_soma": True,
+    }
 
 
 def _analyze_file(label: str, path: Path, project_root: str) -> dict[str, Any]:
@@ -192,7 +203,10 @@ def _analyze_file(label: str, path: Path, project_root: str) -> dict[str, Any]:
             if isinstance(servers, dict):
                 for name, entry in servers.items():
                     rendered = json.dumps(entry, default=str).lower()
-                    if name != "soma" and any(marker in name.lower() or marker in rendered for marker in ("nexus", "unity", "nexus_unity_bridge", "unity_")):
+                    if name != "soma" and any(
+                        marker in name.lower() or marker in rendered
+                        for marker in ("nexus", "unity", "nexus_unity_bridge", "unity_")
+                    ):
                         issues.append("direct_mcp_server_exposed")
                     if name == "soma" and expected not in json.dumps(entry, default=str):
                         issues.append("soma_project_root_mismatch")
@@ -221,7 +235,10 @@ async def _local_ai_check(stage: str, payload: dict[str, Any]) -> dict[str, Any]
         response = await query_ollama_model(
             model,
             [
-                {"role": "system", "content": "Review Soma project AI setup. Return JSON only with {\"status\":\"ok|degraded\",\"warnings\":[\"...\"],\"notes\":[\"...\"]}. Preserve project instructions; prefer Soma-first routing."},
+                {
+                    "role": "system",
+                    "content": 'Review Soma project AI setup. Return JSON only with {"status":"ok|degraded","warnings":["..."],"notes":["..."]}. Preserve project instructions; prefer Soma-first routing.',
+                },
                 {"role": "user", "content": json.dumps(payload, default=str)[:12000]},
             ],
             timeout=timeout,
@@ -234,7 +251,13 @@ async def _local_ai_check(stage: str, payload: dict[str, Any]) -> dict[str, Any]
         decoded = extract_json_object(response.get("message", {}).get("content", ""))
         if not isinstance(decoded, dict):
             return {"stage": stage, "status": "failed", "model": model, "error": "invalid_json"}
-        return {"stage": stage, "status": decoded.get("status", "ok"), "model": model, "warnings": decoded.get("warnings") or [], "notes": decoded.get("notes") or []}
+        return {
+            "stage": stage,
+            "status": decoded.get("status", "ok"),
+            "model": model,
+            "warnings": decoded.get("warnings") or [],
+            "notes": decoded.get("notes") or [],
+        }
     except Exception as exc:
         return {"stage": stage, "status": "failed", "error": str(exc)[:240]}
 
@@ -247,7 +270,9 @@ def analyze_project_ai_setup(project_root: str, *, write_report: bool = True) ->
     status = "ok" if not issues else "degraded"
     report = {
         "status": status,
-        "summary": "Project AI setup is Soma-first." if status == "ok" else "Project AI setup can steer agents away from Soma.",
+        "summary": "Project AI setup is Soma-first."
+        if status == "ok"
+        else "Project AI setup can steer agents away from Soma.",
         "generated_at": _now(),
         "project_root": root,
         "mode": "analyze",
@@ -261,7 +286,12 @@ def analyze_project_ai_setup(project_root: str, *, write_report: bool = True) ->
     }
     if write_report:
         _write_report(report)
-        log_mcp_event(event="project_setup_analyze", status=status, project_root=root, extra={"issues": issues, "report_path": report.get("report_path")})
+        log_mcp_event(
+            event="project_setup_analyze",
+            status=status,
+            project_root=root,
+            extra={"issues": issues, "report_path": report.get("report_path")},
+        )
     return report
 
 
@@ -313,7 +343,12 @@ def harden_project_ai_setup(project_root: str, *, python_executable: str | None 
         backups.append({"path": global_codex.get("config_path"), "backup_path": global_codex["backup_path"]})
 
     after = analyze_project_ai_setup(root, write_report=False)
-    ai_payload = {"project_root": root, "before_issues": before["issues"], "after_issues": after["issues"], "files_changed": changed}
+    ai_payload = {
+        "project_root": root,
+        "before_issues": before["issues"],
+        "after_issues": after["issues"],
+        "files_changed": changed,
+    }
     local_checks = [
         asyncio.run(_local_ai_check("project_setup_rewrite", ai_payload)),
         asyncio.run(_local_ai_check("project_setup_review", ai_payload)),
@@ -323,7 +358,9 @@ def harden_project_ai_setup(project_root: str, *, python_executable: str | None 
     status = "ok" if not after["issues"] else "degraded"
     report = {
         "status": status,
-        "summary": "Hardened project AI setup for Soma-first usage." if status == "ok" else "Hardened project AI setup, but some risks remain.",
+        "summary": "Hardened project AI setup for Soma-first usage."
+        if status == "ok"
+        else "Hardened project AI setup, but some risks remain.",
         "generated_at": _now(),
         "project_root": root,
         "mode": "harden",
@@ -339,7 +376,12 @@ def harden_project_ai_setup(project_root: str, *, python_executable: str | None 
         "local_ai_checks": local_checks,
     }
     _write_report(report)
-    log_mcp_event(event="project_setup_harden", status=status, project_root=root, extra={"changed_files": len(changed), "remaining_risks": remaining, "report_path": report.get("report_path")})
+    log_mcp_event(
+        event="project_setup_harden",
+        status=status,
+        project_root=root,
+        extra={"changed_files": len(changed), "remaining_risks": remaining, "report_path": report.get("report_path")},
+    )
     return report
 
 
@@ -379,7 +421,12 @@ def rollback_project_ai_setup(project_root: str) -> dict[str, Any]:
         "local_ai_checks": [],
     }
     _write_report(report)
-    log_mcp_event(event="project_setup_rollback", status=status, project_root=root, extra={"restored_files": len(restored), "issues": report["issues"], "report_path": report.get("report_path")})
+    log_mcp_event(
+        event="project_setup_rollback",
+        status=status,
+        project_root=root,
+        extra={"restored_files": len(restored), "issues": report["issues"], "report_path": report.get("report_path")},
+    )
     return report
 
 

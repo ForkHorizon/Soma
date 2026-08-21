@@ -26,7 +26,7 @@ from .packet_utils import (
 
 
 def build_enriched_prompt(user_prompt, bundle):
-    return build_codex_packet(user_prompt, bundle, bundle.get('token_budget', DEFAULT_TOKEN_BUDGET))
+    return build_codex_packet(user_prompt, bundle, bundle.get("token_budget", DEFAULT_TOKEN_BUDGET))
 
 
 __all__ = [

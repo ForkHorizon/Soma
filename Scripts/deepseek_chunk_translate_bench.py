@@ -33,6 +33,7 @@ plan assumed, so there is little there to win.
 Cost is small: ~0.11M tokens for 30 recordings both ways. Needs the app's key:
     export SOMA_DEEPSEEK_API_KEY="$(cat ~/Library/Application\\ Support/Soma/deepseek-api-key)"
 """
+
 from __future__ import annotations
 
 import argparse
@@ -90,9 +91,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{index:3}  skipped ({row['file']})", flush=True)
             continue
         results.append(entry)
-        print(f"{index:3}  {entry['chunks']} chunks   tail today {entry['tail_today_seconds']:5.2f}s"
-              f"  ->  streamed {entry['tail_streamed_seconds']:5.2f}s"
-              f"   wer(chunked vs full) {entry['wer_vs_full']:.3f}", flush=True)
+        print(
+            f"{index:3}  {entry['chunks']} chunks   tail today {entry['tail_today_seconds']:5.2f}s"
+            f"  ->  streamed {entry['tail_streamed_seconds']:5.2f}s"
+            f"   wer(chunked vs full) {entry['wer_vs_full']:.3f}",
+            flush=True,
+        )
 
     report(results)
     if args.json_out and results:
@@ -141,14 +145,22 @@ def report(results: list[dict]) -> None:
 
     print("\n" + "=" * 74)
     print(f"recordings                       {len(results)}")
-    print(f"translate time left after release  today  median {statistics.median(today):5.2f}s  "
-          f"mean {statistics.mean(today):5.2f}s")
-    print(f"                               streamed  median {statistics.median(streamed):5.2f}s  "
-          f"mean {statistics.mean(streamed):5.2f}s")
-    print(f"  saved                                  median {statistics.median(saved):5.2f}s  "
-          f"mean {statistics.mean(saved):5.2f}s")
-    print(f"  total API time is higher when chunked  {statistics.mean(r['chunk_seconds_total'] for r in results):.1f}s "
-          f"vs {statistics.mean(today):.1f}s per recording — that work just moves off the tail")
+    print(
+        f"translate time left after release  today  median {statistics.median(today):5.2f}s  "
+        f"mean {statistics.mean(today):5.2f}s"
+    )
+    print(
+        f"                               streamed  median {statistics.median(streamed):5.2f}s  "
+        f"mean {statistics.mean(streamed):5.2f}s"
+    )
+    print(
+        f"  saved                                  median {statistics.median(saved):5.2f}s  "
+        f"mean {statistics.mean(saved):5.2f}s"
+    )
+    print(
+        f"  total API time is higher when chunked  {statistics.mean(r['chunk_seconds_total'] for r in results):.1f}s "
+        f"vs {statistics.mean(today):.1f}s per recording — that work just moves off the tail"
+    )
     print(f"\nchunked vs full translation      mean WER {statistics.mean(r['wer_vs_full'] for r in results):.4f}")
     print("  (two valid translations differ in wording, so this overstates damage;")
     print("   read the samples below before drawing a conclusion)")

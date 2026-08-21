@@ -1,4 +1,5 @@
 """Gateway status helpers used by CLI, Swift UI, and tests."""
+
 from __future__ import annotations
 
 import sys

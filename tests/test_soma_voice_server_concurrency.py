@@ -1,5 +1,6 @@
 """Concurrency contract for the voice server: no request thread ever blocks on
 model work. See test_soma_voice_server.py for the protocol-level suite."""
+
 import contextlib
 import io
 import json
@@ -31,7 +32,6 @@ class VoiceServerConcurrencyTests(unittest.TestCase):
         req = urllib.request.Request(url, data=body, headers=all_headers, method=method)
         with urllib.request.urlopen(req, timeout=5) as response:
             return response.status, json.loads(response.read().decode())
-
 
     def start_backend_handler(self, **patched_globals):
         """Serve voice_asr_backend.Handler with temporarily patched module globals."""
@@ -67,11 +67,15 @@ class VoiceServerConcurrencyTests(unittest.TestCase):
         self.addCleanup(lambda: Path(audio.name).unlink(missing_ok=True))
         replies = []
         worker = threading.Thread(
-            target=lambda: replies.append(self.request(
-                "POST", f"{base}/transcribe",
-                body=json.dumps({"audio": audio.name}).encode(),
-                token=None, headers={"Content-Type": "application/json"},
-            )),
+            target=lambda: replies.append(
+                self.request(
+                    "POST",
+                    f"{base}/transcribe",
+                    body=json.dumps({"audio": audio.name}).encode(),
+                    token=None,
+                    headers={"Content-Type": "application/json"},
+                )
+            ),
             daemon=True,
         )
         worker.start()
@@ -99,7 +103,10 @@ class VoiceServerConcurrencyTests(unittest.TestCase):
         loads_before_warmup = len(loads)
         started = time.monotonic()
         status, payload = self.request(
-            "POST", f"{base}/warmup", body=b"{}", token=None,
+            "POST",
+            f"{base}/warmup",
+            body=b"{}",
+            token=None,
             headers={"Content-Type": "application/json"},
         )
         elapsed = time.monotonic() - started
@@ -163,9 +170,13 @@ class VoiceServerConcurrencyTests(unittest.TestCase):
     def test_health_refresher_stops_when_idle_and_restarts_on_demand(self):
         broker = self.stub_broker(4325)
         payload = b'{"loaded": true, "busy": false, "idle_seconds": 600}'
-        with mock.patch("urllib.request.urlopen", side_effect=lambda *_a, **_k: contextlib.nullcontext(io.BytesIO(payload))), \
-             mock.patch.object(voice_backend_broker, "BACKEND_HEALTH_IDLE_STOP_SECONDS", 0.0), \
-             mock.patch.object(voice_backend_broker, "BACKEND_HEALTH_REFRESH_SECONDS", 0.01):
+        with (
+            mock.patch(
+                "urllib.request.urlopen", side_effect=lambda *_a, **_k: contextlib.nullcontext(io.BytesIO(payload))
+            ),
+            mock.patch.object(voice_backend_broker, "BACKEND_HEALTH_IDLE_STOP_SECONDS", 0.0),
+            mock.patch.object(voice_backend_broker, "BACKEND_HEALTH_REFRESH_SECONDS", 0.01),
+        ):
             broker.health()
             for _ in range(50):
                 time.sleep(0.02)

@@ -8,6 +8,7 @@ model, so there is nothing to gain from decoding in parallel. Priority ordering
 Free functions taking the `VoiceServerState`, so the state object stays the
 single owner of the lock.
 """
+
 from __future__ import annotations
 
 import os
@@ -23,6 +24,7 @@ from voice_models import Job, PathologicalRepetitionError
 
 if TYPE_CHECKING:  # annotations stay lazy, so this cannot cycle at runtime
     from voice_server import VoiceServerState  # noqa: F401
+
 
 def spill_audio(body: bytes, suffix: str) -> str:
     """Put the upload on disk and return its path.
@@ -45,7 +47,17 @@ def discard_audio(path: str) -> None:
         pass
 
 
-def new_job(state, client_id: str, request_id: str, engine: str, language: str, idle_seconds: int, audio_path: str, work_class: str, client_managed_recovery: bool = False) -> Job:
+def new_job(
+    state,
+    client_id: str,
+    request_id: str,
+    engine: str,
+    language: str,
+    idle_seconds: int,
+    audio_path: str,
+    work_class: str,
+    client_managed_recovery: bool = False,
+) -> Job:
     return Job(
         id=str(uuid.uuid4()),
         client_id=client_id,
@@ -57,6 +69,7 @@ def new_job(state, client_id: str, request_id: str, engine: str, language: str, 
         work_class=work_class,
         client_managed_recovery=client_managed_recovery,
     )
+
 
 def submit(state, headers: dict[str, str], body: bytes) -> tuple[int, dict[str, Any]]:
     if len(body) > state.max_audio_bytes:
@@ -186,6 +199,7 @@ def start_pruner(state) -> threading.Thread:
     the global lock for an O(jobs + sessions) scan on the hot path to expire
     things whose TTLs are measured in hours.
     """
+
     def loop() -> None:
         while True:
             time.sleep(PRUNE_INTERVAL_SECONDS)
@@ -203,7 +217,9 @@ def prune(state) -> None:
     cutoff = time.time() - state.completed_ttl
     abandoned_cutoff = time.time() - state.abandoned_session_ttl
     with state.changed:
-        expired_jobs = [job_id for job_id, job in state.jobs.items() if job.finished_at is not None and job.finished_at < cutoff]
+        expired_jobs = [
+            job_id for job_id, job in state.jobs.items() if job.finished_at is not None and job.finished_at < cutoff
+        ]
         for job_id in expired_jobs:
             job = state.jobs.pop(job_id, None)
             if job:
@@ -235,6 +251,3 @@ def prune(state) -> None:
                     job.error = {"code": "session_expired", "message": "Voice session expired.", "retryable": True}
             state.sessions.pop(session_id, None)
             state.session_idempotency.pop((session.client_id, session.request_id), None)
-
-
-

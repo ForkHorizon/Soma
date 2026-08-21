@@ -4,6 +4,7 @@ relay.py — Local Relay Connector
 Reads the gather bundle from scout_pipeline.py and sends either the direct
 prompt or the curated evidence pack to the local Ollama model.
 """
+
 import json
 import os
 import sys
@@ -27,15 +28,18 @@ def query_ollama(prompt: str) -> dict:
         "model": MODEL,
         "think": False,
         "messages": [
-            {"role": "system", "content": "You are a concise engineering assistant. Use the compact evidence packet first. If evidence is insufficient, request only 1-3 exact missing files or commands. Do not add verbose reasoning."},
-            {"role": "user", "content": prompt}
+            {
+                "role": "system",
+                "content": "You are a concise engineering assistant. Use the compact evidence packet first. If evidence is insufficient, request only 1-3 exact missing files or commands. Do not add verbose reasoning.",
+            },
+            {"role": "user", "content": prompt},
         ],
         "stream": False,
         "options": {
             "num_predict": 1024,
             "num_ctx": 4096,
             "temperature": 0.3,
-        }
+        },
     }
     request = urllib.request.Request(
         "http://127.0.0.1:11434/api/chat",

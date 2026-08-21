@@ -5,6 +5,7 @@ Pure text functions with no server state. Chunks are cut at pauses, or forced
 after a long unbroken stretch — a forced cut replays ~750ms of audio, so the two
 transcripts overlap and have to be joined on a matching word run.
 """
+
 from __future__ import annotations
 
 import re
@@ -54,7 +55,10 @@ def has_pathological_repetition(text: str) -> bool:
     for unit_length in range(1, min(MAX_REPEATED_UNIT_WORDS, len(words) // 3) + 1):
         minimum_length = max(12, unit_length * 3)
         for start in range(0, len(words) - minimum_length + 1):
-            if all(words[start + offset] == words[start + offset % unit_length] for offset in range(unit_length, minimum_length)):
+            if all(
+                words[start + offset] == words[start + offset % unit_length]
+                for offset in range(unit_length, minimum_length)
+            ):
                 return True
     return False
 

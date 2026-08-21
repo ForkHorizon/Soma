@@ -34,7 +34,9 @@ def main() -> int:
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     _install_progress_log(out_dir)
-    (out_dir / "prompts.json").write_text(json.dumps([asdict(case) for case in cases], ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (out_dir / "prompts.json").write_text(
+        json.dumps([asdict(case) for case in cases], ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
     if args.dry_run:
         print(f"Dry run wrote {len(cases)} prompt cases to {out_dir / 'prompts.json'}")
         return 0
@@ -44,15 +46,25 @@ def main() -> int:
     started_at = datetime.now(timezone.utc).isoformat()
     results_path = out_dir / "results.jsonl"
     existing_results = load_resume_results(results_path, args.benchmark_mode) if args.resume_existing else []
-    print(progress_event_line(event="run_start", stage="queued", total_operations=total_operations, status="running"), flush=True)
+    print(
+        progress_event_line(event="run_start", stage="queued", total_operations=total_operations, status="running"),
+        flush=True,
+    )
     preflight_local_backend(translators, analyzers)  # probe Ollama; if wedged, non-mlx local calls fail fast
-    preflight_confidence_providers(args)             # probe online judges up front; dead ones are skipped per-item
-    results = run_cases(cases, translators, analyzers, args, results_path, total_operations, existing_results=existing_results)
+    preflight_confidence_providers(args)  # probe online judges up front; dead ones are skipped per-item
+    results = run_cases(
+        cases, translators, analyzers, args, results_path, total_operations, existing_results=existing_results
+    )
     summary = summarize(results, started_at, datetime.now(timezone.utc).isoformat())
     summary.update(summary_metadata(args, translators, analyzers, total_operations, results))
     apply_run_health(summary, total_operations)
     (out_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(progress_event_line(event="run_finished", stage="done", total_operations=total_operations, status=summary.get("run_status")), flush=True)
+    print(
+        progress_event_line(
+            event="run_finished", stage="done", total_operations=total_operations, status=summary.get("run_status")
+        ),
+        flush=True,
+    )
     print(json.dumps(summary, ensure_ascii=False, indent=2), flush=True)
     return 0
 
@@ -71,39 +83,74 @@ def _parser() -> argparse.ArgumentParser:
 
 def _add_stage_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--benchmark-mode", default="matrix", choices=["matrix", "staged", "translation"])
-    parser.add_argument("--out-dir", default=str(ROOT / ".stress" / f"rus-to-prompt-{datetime.now().strftime('%Y%m%d-%H%M%S')}"))
+    parser.add_argument(
+        "--out-dir", default=str(ROOT / ".stress" / f"rus-to-prompt-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
+    )
     parser.add_argument("--cases-file")
     parser.add_argument("--translator-model", default=os.environ.get("SOMA_TRANSLATOR_MODEL") or "qwen3.5:9b")
-    parser.add_argument("--analyzer-model", default=os.environ.get("SOMA_ANALYST_MODEL") or "qwen3-coder:30b-a3b-q4_K_M")
+    parser.add_argument(
+        "--analyzer-model", default=os.environ.get("SOMA_ANALYST_MODEL") or "qwen3-coder:30b-a3b-q4_K_M"
+    )
     parser.add_argument("--translator-models", nargs="+")
     parser.add_argument("--analyzer-models", nargs="+")
-    parser.add_argument("--translator-provider", default=os.environ.get("SOMA_RUS_TO_PROMPT_TRANSLATOR_PROVIDER", "local"), choices=["local", "codex", "gemini", "deepseek"])
-    parser.add_argument("--analyzer-provider", default=os.environ.get("SOMA_RUS_TO_PROMPT_ANALYZER_PROVIDER", "local"), choices=["local", "codex", "gemini", "deepseek"])
+    parser.add_argument(
+        "--translator-provider",
+        default=os.environ.get("SOMA_RUS_TO_PROMPT_TRANSLATOR_PROVIDER", "local"),
+        choices=["local", "codex", "gemini", "deepseek"],
+    )
+    parser.add_argument(
+        "--analyzer-provider",
+        default=os.environ.get("SOMA_RUS_TO_PROMPT_ANALYZER_PROVIDER", "local"),
+        choices=["local", "codex", "gemini", "deepseek"],
+    )
     parser.add_argument("--model-profile", default="gpt-5.5")
     parser.add_argument("--limit", type=int, default=100)
     parser.add_argument("--codex-bin", default=os.environ.get("SOMA_CODEX_BIN", "codex"))
     parser.add_argument("--gemini-bin", default=os.environ.get("SOMA_GEMINI_BIN", "/opt/homebrew/bin/gemini"))
     parser.add_argument("--codex-stage-timeout", type=float, default=180)
     parser.add_argument("--gemini-stage-timeout", type=float, default=240)
-    parser.add_argument("--deepseek-stage-timeout", type=float, default=float(os.environ.get("SOMA_DEEPSEEK_STAGE_TIMEOUT", "240")))
-    parser.add_argument("--codex-stage-reasoning-effort", default=os.environ.get("SOMA_RUS_TO_PROMPT_CODEX_STAGE_REASONING_EFFORT", "medium"))
+    parser.add_argument(
+        "--deepseek-stage-timeout", type=float, default=float(os.environ.get("SOMA_DEEPSEEK_STAGE_TIMEOUT", "240"))
+    )
+    parser.add_argument(
+        "--codex-stage-reasoning-effort",
+        default=os.environ.get("SOMA_RUS_TO_PROMPT_CODEX_STAGE_REASONING_EFFORT", "medium"),
+    )
 
 
 def _add_confidence_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--confidence-referee", default="off", choices=["off", "codex", "gemini", "deepseek", "local", "hybrid"])
-    parser.add_argument("--confidence-model", default=os.environ.get("SOMA_RUS_TO_PROMPT_CONFIDENCE_MODEL", "gpt-5.4-mini"))
+    parser.add_argument(
+        "--confidence-referee", default="off", choices=["off", "codex", "gemini", "deepseek", "local", "hybrid"]
+    )
+    parser.add_argument(
+        "--confidence-model", default=os.environ.get("SOMA_RUS_TO_PROMPT_CONFIDENCE_MODEL", "gpt-5.4-mini")
+    )
     parser.add_argument("--confidence-reasoning-effort", default=DEFAULT_CONFIDENCE_REASONING_EFFORT)
     parser.add_argument("--confidence-workers", type=int, default=1)
     parser.add_argument("--confidence-batch-size", type=int, default=1)
     parser.add_argument("--translation-confidence-threshold", type=float, default=0.75)
     # Bound local-judge calls so a slow heavy model fails fast and escalates to the online
     # referee, instead of inheriting the 240s stage timeout twice per item.
-    parser.add_argument("--local-confidence-timeout", type=float, default=float(os.environ.get("SOMA_LOCAL_CONFIDENCE_TIMEOUT", "60")))
+    parser.add_argument(
+        "--local-confidence-timeout", type=float, default=float(os.environ.get("SOMA_LOCAL_CONFIDENCE_TIMEOUT", "60"))
+    )
     parser.add_argument("--local-confidence-models", nargs="+")
-    parser.add_argument("--hybrid-confidence-online-model", "--hybrid-confidence-gemini-model", dest="hybrid_confidence_online_model", default=os.environ.get("SOMA_RUS_TO_PROMPT_HYBRID_ONLINE_MODEL") or os.environ.get("SOMA_RUS_TO_PROMPT_HYBRID_GEMINI_MODEL", "gemini-3-flash-preview"))
-    parser.add_argument("--hybrid-confidence-fallback-referee", default="gemini", choices=["gemini", "codex", "deepseek", "off"])
-    parser.add_argument("--hybrid-confidence-local-threshold", type=float, default=DEFAULT_HYBRID_LOCAL_CONFIDENCE_THRESHOLD)
-    parser.add_argument("--hybrid-confidence-disagreement-threshold", type=float, default=DEFAULT_HYBRID_DISAGREEMENT_THRESHOLD)
+    parser.add_argument(
+        "--hybrid-confidence-online-model",
+        "--hybrid-confidence-gemini-model",
+        dest="hybrid_confidence_online_model",
+        default=os.environ.get("SOMA_RUS_TO_PROMPT_HYBRID_ONLINE_MODEL")
+        or os.environ.get("SOMA_RUS_TO_PROMPT_HYBRID_GEMINI_MODEL", "gemini-3-flash-preview"),
+    )
+    parser.add_argument(
+        "--hybrid-confidence-fallback-referee", default="gemini", choices=["gemini", "codex", "deepseek", "off"]
+    )
+    parser.add_argument(
+        "--hybrid-confidence-local-threshold", type=float, default=DEFAULT_HYBRID_LOCAL_CONFIDENCE_THRESHOLD
+    )
+    parser.add_argument(
+        "--hybrid-confidence-disagreement-threshold", type=float, default=DEFAULT_HYBRID_DISAGREEMENT_THRESHOLD
+    )
 
 
 def _selected_cases(args: argparse.Namespace):
@@ -126,7 +173,10 @@ class _Tee:
         for stream in self.streams:
             try:
                 stream.write(data)
-            except (ValueError, OSError):  # ponytail: OSError swallows BrokenPipeError when the app's pipe end closes; the run keeps writing to progress.log
+            except (
+                ValueError,
+                OSError,
+            ):  # ponytail: OSError swallows BrokenPipeError when the app's pipe end closes; the run keeps writing to progress.log
                 pass
         return len(data)
 

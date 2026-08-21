@@ -7,12 +7,21 @@ class ScoutPipelinePlanningTests(ScoutPipelineTestCase):
             root = Path(tmp)
             make_nexus_unity_fixture(root, version="2.8.0", include_noise=True)
 
-            with patch.object(llama, "query_ollama_model", new=AsyncMock(side_effect=[
-                release_planner_response(),
-                ok_referee_response(),
-            ])), patch(
-                "scout_pipeline_module.pipeline._query_graphify_context",
-                return_value=wrapper_graphify_result(root),
+            with (
+                patch.object(
+                    llama,
+                    "query_ollama_model",
+                    new=AsyncMock(
+                        side_effect=[
+                            release_planner_response(),
+                            ok_referee_response(),
+                        ]
+                    ),
+                ),
+                patch(
+                    "scout_pipeline_module.pipeline._query_graphify_context",
+                    return_value=wrapper_graphify_result(root),
+                ),
             ):
                 bundle = self.run_gather(
                     "Prepare Nexus Unity for open source release. The current Unity root is only a wrapper test project; analyze package weak spots, strengths, docs, license, tests, and public entrypoints. Ignore APK icon and wrapper project settings.",
@@ -44,7 +53,12 @@ class ScoutPipelinePlanningTests(ScoutPipelineTestCase):
         self.assertTrue(bundle["collection_plan_warnings"])
         self.assertEqual(bundle["collection_plan"]["task_type"], "debug")
         self.assertIn("logs", bundle["collection_plan"]["required_evidence"])
-        self.assertTrue(any(stage["stage"] == "collection_plan" and stage["status"] == "failed" for stage in bundle["analysis_stages"]))
+        self.assertTrue(
+            any(
+                stage["stage"] == "collection_plan" and stage["status"] == "failed"
+                for stage in bundle["analysis_stages"]
+            )
+        )
 
     def test_deterministic_collection_plan_requests_release_evidence(self):
         plan = scout_pipeline.deterministic_collection_plan(
@@ -97,5 +111,5 @@ class ScoutPipelinePlanningTests(ScoutPipelineTestCase):
         self.assertTrue(any(item["path"].endswith("LICENSE.md") for item in repaired))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

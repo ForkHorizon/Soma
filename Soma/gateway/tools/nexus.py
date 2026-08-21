@@ -23,26 +23,39 @@ from gateway.tools.protocol import codex_next_calls
 async def soma_inspect(instance_id: int, component_name: str | None = None, fields: list[str] | None = None) -> str:
     """Inspect a Unity object or component through filtered Nexus calls."""
     if not nexus.available():
-        return _error_response("Nexus Unity not connected.", next_calls=codex_next_calls("Start Nexus Unity server from the Unity editor."))
+        return _error_response(
+            "Nexus Unity not connected.", next_calls=codex_next_calls("Start Nexus Unity server from the Unity editor.")
+        )
 
     res = nexus.inspect(instance_id, component_name, fields)
     ok, result, err = _safe_nexus_result(res, "inspect")
     if not ok:
-        return _error_response("Nexus inspect failed.", omitted=err, next_calls=codex_next_calls("Call soma_scene to locate a valid instance_id."))
+        return _error_response(
+            "Nexus inspect failed.",
+            omitted=err,
+            next_calls=codex_next_calls("Call soma_scene to locate a valid instance_id."),
+        )
 
     compact = _safe_text(result, 6000)
     return _ok_response(
         "Filtered Unity inspection result.",
         result=json.loads(compact) if compact.strip().startswith(("{", "[")) else compact,
-        omitted={"truncated": len(_safe_text(result)) > len(compact), "used_component_values": bool(component_name and fields)},
-        next_calls=codex_next_calls("Use this result first.", "Call soma_inspect again with fields for a narrower component read."),
+        omitted={
+            "truncated": len(_safe_text(result)) > len(compact),
+            "used_component_values": bool(component_name and fields),
+        },
+        next_calls=codex_next_calls(
+            "Use this result first.", "Call soma_inspect again with fields for a narrower component read."
+        ),
     )
 
 
 async def soma_scene() -> str:
     """Return a compact Unity scene snapshot."""
     if not nexus.available():
-        return _error_response("Nexus Unity not connected.", next_calls=codex_next_calls("Start Nexus Unity server from the Unity editor."))
+        return _error_response(
+            "Nexus Unity not connected.", next_calls=codex_next_calls("Start Nexus Unity server from the Unity editor.")
+        )
 
     ok, result, err = _safe_nexus_result(nexus.compact_scene_snapshot(), "compact_scene_snapshot")
     if not ok:
@@ -87,7 +100,9 @@ def _compact_execute_result(result: Any, *, include_raw: bool = False) -> tuple[
 async def soma_execute(requests: list[dict[str, Any]], include_raw: bool = False, raw_capture: bool = False) -> str:
     """Advanced escape hatch for restricted Nexus batch operations."""
     if not nexus.available():
-        return _error_response("Nexus Unity not connected.", next_calls=codex_next_calls("Start Nexus Unity server from the Unity editor."))
+        return _error_response(
+            "Nexus Unity not connected.", next_calls=codex_next_calls("Start Nexus Unity server from the Unity editor.")
+        )
     if not requests:
         return _error_response("No requests supplied.")
     if len(requests) > 12:
@@ -113,12 +128,16 @@ async def soma_execute(requests: list[dict[str, Any]], include_raw: bool = False
 async def soma_delta() -> str:
     """Return git changes plus Unity timeline and scene delta."""
     import importlib
+
     gateway_core = importlib.import_module("gateway.core")
     project_root = get_active_project_root()
     evidence: list[dict[str, Any]] = []
     omitted: dict[str, Any] = {}
     if not project_root:
-        return _error_response("No project root configured.", next_calls=codex_next_calls("Set SOMA_PROJECT_ROOT or select a project in Soma."))
+        return _error_response(
+            "No project root configured.",
+            next_calls=codex_next_calls("Set SOMA_PROJECT_ROOT or select a project in Soma."),
+        )
 
     terms = prompt_terms("what changed")
     git_status = get_git_status(project_root)
@@ -143,14 +162,18 @@ async def soma_delta() -> str:
         nexus=nexus_payload,
         evidence=evidence[:10],
         omitted=omitted,
-        next_calls=codex_next_calls("Call soma_prepare_context if these changes need review.", "Call soma_scene if scene_delta is unclear."),
+        next_calls=codex_next_calls(
+            "Call soma_prepare_context if these changes need review.", "Call soma_scene if scene_delta is unclear."
+        ),
     )
 
 
 async def soma_apply(files: list[dict[str, Any]]) -> str:
     """Write Unity code files, wait for compilation, and return compiler errors."""
     if not nexus.available():
-        return _error_response("Nexus Unity not connected.", next_calls=codex_next_calls("Start Nexus Unity server from the Unity editor."))
+        return _error_response(
+            "Nexus Unity not connected.", next_calls=codex_next_calls("Start Nexus Unity server from the Unity editor.")
+        )
     if not files:
         return _error_response("No files supplied.")
     sanitized = []

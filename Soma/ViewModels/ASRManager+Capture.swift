@@ -17,8 +17,13 @@ extension ASRManager {
         var fed = false
         var err: NSError?
         converter.convert(to: out, error: &err) { _, status in
-            if fed { status.pointee = .noDataNow; return nil }
-            fed = true; status.pointee = .haveData; return inBuffer
+            if fed {
+                status.pointee = .noDataNow
+                return nil
+            }
+            fed = true
+            status.pointee = .haveData
+            return inBuffer
         }
         guard err == nil, out.frameLength > 0 else { return }
         audioQueue.async { [weak self] in self?.consume(out) }
@@ -88,13 +93,14 @@ extension ASRManager {
         expectedChunkCount: Int = 0
     ) async -> String? {
         await withCheckedContinuation { continuation in
-            queuedTranscriptions.append(QueuedTranscription(
-                url: url,
-                source: source,
-                chunkPipeline: chunkPipeline,
-                expectedChunkCount: expectedChunkCount,
-                continuation: continuation
-            ))
+            queuedTranscriptions.append(
+                QueuedTranscription(
+                    url: url,
+                    source: source,
+                    chunkPipeline: chunkPipeline,
+                    expectedChunkCount: expectedChunkCount,
+                    continuation: continuation
+                ))
             startTranscriptionQueueIfNeeded()
         }
     }
@@ -133,9 +139,11 @@ extension ASRManager {
         } else {
             if let chunkPipeline { await chunkPipeline.cancel() }
             if usesRemoteServer {
-                VoiceMetrics.log("whole_file_path", [
-                    "reason": expectedChunkCount == 0 ? "no_eligible_chunk" : "chunk_sessions_unsupported",
-                ])
+                VoiceMetrics.log(
+                    "whole_file_path",
+                    [
+                        "reason": expectedChunkCount == 0 ? "no_eligible_chunk" : "chunk_sessions_unsupported"
+                    ])
             }
             text = await transcribeFile(url)
         }

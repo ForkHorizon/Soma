@@ -46,8 +46,7 @@ class GraphStoragePathsMixin:
         if root is None:
             return False
         return (root / "Assets").is_dir() and (
-            (root / "ProjectSettings").is_dir()
-            or (root / "Packages" / "manifest.json").is_file()
+            (root / "ProjectSettings").is_dir() or (root / "Packages" / "manifest.json").is_file()
         )
 
     def graph_source_root(self, project_root: str | Path | None) -> Path | None:
@@ -92,7 +91,9 @@ class GraphStoragePathsMixin:
             )
         except Exception:
             return None
-        match = re.search(r"graphifyy\s+\(([^)]+)\)", "\n".join(part for part in (result.stdout, result.stderr) if part))
+        match = re.search(
+            r"graphifyy\s+\(([^)]+)\)", "\n".join(part for part in (result.stdout, result.stderr) if part)
+        )
         return match.group(1).strip() if match else None
 
     def tool_version_status(self, check_latest: bool = True) -> dict[str, Any]:
@@ -125,7 +126,9 @@ class GraphStoragePathsMixin:
         edges = data.get("edges") if isinstance(data, dict) else None
         links = data.get("links") if isinstance(data, dict) else None
         edge_source = edges if isinstance(edges, list) else links
-        return len(nodes) if isinstance(nodes, list) else None, len(edge_source) if isinstance(edge_source, list) else None
+        return len(nodes) if isinstance(nodes, list) else None, len(edge_source) if isinstance(
+            edge_source, list
+        ) else None
 
     def read_index(self) -> dict[str, Any]:
         try:
@@ -187,7 +190,9 @@ class GraphStoragePathsMixin:
             if not parent.is_dir():
                 continue
             try:
-                candidates.extend(child / "graphify-out" for child in parent.iterdir() if not child.name.startswith("."))
+                candidates.extend(
+                    child / "graphify-out" for child in parent.iterdir() if not child.name.startswith(".")
+                )
             except OSError:
                 continue
         return candidates

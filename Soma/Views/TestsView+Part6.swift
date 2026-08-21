@@ -9,17 +9,19 @@ extension TestsView {
         storageKey: String
     ) -> some View {
         let preset = row.preset
-        return Toggle(isOn: Binding(
-            get: { selection.wrappedValue.contains(preset.model) },
-            set: { enabled in
-                if enabled {
-                    selection.wrappedValue.insert(preset.model)
-                } else {
-                    selection.wrappedValue.remove(preset.model)
+        return Toggle(
+            isOn: Binding(
+                get: { selection.wrappedValue.contains(preset.model) },
+                set: { enabled in
+                    if enabled {
+                        selection.wrappedValue.insert(preset.model)
+                    } else {
+                        selection.wrappedValue.remove(preset.model)
+                    }
+                    saveModelSelection(selection.wrappedValue, key: storageKey)
                 }
-                saveModelSelection(selection.wrappedValue, key: storageKey)
-            }
-        )) {
+            )
+        ) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(preset.model)
@@ -62,7 +64,6 @@ extension TestsView {
         .help(modelScopeHelp(preset: preset, stats: row.stats))
     }
 
-
     var confidencePanel: some View {
         HStack(spacing: 12) {
             Image(systemName: "gauge.with.dots.needle.50percent")
@@ -100,7 +101,10 @@ extension TestsView {
                             Text(size == 1 ? "No batching" : "Batch \(size)")
                         }
                     }
-                    .help(size == 1 ? "Run every confidence check as its own request." : "Batch up to \(size) improver results that share one source prompt and translator.")
+                    .help(
+                        size == 1
+                            ? "Run every confidence check as its own request."
+                            : "Batch up to \(size) improver results that share one source prompt and translator.")
                 }
             } label: {
                 Label("Batch \(selectedConfidenceBatchSize)", systemImage: "square.stack.3d.up")
@@ -109,16 +113,21 @@ extension TestsView {
             .buttonStyle(.bordered)
             .controlSize(.small)
 
-            Toggle("Local gate", isOn: Binding(
-                get: { useHybridConfidence },
-                set: { enabled in
-                    useHybridConfidence = enabled
-                    saveHybridConfidence(enabled)
-                }
-            ))
+            Toggle(
+                "Local gate",
+                isOn: Binding(
+                    get: { useHybridConfidence },
+                    set: { enabled in
+                        useHybridConfidence = enabled
+                        saveHybridConfidence(enabled)
+                    }
+                )
+            )
             .toggleStyle(.switch)
             .controlSize(.small)
-            .help("Run two local Ollama confidence judges first. The selected online model is used only when local judges fail, disagree, or report low confidence.")
+            .help(
+                "Run two local Ollama confidence judges first. The selected online model is used only when local judges fail, disagree, or report low confidence."
+            )
 
             Button {
                 showLocalConfidenceModels.toggle()
@@ -160,13 +169,14 @@ extension TestsView {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.12)))
     }
 
-
     var localConfidenceModelsPopover: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Text("Local confidence judges")
                     .font(.headline)
-                StatusChip(text: "\(selectedLocalConfidenceModels.count)/2 selected", tone: selectedLocalConfidenceModels.count == 2 ? .good : .warning)
+                StatusChip(
+                    text: "\(selectedLocalConfidenceModels.count)/2 selected",
+                    tone: selectedLocalConfidenceModels.count == 2 ? .good : .warning)
                 Spacer()
                 Button {
                     ollama.refreshInstalledModels()
@@ -176,10 +186,12 @@ extension TestsView {
                 .buttonStyle(.borderless)
             }
 
-            Text("The two local judges run first. The selected online fallback checks only cases with local failure, confidence below 0.80, or disagreement above 0.15.")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                "The two local judges run first. The selected online fallback checks only cases with local failure, confidence below 0.80, or disagreement above 0.15."
+            )
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
 
             ScrollView {
                 VStack(spacing: 6) {
@@ -193,7 +205,6 @@ extension TestsView {
         .padding(12)
         .frame(width: 460)
     }
-
 
     func localConfidenceModelRow(_ preset: RusToPromptModelPreset) -> some View {
         let selected = selectedLocalConfidenceModels.contains(preset.model)

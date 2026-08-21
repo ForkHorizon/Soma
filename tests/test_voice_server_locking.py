@@ -1,5 +1,6 @@
 """Locking contract: the global state lock is never held across the audio write,
 and the retention sweep never runs on a request."""
+
 import json
 import threading
 import time
@@ -47,7 +48,10 @@ class VoiceServerLockTests(unittest.TestCase):
     def start_server(self):
         broker = FakeBroker()
         state = voice_server.VoiceServerState(
-            token="secret", broker=broker, idle_seconds=1, completed_ttl=60,
+            token="secret",
+            broker=broker,
+            idle_seconds=1,
+            completed_ttl=60,
         )
         server = ThreadingHTTPServer(("127.0.0.1", 0), voice_server.make_handler(state))
         threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -56,7 +60,8 @@ class VoiceServerLockTests(unittest.TestCase):
 
     def open_session(self, base, request_id="lock-session"):
         _status, session = self.request(
-            "POST", f"{base}/v1/sessions",
+            "POST",
+            f"{base}/v1/sessions",
             headers={"X-Soma-Client-ID": "client-a", "X-Soma-Request-ID": request_id},
         )
         return session["session_id"]
@@ -85,10 +90,15 @@ class VoiceServerLockTests(unittest.TestCase):
         self.addCleanup(release.set)
 
         with self.slow_spill(started, release):
-            threading.Thread(target=lambda: self.request(
-                "PUT", f"{base}/v1/sessions/{session_id}/chunks/0",
-                body=b"audio", headers=self.chunk_headers(session_id, 0),
-            ), daemon=True).start()
+            threading.Thread(
+                target=lambda: self.request(
+                    "PUT",
+                    f"{base}/v1/sessions/{session_id}/chunks/0",
+                    body=b"audio",
+                    headers=self.chunk_headers(session_id, 0),
+                ),
+                daemon=True,
+            ).start()
             self.assertTrue(started.wait(5), "the upload never reached the audio write")
 
             # The write is in progress. Anything that takes the state lock must
@@ -115,8 +125,10 @@ class VoiceServerLockTests(unittest.TestCase):
             # Index 3 is out of order, so the upload is refused after the spill.
             with self.assertRaises(urllib.error.HTTPError) as raised:
                 self.request(
-                    "PUT", f"{base}/v1/sessions/{session_id}/chunks/3",
-                    body=b"audio", headers=self.chunk_headers(session_id, 3),
+                    "PUT",
+                    f"{base}/v1/sessions/{session_id}/chunks/3",
+                    body=b"audio",
+                    headers=self.chunk_headers(session_id, 3),
                 )
             raised.exception.read()
             raised.exception.close()

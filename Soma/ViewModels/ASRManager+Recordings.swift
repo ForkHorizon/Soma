@@ -21,8 +21,9 @@ extension ASRManager {
     }
 
     nonisolated static func removeRecordingFiles(in dir: URL, olderThan cutoff: Date) {
-        let files = (try? FileManager.default.contentsOfDirectory(
-            at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles])) ?? []
+        let files =
+            (try? FileManager.default.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles])) ?? []
         for url in files where url.pathExtension.lowercased() == "wav" {
             let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
             guard date < cutoff else { continue }
@@ -39,9 +40,11 @@ extension ASRManager {
         let dir = recordingsDir
         Task.detached(priority: .utility) { [weak self] in
             let keys: [URLResourceKey] = [.contentModificationDateKey]
-            let files = (try? FileManager.default.contentsOfDirectory(
-                at: dir, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
-            let index = files
+            let files =
+                (try? FileManager.default.contentsOfDirectory(
+                    at: dir, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
+            let index =
+                files
                 .filter { $0.pathExtension.lowercased() == "wav" }
                 .map { url -> RecordingIndexEntry in
                     let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
@@ -72,15 +75,16 @@ extension ASRManager {
     func loadMoreRecordings(limit: Int) {
         let nextEntries = recordingIndex.dropFirst(recordings.count).prefix(limit)
         guard !nextEntries.isEmpty else { return }
-        recordings.append(contentsOf: nextEntries.map { entry in
-            let duration = (try? AVAudioPlayer(contentsOf: entry.url))?.duration ?? 0
-            return VoiceRecording(
-                url: entry.url,
-                date: entry.date,
-                duration: duration,
-                hasTranscript: entry.hasTranscript
-            )
-        })
+        recordings.append(
+            contentsOf: nextEntries.map { entry in
+                let duration = (try? AVAudioPlayer(contentsOf: entry.url))?.duration ?? 0
+                return VoiceRecording(
+                    url: entry.url,
+                    date: entry.date,
+                    duration: duration,
+                    hasTranscript: entry.hasTranscript
+                )
+            })
     }
 
     func transcriptURL(for wav: URL) -> URL {
@@ -130,7 +134,10 @@ extension ASRManager {
     // MARK: Playback
 
     func togglePlayback(_ url: URL) {
-        if playingURL == url { stopPlayback(); return }
+        if playingURL == url {
+            stopPlayback()
+            return
+        }
         stopPlayback()
         do {
             let p = try AVAudioPlayer(contentsOf: url)

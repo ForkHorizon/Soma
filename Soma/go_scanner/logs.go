@@ -60,7 +60,7 @@ func tailLogs(path string) []string {
 		fmt.Println("[]")
 		return nil
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var errors []string
 
@@ -91,7 +91,7 @@ func tailLogs(path string) []string {
 	}
 
 	if err := scanner.Err(); err != nil {
-		// Log parsing error
+		fmt.Fprintf(os.Stderr, "Scanner error: %v\n", err)
 	}
 
 	return errors

@@ -14,12 +14,16 @@ struct PromptCompilerView: View {
             SomaPage {
                 WorkflowHeader(
                     title: "Prompt Builder",
-                    subtitle: "Paste an unclear task or bug report. Soma gathers local evidence and returns a stronger prompt with context, constraints, warnings, and audit metadata.",
+                    subtitle:
+                        "Paste an unclear task or bug report. Soma gathers local evidence and returns a stronger prompt with context, constraints, warnings, and audit metadata.",
                     icon: "wand.and.stars",
                     tone: .info
                 )
 
-                SomaPanel(title: "Workflow", subtitle: "Prompt Builder is secondary to Prepare Packet, but uses the same evidence language.", icon: "list.bullet.rectangle", tone: .info) {
+                SomaPanel(
+                    title: "Workflow", subtitle: "Prompt Builder is secondary to Prepare Packet, but uses the same evidence language.",
+                    icon: "list.bullet.rectangle", tone: .info
+                ) {
                     StepChecklist(steps: workflowSteps)
                 }
 
@@ -34,7 +38,8 @@ struct PromptCompilerView: View {
                 if isBusy {
                     StatusBanner(
                         title: "Building a stronger prompt",
-                        detail: "Planning collection with \(ollama.rankerModelName), gathering focused evidence, checking quality, and running analyst mode with \(ollama.analystModelName) when available.",
+                        detail:
+                            "Planning collection with \(ollama.rankerModelName), gathering focused evidence, checking quality, and running analyst mode with \(ollama.analystModelName) when available.",
                         tone: .warning,
                         isLoading: true
                     )
@@ -50,11 +55,16 @@ struct PromptCompilerView: View {
                     evidencePanel(bundle)
                     planPanel(bundle)
                 } else if viewModel.phase == .idle {
-                    SomaPanel(title: "Rough Prompt In, Strong Prompt Out", subtitle: "Use this when the task is too vague for another model to act on directly.", icon: "wand.and.stars", tone: .info) {
+                    SomaPanel(
+                        title: "Rough Prompt In, Strong Prompt Out",
+                        subtitle: "Use this when the task is too vague for another model to act on directly.", icon: "wand.and.stars",
+                        tone: .info
+                    ) {
                         EmptyStateView(
                             icon: "wand.and.stars",
                             title: "Use this when the task is too vague",
-                            subtitle: "Describe the symptom, rough idea, file, page, or error. Soma will produce a prompt that is specific enough for another model to act on."
+                            subtitle:
+                                "Describe the symptom, rough idea, file, page, or error. Soma will produce a prompt that is specific enough for another model to act on."
                         )
                     }
                 }
@@ -259,10 +269,11 @@ struct PromptCompilerView: View {
         }
         if let missing = bundle.audit?.missing_evidence {
             warnings.append(contentsOf: missing.quality_warnings ?? [])
-            warnings.append(contentsOf: (missing.unresolved_references ?? []).compactMap { reference in
-                guard let value = reference.reference else { return nil }
-                return "Unresolved \(reference.kind ?? "reference"): \(value)"
-            })
+            warnings.append(
+                contentsOf: (missing.unresolved_references ?? []).compactMap { reference in
+                    guard let value = reference.reference else { return nil }
+                    return "Unresolved \(reference.kind ?? "reference"): \(value)"
+                })
             warnings.append(contentsOf: missing.requested_extra_context ?? [])
         }
         warnings.append(contentsOf: bundle.estimated_context_reduction?.warnings ?? [])

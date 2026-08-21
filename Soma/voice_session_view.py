@@ -5,6 +5,7 @@ Everything here reads session and job state to compute something; nothing here
 mutates a session's identity or queue. The `_locked` suffix means the caller
 already holds `state.changed`.
 """
+
 from __future__ import annotations
 
 import time
@@ -12,6 +13,7 @@ from typing import Any
 
 import voice_transcript_merge as merge
 from voice_models import Job, VoiceSession
+
 
 def prompt_locked(state, job: Job) -> str | None:
     if not job.session_id or job.chunk_index is None or job.engine != "whisper":
@@ -40,7 +42,11 @@ def refresh_locked(state, session: VoiceSession) -> None:
     failed = next((job for job in jobs if job.status == "failed"), None)
     if failed:
         session.status = "failed"
-        session.error = failed.error or {"code": "transcription_failed", "message": "A chunk failed.", "retryable": True}
+        session.error = failed.error or {
+            "code": "transcription_failed",
+            "message": "A chunk failed.",
+            "retryable": True,
+        }
         return
     if session.finalized:
         if all(job.status == "done" for job in jobs):
@@ -54,10 +60,7 @@ def refresh_locked(state, session: VoiceSession) -> None:
 
 def completed_locked(state, session: VoiceSession) -> int:
     """How many of the session's chunks have finished decoding."""
-    return sum(
-        1 for chunk in session.chunks.values()
-        if (job := state.jobs.get(chunk.job_id)) and job.status == "done"
-    )
+    return sum(1 for chunk in session.chunks.values() if (job := state.jobs.get(chunk.job_id)) and job.status == "done")
 
 
 def public_locked(state, session: VoiceSession) -> dict[str, Any]:

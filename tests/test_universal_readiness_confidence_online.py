@@ -45,7 +45,11 @@ class UniversalReadinessOnlineConfidenceTests(UniversalReadinessTestCase):
             self.assertEqual(model, "gemini-3-flash-preview")
             self.assertEqual(gemini_bin, "/opt/homebrew/bin/gemini")
             self.assertIn("Do not use tools", prompt)
-            return rtp_confidence_payload(0.88), {"status": "ok", "seconds": 2.0, "stats": {"models": ["gemini-3-flash-preview"]}}
+            return rtp_confidence_payload(0.88), {
+                "status": "ok",
+                "seconds": 2.0,
+                "stats": {"models": ["gemini-3-flash-preview"]},
+            }
 
         with patch.object(rus_to_prompt_stress, "run_gemini_json", side_effect=fake_gemini_json):
             confidence = rus_to_prompt_stress.score_confidence_with_gemini(
@@ -83,8 +87,13 @@ class UniversalReadinessOnlineConfidenceTests(UniversalReadinessTestCase):
                 }
             )
 
-        with patch.dict(os.environ, {"SOMA_DEEPSEEK_API_KEY": "test-deepseek-key"}), patch.object(soma_deepseek_api.urllib.request, "urlopen", side_effect=fake_urlopen):
-            confidence = rus_to_prompt_stress.score_confidence_with_deepseek(case, result, "deepseek-v4-flash", 30, "overall")
+        with (
+            patch.dict(os.environ, {"SOMA_DEEPSEEK_API_KEY": "test-deepseek-key"}),
+            patch.object(soma_deepseek_api.urllib.request, "urlopen", side_effect=fake_urlopen),
+        ):
+            confidence = rus_to_prompt_stress.score_confidence_with_deepseek(
+                case, result, "deepseek-v4-flash", 30, "overall"
+            )
 
         self.assertEqual(confidence["provider"], "deepseek")
         self.assertEqual(confidence["model"], "deepseek-v4-flash")
@@ -93,12 +102,17 @@ class UniversalReadinessOnlineConfidenceTests(UniversalReadinessTestCase):
         self.assertEqual(confidence["stats"]["usage"]["total_tokens"], 20)
 
     def test_deepseek_json_fails_before_network_when_api_key_missing(self):
-        with patch.dict(os.environ, {"SOMA_DEEPSEEK_API_KEY": "", "DEEPSEEK_API_KEY": ""}), patch.object(
-            soma_deepseek_api.urllib.request,
-            "urlopen",
-            side_effect=AssertionError("DeepSeek should not run without a key"),
+        with (
+            patch.dict(os.environ, {"SOMA_DEEPSEEK_API_KEY": "", "DEEPSEEK_API_KEY": ""}),
+            patch.object(
+                soma_deepseek_api.urllib.request,
+                "urlopen",
+                side_effect=AssertionError("DeepSeek should not run without a key"),
+            ),
         ):
-            decoded, meta = soma_deepseek_api.run_deepseek_json(prompt="{}", schema={"type": "object"}, model="deepseek-v4-flash", timeout=1)
+            decoded, meta = soma_deepseek_api.run_deepseek_json(
+                prompt="{}", schema={"type": "object"}, model="deepseek-v4-flash", timeout=1
+            )
 
         self.assertIsNone(decoded)
         self.assertEqual(meta["provider"], "deepseek")
@@ -115,13 +129,19 @@ class UniversalReadinessOnlineConfidenceTests(UniversalReadinessTestCase):
         self.assertIn("codex", confidence["error"])
 
     def test_rus_to_prompt_codex_translate_restores_protected_spans(self):
-        prompt = "Сохрани `A.swift` и JSON {\"mode\":\"compact\"}."
+        prompt = 'Сохрани `A.swift` и JSON {"mode":"compact"}.'
 
         def fake_codex_json(prompt, schema, model, timeout, codex_bin, temp_prefix, **_kwargs):
             self.assertEqual(model, "gpt-5.4-mini")
             self.assertIn("__SOMA_PROTECTED_SPAN_0__", prompt)
             self.assertIn("<<<PROMPT", prompt)
-            payload = {"status": "ok", "source_language": "ru", "translation_status": "translated", "translation": "Preserve __SOMA_PROTECTED_SPAN_0__ and __SOMA_PROTECTED_SPAN_1__ __SOMA_PROTECTED_SPAN_2__.", "warnings": []}
+            payload = {
+                "status": "ok",
+                "source_language": "ru",
+                "translation_status": "translated",
+                "translation": "Preserve __SOMA_PROTECTED_SPAN_0__ and __SOMA_PROTECTED_SPAN_1__ __SOMA_PROTECTED_SPAN_2__.",
+                "warnings": [],
+            }
             return payload, {"status": "ok", "seconds": 1.0}
 
         with patch.object(rus_to_prompt_stress, "run_codex_json", side_effect=fake_codex_json):
@@ -130,9 +150,9 @@ class UniversalReadinessOnlineConfidenceTests(UniversalReadinessTestCase):
         self.assertEqual(payload["status"], "ok")
         self.assertEqual(payload["translation_status"], "translated")
         self.assertIn("`A.swift`", payload["translation"])
-        self.assertIn("{\"mode\":\"compact\"}", payload["translation"])
+        self.assertIn('{"mode":"compact"}', payload["translation"])
         self.assertNotIn("__SOMA_PROTECTED_SPAN_", payload["translation"])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

@@ -20,4 +20,5 @@ jobs:
     uses: ForkHorizon/ci-gates/.github/workflows/swift-compile.yml@main
     with:
       config: .swift-compile-gate.json
-      runs-on: '["self-hosted", "macOS", "ARM64", "ci-scope"]'
+      gates-ref: main
+      runs-on: '["self-hosted", "macOS", "ARM64", "ci-scope", "ci-scope-v2"]'

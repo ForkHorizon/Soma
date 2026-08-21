@@ -17,20 +17,22 @@ extension TestsView {
                     ForEach(queueStageModelRows(selected: selected, statsByModel: statsByModel, role: role), id: \.model) { preset in
                         let isSelected = selected.contains { $0.caseInsensitiveCompare(preset.model) == .orderedSame }
                         let stats = statsByModel[preset.model.lowercased()]
-                        Toggle(isOn: Binding(
-                            get: { isSelected },
-                            set: { enabled in
-                                var next = selected
-                                if enabled {
-                                    if !next.contains(where: { $0.caseInsensitiveCompare(preset.model) == .orderedSame }) {
-                                        next.append(preset.model)
+                        Toggle(
+                            isOn: Binding(
+                                get: { isSelected },
+                                set: { enabled in
+                                    var next = selected
+                                    if enabled {
+                                        if !next.contains(where: { $0.caseInsensitiveCompare(preset.model) == .orderedSame }) {
+                                            next.append(preset.model)
+                                        }
+                                    } else {
+                                        next.removeAll { $0.caseInsensitiveCompare(preset.model) == .orderedSame }
                                     }
-                                } else {
-                                    next.removeAll { $0.caseInsensitiveCompare(preset.model) == .orderedSame }
+                                    update(next)
                                 }
-                                update(next)
-                            }
-                        )) {
+                            )
+                        ) {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack(spacing: 6) {
                                     Text(preset.model)
@@ -67,7 +69,6 @@ extension TestsView {
         }
     }
 
-
     @ViewBuilder
     func modelScopeSummary(_ stats: TestModelRoleStats?) -> some View {
         if let stats {
@@ -88,14 +89,12 @@ extension TestsView {
         }
     }
 
-
     func modelScopeSummaryColor(_ stats: TestModelRoleStats) -> Color {
         let clean = modelStatsCleanRate(stats) ?? 0
         if stats.attempts > 0 && clean == 0 { return .red }
         if modelStatsProblemCount(stats) > 0 || clean < 0.80 { return .orange }
         return .secondary
     }
-
 
     func modelScopeDecisionChip(_ stats: TestModelRoleStats?) -> (text: String, tone: SomaStatusTone)? {
         guard let stats else { return (text: "Untested", tone: .neutral) }
@@ -117,7 +116,6 @@ extension TestsView {
         return nil
     }
 
-
     func modelScopeHelp(preset: RusToPromptModelPreset, stats: TestModelRoleStats?) -> String {
         guard let stats else {
             return "\(preset.detail)\nNo benchmark data yet. Run a small sample before keeping this model in the queue."
@@ -128,12 +126,11 @@ extension TestsView {
             "Scope: \(stats.attempts) runs, \(stats.confidenceCount) usable scores.",
             "Score \(formatConfidence(stats.qualityScore)); clean \(modelStatsCleanLabel(stats)); problems \(modelStatsProblemCount(stats)) (\(formatPercent(problemRate))).",
             "Judge failed \(stats.confidenceFailedCount), run failed \(stats.pipelineFailedCount), degraded \(stats.degradedCount).",
-            "Last tested \(shortDateTime(stats.lastTestedAt))."
+            "Last tested \(shortDateTime(stats.lastTestedAt)).",
         ]
         .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         .joined(separator: "\n")
     }
-
 
     var queueItemsPanel: some View {
         let activeItems = queueVisibleItems
@@ -200,16 +197,13 @@ extension TestsView {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.12)))
     }
 
-
     var queueVisibleItems: [RusToPromptQueueItem] {
         sortQueueItemsOldestFirst(queueManager.items.filter { $0.status != .completed })
     }
 
-
     var queueCompletedItems: [RusToPromptQueueItem] {
         sortQueueItemsNewestFirst(queueManager.items.filter { $0.status == .completed })
     }
-
 
     func sortQueueItemsOldestFirst(_ items: [RusToPromptQueueItem]) -> [RusToPromptQueueItem] {
         items.sorted { left, right in
@@ -219,7 +213,6 @@ extension TestsView {
             return left.createdAt < right.createdAt
         }
     }
-
 
     func sortQueueItemsNewestFirst(_ items: [RusToPromptQueueItem]) -> [RusToPromptQueueItem] {
         items.sorted { left, right in
@@ -231,7 +224,6 @@ extension TestsView {
             return leftDate > rightDate
         }
     }
-
 
     @ViewBuilder
     func completedQueueSection(_ items: [RusToPromptQueueItem]) -> some View {
@@ -262,7 +254,6 @@ extension TestsView {
             .padding(.top, 4)
         }
     }
-
 
     var queueActivePanel: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -297,7 +288,6 @@ extension TestsView {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.12)))
     }
-
 
     func queueItemRow(_ item: RusToPromptQueueItem) -> some View {
         VStack(alignment: .leading, spacing: 7) {

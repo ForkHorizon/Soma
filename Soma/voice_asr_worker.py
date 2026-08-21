@@ -8,6 +8,7 @@ is what lets /health and an already-warm /warmup answer during a decode.
 The owner module supplies an `on_idle` callback, invoked on this thread whenever
 the queue has been quiet for a tick, so idle unloads stay thread-affine too.
 """
+
 from __future__ import annotations
 
 import queue

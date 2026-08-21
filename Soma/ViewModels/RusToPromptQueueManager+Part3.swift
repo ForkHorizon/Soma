@@ -6,7 +6,6 @@ extension RusToPromptQueueManager {
         "\(itemID)|\(role)|\(model)"
     }
 
-
     func resetModelProgress(itemID: String, snapshot: RusToPromptQueueItemSnapshot) {
         let prefix = "\(itemID)|"
         modelProgress = modelProgress.filter { !$0.key.hasPrefix(prefix) }
@@ -39,11 +38,9 @@ extension RusToPromptQueueManager {
         }
     }
 
-
     func queueModelProgress(itemID: String, role: String, model: String) -> QueueModelProgressState? {
         modelProgress[modelProgressKey(itemID: itemID, role: role, model: model)]
     }
-
 
     func updateModelProgress(for event: QueueProgressEvent) {
         guard let itemID = activeItemID else { return }
@@ -71,7 +68,6 @@ extension RusToPromptQueueManager {
         }
     }
 
-
     func completeModelProgress(itemID: String) {
         let prefix = "\(itemID)|"
         let now = Date()
@@ -84,7 +80,6 @@ extension RusToPromptQueueManager {
             modelProgress[key] = state
         }
     }
-
 
     func markModelProgressTerminal(itemID: String, label: String, status: String) {
         let prefix = "\(itemID)|"
@@ -99,7 +94,6 @@ extension RusToPromptQueueManager {
         }
     }
 
-
     func progressTargets(for event: QueueProgressEvent) -> [(role: String, model: String)] {
         if let refs = event.confidenceModelRefs, !refs.isEmpty {
             return refs.flatMap { progressTargets(stage: event.stage, translator: $0.translatorModel, analyzer: $0.analyzerModel) }
@@ -107,14 +101,14 @@ extension RusToPromptQueueManager {
         return progressTargets(stage: event.stage, translator: event.translatorModel, analyzer: event.analyzerModel)
     }
 
-
     func progressTargets(stage: String?, translator: String?, analyzer: String?) -> [(role: String, model: String)] {
         let normalizedStage = stage ?? ""
         if normalizedStage == "analyzing"
             || normalizedStage == "improve_confidence_batch"
             || normalizedStage == "overall_confidence_batch"
             || normalizedStage == "cooldown"
-            || normalizedStage == "improver_resume" {
+            || normalizedStage == "improver_resume"
+        {
             if let analyzer, analyzer != "translation-only" {
                 return [("Improve", analyzer)]
             }
@@ -133,7 +127,8 @@ extension RusToPromptQueueManager {
             || normalizedStage == "translation_selection"
             || normalizedStage == "translation_rejected"
             || normalizedStage == "translation_resume"
-            || analyzer == "translation-only" {
+            || analyzer == "translation-only"
+        {
             if let translator {
                 return [("Translate", translator)]
             }
@@ -146,7 +141,6 @@ extension RusToPromptQueueManager {
         }
         return []
     }
-
 
     func activityText(for event: QueueProgressEvent) -> String {
         let caseID = event.caseID ?? "case"
@@ -175,7 +169,6 @@ extension RusToPromptQueueManager {
         }
     }
 
-
     func displayStage(for event: QueueProgressEvent) -> String {
         switch event.stage {
         case "queued": return "Queued"
@@ -195,7 +188,6 @@ extension RusToPromptQueueManager {
             return (event.stage ?? "Working").replacingOccurrences(of: "_", with: " ").capitalized
         }
     }
-
 
     func mark(index: Int, status: RusToPromptQueueItemStatus, message: String) {
         guard items.indices.contains(index) else { return }
