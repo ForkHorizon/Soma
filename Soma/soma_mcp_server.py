@@ -4,6 +4,7 @@ Soma MCP Server Stub
 This script acts as a backwards-compatible entry point for existing AI clients.
 The core server logic has been moved to mcp/server.py.
 """
+
 import sys
 from pathlib import Path
 
@@ -18,4 +19,5 @@ install_soma_gateway_namespace(server_root)
 
 if __name__ == "__main__":
     import gateway.server
+
     gateway.server.main()

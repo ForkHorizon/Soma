@@ -9,6 +9,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "Soma"))
 from soma_test_bootstrap import install_soma_imports
+
 install_soma_imports()
 
 from gateway.core import (
@@ -18,14 +19,14 @@ from gateway.core import (
     _ok_response,
     _parse_ports,
     NexusClient,
-    NexusState
+    NexusState,
 )
 
 from gateway.graphify_adapter import GraphifyAdapter
 from gateway.memory_store import MemoryStore
 
-class TestGraphifyAdapterAndMemoryStore(unittest.TestCase):
 
+class TestGraphifyAdapterAndMemoryStore(unittest.TestCase):
     def test_graphify_project_graph_candidates_none(self):
         adapter = GraphifyAdapter()
         self.assertEqual(adapter.project_graph_candidates(None), [])
@@ -65,7 +66,7 @@ class TestGraphifyAdapterAndMemoryStore(unittest.TestCase):
             self.assertEqual(storage["graph_scope"], "unity_assets")
             self.assertEqual(storage["graph_source_root"], str(assets.resolve(strict=False)))
 
-    @patch.object(Path, 'exists')
+    @patch.object(Path, "exists")
     def test_graphify_find_graphs_no_existing(self, mock_exists):
         mock_exists.return_value = False
         adapter = GraphifyAdapter()
@@ -132,8 +133,9 @@ class TestGraphifyAdapterAndMemoryStore(unittest.TestCase):
     def test_graphify_tool_version_status_detects_outdated_tool(self):
         with tempfile.TemporaryDirectory() as tmp:
             adapter = GraphifyAdapter(graph_dir=Path(tmp) / "graphs")
-            with patch.object(adapter.storage, "graphify_version", return_value="0.8.17"), patch.object(
-                adapter.storage, "latest_graphify_version", return_value="0.8.18"
+            with (
+                patch.object(adapter.storage, "graphify_version", return_value="0.8.17"),
+                patch.object(adapter.storage, "latest_graphify_version", return_value="0.8.18"),
             ):
                 status = adapter.storage.tool_version_status()
 
@@ -172,8 +174,10 @@ class TestGraphifyAdapterAndMemoryStore(unittest.TestCase):
                     return subprocess.CompletedProcess(cmd, 0, stdout="graphify 0.8.18", stderr="")
                 return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-            with patch("gateway.graph_storage.subprocess.run", side_effect=fake_run), patch("gateway.graph_storage.shutil.which", return_value="graphify"), patch.object(
-                adapter.storage, "_skip_refresh_reason", return_value=None
+            with (
+                patch("gateway.graph_storage.subprocess.run", side_effect=fake_run),
+                patch("gateway.graph_storage.shutil.which", return_value="graphify"),
+                patch.object(adapter.storage, "_skip_refresh_reason", return_value=None),
             ):
                 result = adapter.storage.refresh_managed_graph(str(root))
 
@@ -218,8 +222,10 @@ class TestGraphifyAdapterAndMemoryStore(unittest.TestCase):
                     return subprocess.CompletedProcess(cmd, 0, stdout="graphify 0.8.18", stderr="")
                 return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-            with patch("gateway.graph_storage.subprocess.run", side_effect=fake_run), patch("gateway.graph_storage.shutil.which", return_value="graphify"), patch.object(
-                adapter.storage, "_skip_refresh_reason", return_value=None
+            with (
+                patch("gateway.graph_storage.subprocess.run", side_effect=fake_run),
+                patch("gateway.graph_storage.shutil.which", return_value="graphify"),
+                patch.object(adapter.storage, "_skip_refresh_reason", return_value=None),
             ):
                 result = adapter.storage.refresh_managed_graph(str(root))
 
@@ -256,13 +262,15 @@ class TestGraphifyAdapterAndMemoryStore(unittest.TestCase):
                     return None
                 return original_skip(path)
 
-            with patch.object(adapter.storage, "refresh_managed_graph", side_effect=fake_refresh), patch.object(
-                adapter.storage, "_skip_refresh_reason", side_effect=fake_skip
+            with (
+                patch.object(adapter.storage, "refresh_managed_graph", side_effect=fake_refresh),
+                patch.object(adapter.storage, "_skip_refresh_reason", side_effect=fake_skip),
             ):
                 result = adapter.storage.refresh_all_managed_graphs()
 
         self.assertEqual(result["refreshed"], 1)
         self.assertEqual(result["skipped"], 2)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

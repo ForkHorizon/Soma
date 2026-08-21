@@ -36,8 +36,10 @@ struct LogsView: View {
             switch self {
             case .clearVisible(let count): return "Delete \(count) currently visible filtered activity entries from today's log file."
             case .deleteRun(let runID): return "Delete all entries for run \(runID) from today's log file."
-            case .deleteToday(let count): return "Delete today's loaded log file and remove \(count) visible activity entries. Audit traces are not deleted."
-            case .deleteAll: return "Delete all Soma logs, analytics, and token stats. Audit traces are kept separate unless you reset them explicitly."
+            case .deleteToday(let count):
+                return "Delete today's loaded log file and remove \(count) visible activity entries. Audit traces are not deleted."
+            case .deleteAll:
+                return "Delete all Soma logs, analytics, and token stats. Audit traces are kept separate unless you reset them explicitly."
             case .resetAuditTraces: return "Delete Soma audit trace files separately from activity logs."
             case .startNewSession: return "Start a clean visible activity session and reset session stats without deleting audit traces."
             }
@@ -47,10 +49,10 @@ struct LogsView: View {
     var body: some View {
         VStack(spacing: 0) {
             logsHeader
-            .padding(.horizontal, 24)
-            .padding(.vertical, 16)
-            .background(Color(NSColor.windowBackgroundColor))
-            .overlay(Divider(), alignment: .bottom)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
+                .background(Color(NSColor.windowBackgroundColor))
+                .overlay(Divider(), alignment: .bottom)
 
             if filteredLogEntries.isEmpty && !viewModel.logsLoading {
                 emptyState
@@ -217,7 +219,8 @@ struct LogsView: View {
         }
     }
 
-    private func filterPicker(_ title: String, selection: Binding<String>, allTitle: String, options: [String], width: CGFloat) -> some View {
+    private func filterPicker(_ title: String, selection: Binding<String>, allTitle: String, options: [String], width: CGFloat) -> some View
+    {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption2.weight(.semibold))
@@ -301,7 +304,11 @@ struct LogsView: View {
                     .foregroundColor(.secondary)
             }
 
-            let packetRuns = Set(viewModel.logEntries.filter { $0.event.contains("packet") || $0.workflow?.contains("packet") == true }.compactMap { $0.run_id ?? $0.task_id }).count
+            let packetRuns = Set(
+                viewModel.logEntries.filter { $0.event.contains("packet") || $0.workflow?.contains("packet") == true }.compactMap {
+                    $0.run_id ?? $0.task_id
+                }
+            ).count
             let warnings = viewModel.logEntries.filter { $0.isError || $0.isDegraded || $0.error != nil }.count
 
             HStack(spacing: 10) {
@@ -424,7 +431,8 @@ struct LogsView: View {
                         traceChip("\(concepts) concepts", color: .secondary)
                     }
                 }
-                if let missing = (audit.missing_evidence?.missing_files?.first ?? audit.missing_evidence?.missing_symbols?.first)?.reference {
+                if let missing = (audit.missing_evidence?.missing_files?.first ?? audit.missing_evidence?.missing_symbols?.first)?.reference
+                {
                     Text("Missing: \(missing)")
                         .font(.system(size: 10))
                         .foregroundColor(.orange)
@@ -461,7 +469,7 @@ struct LogsView: View {
         let errors = viewModel.localModelStats.reduce(0) { $0 + $1.errors }
 
         return VStack(alignment: .leading, spacing: 6) {
-                Text("Local Model Today")
+            Text("Local Model Today")
                 .font(.caption.bold())
                 .foregroundColor(.secondary)
             Text("Configured: Scout \(ollama.modelName), Ranker \(ollama.rankerModelName), Analyst \(ollama.analystModelName)")
@@ -481,10 +489,12 @@ struct LogsView: View {
                     }
                 }
                 ForEach(viewModel.localModelStats.prefix(3)) { stat in
-                    Text("\(stat.id): \(roleSummary(model: stat.id, stages: stat.stages)) · \(stat.calls) calls · \(Int(stat.avgDuration))ms avg · \(stageSummary(stat.stages))")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                        .lineLimit(2)
+                    Text(
+                        "\(stat.id): \(roleSummary(model: stat.id, stages: stat.stages)) · \(stat.calls) calls · \(Int(stat.avgDuration))ms avg · \(stageSummary(stat.stages))"
+                    )
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
                 }
             }
         }
@@ -579,14 +589,16 @@ struct LogsView: View {
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
                 if entry.event == "local_model_call" {
-                    Text([
-                        entry.local_model_provider,
-                        entry.local_model,
-                        entry.local_model_json_mode == true ? "json" : nil,
-                        entry.local_model_num_predict.map { "predict \($0)" },
-                    ].compactMap { $0 }.joined(separator: " · "))
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
+                    Text(
+                        [
+                            entry.local_model_provider,
+                            entry.local_model,
+                            entry.local_model_json_mode == true ? "json" : nil,
+                            entry.local_model_num_predict.map { "predict \($0)" },
+                        ].compactMap { $0 }.joined(separator: " · ")
+                    )
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
                 }
                 if entry.baseline_type != nil || entry.token_estimator != nil {
                     Text([entry.baseline_type, entry.token_estimator].compactMap { $0 }.joined(separator: " · "))
@@ -604,9 +616,11 @@ struct LogsView: View {
                         .foregroundColor(.secondary)
                 }
                 if let calls = entry.local_ai_call_count, calls > 0 {
-                    Text("local AI used: \(calls) calls, \((entry.local_ai_input_tokens ?? 0) + (entry.local_ai_output_tokens ?? 0)) tok, saved \(entry.local_ai_net_savings_tokens ?? 0) candidate tok")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
+                    Text(
+                        "local AI used: \(calls) calls, \((entry.local_ai_input_tokens ?? 0) + (entry.local_ai_output_tokens ?? 0)) tok, saved \(entry.local_ai_net_savings_tokens ?? 0) candidate tok"
+                    )
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
                 }
                 if let omitted = entry.omitted_output_tokens, omitted > 0 {
                     Text("large output compacted, omitted \(omitted) tok")
@@ -655,7 +669,9 @@ struct LogsView: View {
                             detailRow("Source / client", entry.client ?? "Soma")
                             detailRow("Request type", entry.event)
                             detailRow("Tool / method", entry.tool ?? entry.method ?? "—")
-                            detailRow("Project / workspace", viewModel.selectedProjectRoot.isEmpty ? "No project selected" : viewModel.selectedProjectRoot)
+                            detailRow(
+                                "Project / workspace",
+                                viewModel.selectedProjectRoot.isEmpty ? "No project selected" : viewModel.selectedProjectRoot)
                             detailRow("Input summary", inputSummary(for: entry))
                         }
 
@@ -703,10 +719,12 @@ struct LogsView: View {
                         .foregroundColor(.secondary)
                     Text("Select an activity row")
                         .font(.headline)
-                    Text("Details show source, request type, project, model, data volume, status, audit IDs, related files, and raw payload when needed.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
+                    Text(
+                        "Details show source, request type, project, model, data volume, status, audit IDs, related files, and raw payload when needed."
+                    )
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
                 }
                 .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -754,7 +772,9 @@ struct LogsView: View {
 
     private var emptyStateTitle: String {
         if viewModel.logEntries.isEmpty { return "No logs for today" }
-        if eventFilter != "all" || statusFilter != "all" || clientFilter != "all" || !traceFilter.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if eventFilter != "all" || statusFilter != "all" || clientFilter != "all"
+            || !traceFilter.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
             return "No logs match current filters"
         }
         if !viewModel.selectedProjectRoot.isEmpty { return "No activity for this project" }
@@ -763,7 +783,8 @@ struct LogsView: View {
 
     private var emptyStateDetail: String {
         if viewModel.logEntries.isEmpty {
-            return deletionFeedback ?? "Run Prepare Packet, use an MCP client, or refresh after a tool call. Logs are saved to \(logFilePath)."
+            return deletionFeedback
+                ?? "Run Prepare Packet, use an MCP client, or refresh after a tool call. Logs are saved to \(logFilePath)."
         }
         return "Adjust Event, Status, Client, or Run filters to widen the current Activity scope."
     }

@@ -5,6 +5,7 @@ install flows keep a backup, install a Soma-only MCP server entry for the
 selected project, and verify that direct Unity/Nexus servers are not exposed to
 the large model.
 """
+
 from __future__ import annotations
 
 import json
@@ -30,7 +31,11 @@ def build_client_config(client: str, project_root: str | None = None, python_exe
 
     if client == "codex":
         args = f'["{script}", "--project-root", "{root}"]' if root else f'["{script}"]'
-        env_line = f'env = {{ SOMA_PROJECT_ROOT = "{root}" }}' if root else '# env = { SOMA_PROJECT_ROOT = "/absolute/project/root" }'
+        env_line = (
+            f'env = {{ SOMA_PROJECT_ROOT = "{root}" }}'
+            if root
+            else '# env = { SOMA_PROJECT_ROOT = "/absolute/project/root" }'
+        )
         return "\n".join(
             [
                 "[mcp_servers.soma]",
@@ -314,7 +319,9 @@ def _entry_mentions_direct_unity(name: str, entry: Any) -> bool:
     lowered_name = name.lower()
     if name == "soma":
         return False
-    return any(marker in lowered_name or marker in rendered for marker in ("nexus", "unity", "unity_", "nexus_unity_bridge"))
+    return any(
+        marker in lowered_name or marker in rendered for marker in ("nexus", "unity", "unity_", "nexus_unity_bridge")
+    )
 
 
 def _remove_direct_unity_servers(settings: dict[str, Any]) -> int:
@@ -432,7 +439,9 @@ def rollback_codex_config(
     return result
 
 
-def verify_codex_config(config_path: str | Path | None = None, expected_project_root: str | None = None) -> dict[str, Any]:
+def verify_codex_config(
+    config_path: str | Path | None = None, expected_project_root: str | None = None
+) -> dict[str, Any]:
     path = Path(config_path).expanduser() if config_path else codex_config_default_path()
     issues: list[str] = []
     if not path.exists():
@@ -454,7 +463,9 @@ def verify_codex_config(config_path: str | Path | None = None, expected_project_
     text = path.read_text(errors="replace")
     soma_blocks = _count_toml_table(text, "mcp_servers.soma")
     has_soma_script = "soma_mcp_server.py" in text
-    direct_nexus_exposed = any(marker in text for marker in ("[mcp_servers.nexus-unity]", "nexus_unity_bridge", "nexus-unity"))
+    direct_nexus_exposed = any(
+        marker in text for marker in ("[mcp_servers.nexus-unity]", "nexus_unity_bridge", "nexus-unity")
+    )
     unity_tool_exposed = "unity_" in text
     actual_project_root = _extract_codex_project_root(text)
     expected = normalize_path(expected_project_root) if expected_project_root else None
@@ -589,7 +600,9 @@ def rollback_gemini_config(
     return result
 
 
-def verify_gemini_config(config_path: str | Path | None = None, expected_project_root: str | None = None) -> dict[str, Any]:
+def verify_gemini_config(
+    config_path: str | Path | None = None, expected_project_root: str | None = None
+) -> dict[str, Any]:
     path = Path(config_path).expanduser() if config_path else gemini_config_default_path()
     expected = normalize_path(expected_project_root) if expected_project_root else None
     if not path.exists():
@@ -633,7 +646,9 @@ def verify_gemini_config(config_path: str | Path | None = None, expected_project
     soma_server = servers.get("soma") if isinstance(servers.get("soma"), dict) else {}
     has_soma_script = "soma_mcp_server.py" in json.dumps(soma_server, default=str)
     direct_nexus_exposed = any(_entry_mentions_direct_unity(name, entry) for name, entry in servers.items())
-    unity_tool_exposed = any("unity_" in json.dumps(entry, default=str).lower() for name, entry in servers.items() if name != "soma")
+    unity_tool_exposed = any(
+        "unity_" in json.dumps(entry, default=str).lower() for name, entry in servers.items() if name != "soma"
+    )
     actual_project_root = _extract_json_soma_project_root(soma_server)
     project_matches = _path_matches(actual_project_root, expected)
 
@@ -678,7 +693,9 @@ def install_hermes_config(
         backup = _backup_path(path)
         backup.write_text(existing, encoding="utf-8")
 
-    updated, old_soma_blocks, direct_removed = _render_hermes_config_with_soma(existing, project_root, python_executable)
+    updated, old_soma_blocks, direct_removed = _render_hermes_config_with_soma(
+        existing, project_root, python_executable
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(updated, encoding="utf-8")
 
@@ -700,7 +717,9 @@ def install_hermes_config(
     return result
 
 
-def verify_hermes_config(config_path: str | Path | None = None, expected_project_root: str | None = None) -> dict[str, Any]:
+def verify_hermes_config(
+    config_path: str | Path | None = None, expected_project_root: str | None = None
+) -> dict[str, Any]:
     path = Path(config_path).expanduser() if config_path else hermes_config_default_path()
     expected = normalize_path(expected_project_root) if expected_project_root else None
     hermes_binary = shutil.which("hermes")
@@ -731,11 +750,7 @@ def verify_hermes_config(config_path: str | Path | None = None, expected_project
     has_soma_script = "soma_mcp_server.py" in soma_rendered
     soma_enabled = soma_server.get("enabled", True) is not False if soma_server else False
     direct_nexus_exposed = any(_entry_mentions_direct_unity(name, "\n".join(lines)) for name, lines in blocks)
-    unity_tool_exposed = any(
-        "unity_" in "\n".join(lines).lower()
-        for name, lines in blocks
-        if name != "soma"
-    )
+    unity_tool_exposed = any("unity_" in "\n".join(lines).lower() for name, lines in blocks if name != "soma")
     actual_project_root = _extract_hermes_project_root(soma_server)
     project_matches = _path_matches(actual_project_root, expected)
 
@@ -756,10 +771,23 @@ def verify_hermes_config(config_path: str | Path | None = None, expected_project
         issues.append("project_root_mismatch")
 
     clean = not direct_nexus_exposed and not unity_tool_exposed
-    status_ok = bool(soma_server) and has_soma_script and soma_enabled and clean and bool(hermes_binary) and project_matches is not False
+    status_ok = (
+        bool(soma_server)
+        and has_soma_script
+        and soma_enabled
+        and clean
+        and bool(hermes_binary)
+        and project_matches is not False
+    )
     result = {
         "status": "ok" if status_ok else "degraded",
-        "summary": "Hermes config points to Soma only." if status_ok else ("Hermes CLI missing; install Hermes to use this config." if not hermes_binary else "Hermes config needs Soma-only cleanup."),
+        "summary": "Hermes config points to Soma only."
+        if status_ok
+        else (
+            "Hermes CLI missing; install Hermes to use this config."
+            if not hermes_binary
+            else "Hermes config needs Soma-only cleanup."
+        ),
         "config_path": str(path),
         "soma_installed": bool(soma_server) and has_soma_script and soma_enabled,
         "direct_nexus_exposed": direct_nexus_exposed,

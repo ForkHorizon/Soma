@@ -15,20 +15,22 @@ extension TestsView {
             }
 
             if !row.lowCases.isEmpty {
-                Text(row.lowCases.prefix(5).map { lowCase in
-                    let confidenceText = (lowCase.confidences ?? [:])
-                        .map { "\($0.key) \(String(format: "%.2f", $0.value))" }
-                        .sorted()
-                        .joined(separator: ", ")
-                    let failedText = (lowCase.failedStages ?? [])
-                        .map { "\($0) failed" }
-                        .sorted()
-                        .joined(separator: ", ")
-                    let details = [confidenceText, failedText]
-                        .filter { !$0.isEmpty }
-                        .joined(separator: ", ")
-                    return "\(lowCase.id): \(details.isEmpty ? "low confidence" : details)"
-                }.joined(separator: "\n"))
+                Text(
+                    row.lowCases.prefix(5).map { lowCase in
+                        let confidenceText = (lowCase.confidences ?? [:])
+                            .map { "\($0.key) \(String(format: "%.2f", $0.value))" }
+                            .sorted()
+                            .joined(separator: ", ")
+                        let failedText = (lowCase.failedStages ?? [])
+                            .map { "\($0) failed" }
+                            .sorted()
+                            .joined(separator: ", ")
+                        let details = [confidenceText, failedText]
+                            .filter { !$0.isEmpty }
+                            .joined(separator: ", ")
+                        return "\(lowCase.id): \(details.isEmpty ? "low confidence" : details)"
+                    }.joined(separator: "\n")
+                )
                 .font(.caption.monospaced())
                 .foregroundColor(.secondary)
                 .lineLimit(5)
@@ -61,7 +63,12 @@ extension TestsView {
                                     .frame(width: 86, alignment: .leading)
                                 Text(runConfidenceSummary(sample.improveConfidence ?? sample.translationConfidence))
                                     .font(.caption.monospacedDigit())
-                                    .foregroundColor(confidenceTone((sample.improveConfidence ?? sample.translationConfidence)?.usableConfidence, failed: (sample.improveConfidence ?? sample.translationConfidence)?.isFailed == true ? 1 : 0).color)
+                                    .foregroundColor(
+                                        confidenceTone(
+                                            (sample.improveConfidence ?? sample.translationConfidence)?.usableConfidence,
+                                            failed: (sample.improveConfidence ?? sample.translationConfidence)?.isFailed == true ? 1 : 0
+                                        ).color
+                                    )
                                     .frame(width: 78, alignment: .leading)
                                 Text((sample.improvedPrompt?.isEmpty == false ? sample.improvedPrompt : sample.translation) ?? "")
                                     .font(.caption)
@@ -82,7 +89,6 @@ extension TestsView {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.10)))
     }
-
 
     func runDetailPanel(_ row: TestRunResult) -> some View {
         let warnings = row.warnings.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -105,7 +111,6 @@ extension TestsView {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.10)))
     }
 
-
     func runDetailHeader(_ row: TestRunResult) -> some View {
         HStack(spacing: 8) {
             Text("\(row.caseID) · Source -> Translation -> Improved Prompt")
@@ -118,26 +123,28 @@ extension TestsView {
             Button {
                 toggleRunDebug(row.id)
             } label: {
-                Label(isRunDebugExpanded(row.id) ? "Hide Debug" : "Show Debug", systemImage: isRunDebugExpanded(row.id) ? "chevron.up" : "chevron.down")
+                Label(
+                    isRunDebugExpanded(row.id) ? "Hide Debug" : "Show Debug",
+                    systemImage: isRunDebugExpanded(row.id) ? "chevron.up" : "chevron.down")
             }
             .buttonStyle(.bordered)
             .controlSize(.mini)
         }
     }
 
-
     func runDetailMetadata(_ row: TestRunResult) -> some View {
-        Text([
-            "Translator model: \(row.translatorModel)",
-            "Improver model: \(row.analyzerModel)",
-            "Runtime: \(formatSeconds(row.seconds))"
-        ].joined(separator: " · "))
-            .font(.caption.monospaced())
-            .foregroundColor(.secondary)
-            .lineLimit(1)
-            .textSelection(.enabled)
+        Text(
+            [
+                "Translator model: \(row.translatorModel)",
+                "Improver model: \(row.analyzerModel)",
+                "Runtime: \(formatSeconds(row.seconds))",
+            ].joined(separator: " · ")
+        )
+        .font(.caption.monospaced())
+        .foregroundColor(.secondary)
+        .lineLimit(1)
+        .textSelection(.enabled)
     }
-
 
     func runStageColumns(_ row: TestRunResult, sourcePrompt: String? = nil) -> some View {
         HStack(alignment: .top, spacing: 12) {
@@ -148,17 +155,18 @@ extension TestsView {
             )
             runTextStage(
                 title: "2. Translation",
-                subtitle: "\(row.translatorModel) · \(row.translationStatus ?? "translated") · conf \(runConfidenceSummary(row.translationConfidence))",
+                subtitle:
+                    "\(row.translatorModel) · \(row.translationStatus ?? "translated") · conf \(runConfidenceSummary(row.translationConfidence))",
                 text: row.translation ?? ""
             )
             runTextStage(
                 title: "3. Improved",
-                subtitle: "\(row.analyzerModel) · \(row.improveStatus ?? row.status) · conf \(runConfidenceSummary(row.improveConfidence)) · overall \(runConfidenceSummary(row.overallConfidence))",
+                subtitle:
+                    "\(row.analyzerModel) · \(row.improveStatus ?? row.status) · conf \(runConfidenceSummary(row.improveConfidence)) · overall \(runConfidenceSummary(row.overallConfidence))",
                 text: row.improvedPrompt ?? ""
             )
         }
     }
-
 
     @ViewBuilder
     func runWarningsView(_ warnings: [String]) -> some View {
@@ -171,7 +179,6 @@ extension TestsView {
                 .textSelection(.enabled)
         }
     }
-
 
     func runTextStage(title: String, subtitle: String, text: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -194,24 +201,22 @@ extension TestsView {
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
-
     func resultSamples(for row: TestModelCombinationSummary) -> [TestRunResult] {
-        Array(resultRunRows
-            .filter { $0.translatorModel == row.translatorModel && $0.analyzerModel == row.analyzerModel }
-            .sorted {
-                let lhs = effectiveConfidence($0.overallConfidence ?? $0.improveConfidence ?? $0.translationConfidence)
-                let rhs = effectiveConfidence($1.overallConfidence ?? $1.improveConfidence ?? $1.translationConfidence)
-                if lhs == rhs { return $0.caseID < $1.caseID }
-                return lhs < rhs
-            }
-            .prefix(5))
+        Array(
+            resultRunRows
+                .filter { $0.translatorModel == row.translatorModel && $0.analyzerModel == row.analyzerModel }
+                .sorted {
+                    let lhs = effectiveConfidence($0.overallConfidence ?? $0.improveConfidence ?? $0.translationConfidence)
+                    let rhs = effectiveConfidence($1.overallConfidence ?? $1.improveConfidence ?? $1.translationConfidence)
+                    if lhs == rhs { return $0.caseID < $1.caseID }
+                    return lhs < rhs
+                }
+                .prefix(5))
     }
-
 
     func isRunDebugExpanded(_ id: String) -> Bool {
         expandedRunDebugIDs.contains(id)
     }
-
 
     func toggleRunDebug(_ id: String) {
         if expandedRunDebugIDs.contains(id) {
@@ -220,7 +225,6 @@ extension TestsView {
             expandedRunDebugIDs.insert(id)
         }
     }
-
 
     func collapsedRunDebugHint(_ row: TestRunResult) -> some View {
         HStack(spacing: 8) {
@@ -234,7 +238,6 @@ extension TestsView {
         }
     }
 
-
     func runConfidenceDebugColumns(
         _ row: TestRunResult,
         judgesByItemID: [String: [TestConfidenceJudgeResult]]
@@ -243,7 +246,9 @@ extension TestsView {
             HStack(spacing: 8) {
                 Text("Confidence Debug")
                     .font(.caption.bold())
-                StatusChip(text: "\(confidenceJudgeCount(row, judgesByItemID: judgesByItemID)) judge rows", tone: confidenceJudgeCount(row, judgesByItemID: judgesByItemID) > 0 ? .info : .neutral)
+                StatusChip(
+                    text: "\(confidenceJudgeCount(row, judgesByItemID: judgesByItemID)) judge rows",
+                    tone: confidenceJudgeCount(row, judgesByItemID: judgesByItemID) > 0 ? .info : .neutral)
                 Spacer()
                 Text("Overall is final prompt safety; Improve is improver quality.")
                     .font(.caption2)
@@ -276,7 +281,6 @@ extension TestsView {
             }
         }
     }
-
 
     func runConfidenceDebugStage(
         title: String,
@@ -332,7 +336,6 @@ extension TestsView {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.10)))
     }
 
-
     func confidenceJudgeRow(_ judge: TestConfidenceJudgeResult) -> some View {
         let payload = judge.payload
         return VStack(alignment: .leading, spacing: 3) {
@@ -366,7 +369,6 @@ extension TestsView {
         .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
-
     func confidenceJudges(
         for row: TestRunResult,
         stage: String,
@@ -388,11 +390,11 @@ extension TestsView {
         }
     }
 
-
     func confidenceItemIDs(for row: TestRunResult, stage: String, confidence: TestRunConfidence?) -> [String] {
         var ids: [String] = []
         if let batchItemID = confidence?.batchItemID?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !batchItemID.isEmpty {
+            !batchItemID.isEmpty
+        {
             ids.append(batchItemID)
         }
         ids.append([row.caseID, row.translatorModel, row.analyzerModel, stage].joined(separator: "|"))
@@ -403,17 +405,15 @@ extension TestsView {
         return ids.filter { seen.insert($0).inserted }
     }
 
-
     func confidenceJudgeCount(_ row: TestRunResult, judgesByItemID: [String: [TestConfidenceJudgeResult]]) -> Int {
         [
             ("translation", row.translationConfidence),
             ("improve", row.improveConfidence),
-            ("overall", row.overallConfidence)
+            ("overall", row.overallConfidence),
         ].reduce(0) { count, item in
             count + confidenceJudges(for: row, stage: item.0, confidence: item.1, judgesByItemID: judgesByItemID).count
         }
     }
-
 
     func confidenceMetaText(_ confidence: TestRunConfidence?, fallbackStage: String) -> String {
         guard let confidence else { return "No final confidence payload for \(fallbackStage)." }
@@ -421,7 +421,7 @@ extension TestsView {
             confidence.stage ?? fallbackStage,
             confidence.provider ?? "unknown provider",
             confidence.model ?? "unknown model",
-            confidence.canonicalStatus
+            confidence.canonicalStatus,
         ]
         if let rawStatus = confidence.rawStatus, rawStatus != confidence.canonicalStatus {
             parts.append("raw \(rawStatus)")
@@ -433,11 +433,11 @@ extension TestsView {
             parts.append(formatSeconds(seconds))
         }
         if confidence.hybridEscalated == true {
-            parts.append("fallback \(confidence.fallbackProvider ?? "") \(confidence.fallbackModel ?? "")".trimmingCharacters(in: .whitespaces))
+            parts.append(
+                "fallback \(confidence.fallbackProvider ?? "") \(confidence.fallbackModel ?? "")".trimmingCharacters(in: .whitespaces))
         }
         return parts.filter { !$0.isEmpty }.joined(separator: " · ")
     }
-
 
     func confidenceDetailLines(_ confidence: TestRunConfidence?) -> [String] {
         guard let confidence else { return [] }
@@ -454,19 +454,17 @@ extension TestsView {
         return Array(lines.prefix(6))
     }
 
-
     func judgeConfidenceText(_ payload: TestConfidenceJudgePayload) -> String {
         if payload.isFailed { return "failed" }
         return formatConfidence(payload.usableConfidence)
     }
-
 
     func judgeMetaText(_ payload: TestConfidenceJudgePayload) -> String {
         var parts = [
             payload.provider ?? "local",
             payload.stage ?? "stage",
             payload.canonicalStatus,
-            payload.verdict ?? ""
+            payload.verdict ?? "",
         ]
         if let rawStatus = payload.rawStatus, rawStatus != payload.canonicalStatus {
             parts.append("raw \(rawStatus)")
@@ -480,7 +478,6 @@ extension TestsView {
         return parts.filter { !$0.isEmpty }.joined(separator: " · ")
     }
 
-
     func judgeDetailLines(_ payload: TestConfidenceJudgePayload) -> [String] {
         var lines: [String] = []
         lines.append(contentsOf: (payload.deterministicCapReasons ?? []).map { "Cap: \($0)" })
@@ -491,7 +488,6 @@ extension TestsView {
         }
         return Array(lines.prefix(5))
     }
-
 
     func progressMetric(_ title: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -505,7 +501,6 @@ extension TestsView {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-
 
     func pipelineStepView(_ step: TestPipelineStep) -> some View {
         let activeStep = activePipelineStep
@@ -530,7 +525,6 @@ extension TestsView {
         .help(step.title)
     }
 
-
     func pipelineConnectorColor(before step: TestPipelineStep) -> Color {
         let activeStep = activePipelineStep
         if activeStep.rawValue > step.rawValue || (!isRunningTests && currentStage == "Done") {
@@ -542,11 +536,9 @@ extension TestsView {
         return Color.secondary.opacity(0.18)
     }
 
-
     var activePipelineStep: TestPipelineStep {
         pipelineStep(for: currentProgressEvent?.stage ?? currentStage)
     }
-
 
     func pipelineStep(for stage: String) -> TestPipelineStep {
         let normalized = stage.lowercased().replacingOccurrences(of: " ", with: "_")
@@ -568,7 +560,6 @@ extension TestsView {
         return .translate
     }
 
-
     var pipelineStatusTone: SomaStatusTone {
         let normalizedStage = currentStage.lowercased()
         let normalizedStatus = currentProgressEvent?.status?.lowercased() ?? ""
@@ -579,13 +570,11 @@ extension TestsView {
         return .neutral
     }
 
-
     var progressPercentText: String {
         guard totalCasesToRun > 0 else { return "0%" }
         let percent = min(max(progressValue / Double(max(totalCasesToRun, 1)), 0), 1) * 100
         return String(format: "%.0f%%", percent)
     }
-
 
     var runElapsedText: String {
         guard let runStartedAt else { return "elapsed -" }

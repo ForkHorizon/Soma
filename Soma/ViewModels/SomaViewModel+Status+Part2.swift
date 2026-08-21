@@ -7,7 +7,8 @@ extension SomaViewModel {
         guard !selectedProjectRoot.isEmpty else { return }
         graphifyBusy = true
         logActivity("Running Graphify diagnostics...")
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--diagnose-graph-json", "--project-root", selectedProjectRoot])
                 let result = try JSONDecoder().decode(GraphMaintenanceResult.self, from: data)
@@ -28,7 +29,8 @@ extension SomaViewModel {
         guard !selectedProjectRoot.isEmpty else { return }
         graphifyBusy = true
         logActivity("Checking Graphify semantic refresh state...")
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--check-graph-semantic-update-json", "--project-root", selectedProjectRoot])
                 let result = try JSONDecoder().decode(GraphSemanticUpdateStatus.self, from: data)
@@ -49,7 +51,8 @@ extension SomaViewModel {
         guard !selectedProjectRoot.isEmpty else { return }
         graphifyBusy = true
         logActivity("Moving legacy Graphify graph into Soma storage...")
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 _ = try await runSomaHelper(args: ["--migrate-graph", "--project-root", selectedProjectRoot])
                 await MainActor.run {
@@ -84,7 +87,8 @@ extension SomaViewModel {
         guard !selectedProjectRoot.isEmpty else { return }
         graphifyBusy = true
         logActivity("Generating \(label)...")
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: args)
                 let result = try JSONDecoder().decode(GraphReportResult.self, from: data)
@@ -105,7 +109,7 @@ extension SomaViewModel {
             }
         }
     }
-func projectPathsMatch(_ lhs: String, _ rhs: String?) -> Bool {
+    func projectPathsMatch(_ lhs: String, _ rhs: String?) -> Bool {
         guard let rhs, !lhs.isEmpty, !rhs.isEmpty else { return true }
         let left = URL(fileURLWithPath: lhs).standardizedFileURL.path
         let right = URL(fileURLWithPath: rhs).standardizedFileURL.path

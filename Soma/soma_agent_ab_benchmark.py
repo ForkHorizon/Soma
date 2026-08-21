@@ -6,6 +6,7 @@ context-reduction estimates. It prefers real token usage emitted by the local
 CLI JSON streams and falls back to transcript token estimates when the CLI does
 not expose usage.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -43,7 +44,11 @@ def _load_scenario(path: str) -> dict[str, Any]:
     scenario_path = Path(path).expanduser().resolve()
     data = json.loads(scenario_path.read_text(encoding="utf-8"))
     project_root_raw = Path(str(data.get("project_root") or "")).expanduser()
-    project_root = (scenario_path.parent / project_root_raw).resolve() if not project_root_raw.is_absolute() else project_root_raw.resolve()
+    project_root = (
+        (scenario_path.parent / project_root_raw).resolve()
+        if not project_root_raw.is_absolute()
+        else project_root_raw.resolve()
+    )
     if not project_root.is_dir():
         raise ValueError(f"Scenario project_root does not exist: {project_root}")
     tasks = data.get("tasks")
@@ -118,10 +123,15 @@ def extract_usage_from_events(stdout: str, stderr: str = "") -> dict[str, Any] |
                 value = node.get(key)
                 if isinstance(value, dict):
                     usage_nodes.append(value)
-            if any(k in node for k in ("total_tokens", "totalTokenCount", "prompt_tokens", "input_tokens", "promptTokenCount")):
+            if any(
+                k in node
+                for k in ("total_tokens", "totalTokenCount", "prompt_tokens", "input_tokens", "promptTokenCount")
+            ):
                 usage_nodes.append(node)
             for usage in usage_nodes:
-                input_tokens = _int_field(usage, ("input_tokens", "prompt_tokens", "promptTokenCount", "cached_input_tokens"))
+                input_tokens = _int_field(
+                    usage, ("input_tokens", "prompt_tokens", "promptTokenCount", "cached_input_tokens")
+                )
                 output_tokens = _int_field(
                     usage,
                     ("output_tokens", "completion_tokens", "candidatesTokenCount", "responseTokenCount"),
@@ -256,9 +266,19 @@ def _run_process(args: list[str], cwd: Path, timeout: int) -> dict[str, Any]:
         }
 
 
-def _agent_command(agent: str, prompt: str, project_root: Path, model: str | None, read_only: bool) -> tuple[list[str], Path]:
+def _agent_command(
+    agent: str, prompt: str, project_root: Path, model: str | None, read_only: bool
+) -> tuple[list[str], Path]:
     if agent == "codex":
-        args = ["codex", "exec", "--json", "-C", str(project_root), "-s", "read-only" if read_only else "workspace-write"]
+        args = [
+            "codex",
+            "exec",
+            "--json",
+            "-C",
+            str(project_root),
+            "-s",
+            "read-only" if read_only else "workspace-write",
+        ]
         if model:
             args.extend(["--model", model])
         args.append(prompt)
@@ -278,7 +298,17 @@ def _agent_command(agent: str, prompt: str, project_root: Path, model: str | Non
     raise ValueError(f"Unsupported agent: {agent}")
 
 
-def _prepare_soma_packet(project_root: Path, task_prompt: str, python: str, budget: str, depth: str, timeout: int, model_profile: str, run_id: str, task_id: str) -> dict[str, Any]:
+def _prepare_soma_packet(
+    project_root: Path,
+    task_prompt: str,
+    python: str,
+    budget: str,
+    depth: str,
+    timeout: int,
+    model_profile: str,
+    run_id: str,
+    task_id: str,
+) -> dict[str, Any]:
     env = os.environ.copy()
     env["SOMA_PROJECT_ROOT"] = str(project_root)
     env["SOMA_TOKEN_MODEL_PROFILE"] = model_profile
@@ -291,7 +321,17 @@ def _prepare_soma_packet(project_root: Path, task_prompt: str, python: str, budg
             str(project_root),
             "--run-tool",
             "soma_prepare_context",
-            json.dumps({"goal": task_prompt, "budget": budget, "depth": depth, "run_id": run_id, "task_id": task_id, "client": "agent_benchmark", "workflow": "packet_mode"}),
+            json.dumps(
+                {
+                    "goal": task_prompt,
+                    "budget": budget,
+                    "depth": depth,
+                    "run_id": run_id,
+                    "task_id": task_id,
+                    "client": "agent_benchmark",
+                    "workflow": "packet_mode",
+                }
+            ),
         ],
         capture_output=True,
         text=True,
@@ -338,14 +378,18 @@ def run_agent_once(
     read_only = bool(task.get("read_only", True))
     args, cwd = _agent_command(agent, prompt, project_root, model, read_only)
     raw = _run_process(args, cwd, timeout)
-    usage = extract_usage_from_events(raw["stdout"], raw["stderr"]) or _transcript_usage(prompt, raw["stdout"], raw["stderr"], model_profile)
+    usage = extract_usage_from_events(raw["stdout"], raw["stderr"]) or _transcript_usage(
+        prompt, raw["stdout"], raw["stderr"], model_profile
+    )
     acceptance = _evaluate_acceptance(task, raw["stdout"], raw["stderr"], raw["status"])
     result = {
         "run_id": run_id,
         "task_id": str(task.get("id")),
         "agent": agent,
         "mode": mode,
-        "workflow": "direct_agent_english_optional" if mode == "direct_english" else ("direct_agent" if mode == "direct" else "with_soma_packet"),
+        "workflow": "direct_agent_english_optional"
+        if mode == "direct_english"
+        else ("direct_agent" if mode == "direct" else "with_soma_packet"),
         "status": raw["status"],
         "exit_code": raw["exit_code"],
         "duration_ms": raw["duration_ms"],
@@ -489,7 +533,9 @@ def _build_summary(runs: list[dict[str, Any]], comparisons: list[dict[str, Any]]
         "total_direct_tokens": sum(item.get("direct_tokens") or 0 for item in ok_pairs),
         "total_with_soma_tokens": sum(item.get("with_soma_tokens") or 0 for item in ok_pairs),
         "total_saved_tokens": sum(item.get("saved_tokens") or 0 for item in ok_pairs),
-        "avg_savings_pct": round(sum(item.get("savings_pct") or 0 for item in ok_pairs) / max(len(ok_pairs), 1), 1) if ok_pairs else None,
+        "avg_savings_pct": round(sum(item.get("savings_pct") or 0 for item in ok_pairs) / max(len(ok_pairs), 1), 1)
+        if ok_pairs
+        else None,
         "usage_sources": sorted({str(item.get("usage_source")) for item in runs if item.get("usage_source")}),
     }
 
@@ -497,7 +543,11 @@ def _build_summary(runs: list[dict[str, Any]], comparisons: list[dict[str, Any]]
 def run_benchmark(scenario: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
     project_root = Path(scenario["project_root"])
     scenario_agents = scenario.get("agents") if isinstance(scenario.get("agents"), list) else None
-    selected_agents = [agent.strip() for agent in (args.agents or ",".join(scenario_agents or DEFAULT_AGENTS)).split(",") if agent.strip()]
+    selected_agents = [
+        agent.strip()
+        for agent in (args.agents or ",".join(scenario_agents or DEFAULT_AGENTS)).split(",")
+        if agent.strip()
+    ]
     model_config = scenario.get("models") if isinstance(scenario.get("models"), dict) else scenario.get("model")
     models = model_config if isinstance(model_config, dict) else {}
 
@@ -508,7 +558,17 @@ def run_benchmark(scenario: dict[str, Any], args: argparse.Namespace) -> dict[st
         task_run_id = str(task.get("run_id") or new_run_id())
         task["run_id"] = task_run_id
         english_prompt = str(task.get("prompt_english") or task.get("english_prompt") or "").strip()
-        soma = _prepare_soma_packet(project_root, prompt, args.python, args.budget, args.depth, args.soma_timeout, args.model_profile, task_run_id, str(task.get("id")))
+        soma = _prepare_soma_packet(
+            project_root,
+            prompt,
+            args.python,
+            args.budget,
+            args.depth,
+            args.soma_timeout,
+            args.model_profile,
+            task_run_id,
+            str(task.get("id")),
+        )
         packet = soma.get("packet") or ""
         packet_tokens = estimate_tokens(packet, args.model_profile) if packet else None
         packet_status = soma.get("status")

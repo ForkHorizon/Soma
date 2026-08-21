@@ -3,6 +3,7 @@
 The registry is intentionally small: Big AI clients see Soma tools only, while
 Unity/Nexus and other verbose integrations remain hidden behind these wrappers.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -141,12 +142,16 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
 
 
 def tool_schema(name: str) -> dict[str, Any]:
-    schema = json.loads(json.dumps(TOOL_SCHEMAS.get(name, {"type": "object", "properties": {}, "additionalProperties": True})))
+    schema = json.loads(
+        json.dumps(TOOL_SCHEMAS.get(name, {"type": "object", "properties": {}, "additionalProperties": True}))
+    )
     properties = schema.setdefault("properties", {})
     properties.setdefault("run_id", {"type": "string", "description": "Optional Soma audit run correlation id."})
     properties.setdefault("task_id", {"type": "string", "description": "Optional Soma audit task correlation id."})
     properties.setdefault("client", {"type": "string", "description": "Optional client name such as codex or gemini."})
-    properties.setdefault("workflow", {"type": "string", "description": "Optional workflow label such as packet_mode or live_mcp."})
+    properties.setdefault(
+        "workflow", {"type": "string", "description": "Optional workflow label such as packet_mode or live_mcp."}
+    )
     return schema
 
 

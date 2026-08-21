@@ -27,7 +27,8 @@ final class PromptCompilerViewModel: ObservableObject {
         somaViewModel.activityLogs = []
         somaViewModel.logActivity("Starting Prompt Compiler: \(prompt)")
         let startTime = Date()
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 self.phase = .gathering
                 let rootLabel = somaViewModel.selectedProjectRoot.isEmpty ? "no selected root" : somaViewModel.selectedProjectRoot
@@ -49,7 +50,8 @@ final class PromptCompilerViewModel: ObservableObject {
                     self.phase = .done
                     ollama.checkStatus()
                     somaViewModel.loadAuditReport()
-                    somaViewModel.logActivity("Compiled strong prompt with \(bundle.evidence_items?.count ?? 0) evidence items", duration: stepDuration)
+                    somaViewModel.logActivity(
+                        "Compiled strong prompt with \(bundle.evidence_items?.count ?? 0) evidence items", duration: stepDuration)
                     somaViewModel.logActivity("Prompt compile total time", duration: Date().timeIntervalSince(startTime))
                 }
             } catch {
@@ -62,7 +64,9 @@ final class PromptCompilerViewModel: ObservableObject {
             }
         }
     }
-    private func runAnalystGather(prompt: String, projectRoot: String, recentRoots: [String], somaViewModel: SomaViewModel) async throws -> GatherBundle {
+    private func runAnalystGather(prompt: String, projectRoot: String, recentRoots: [String], somaViewModel: SomaViewModel) async throws
+        -> GatherBundle
+    {
         let script = try somaViewModel.scriptURL(named: "scout_pipeline")
         let recentRootsJSON = (try? String(data: JSONEncoder().encode(recentRoots), encoding: .utf8)) ?? "[]"
         let output = try await somaViewModel.runScript(
@@ -86,7 +90,8 @@ final class PromptCompilerViewModel: ObservableObject {
             return try JSONDecoder().decode(GatherBundle.self, from: output)
         } catch {
             let preview = String(data: Data(output.prefix(800)), encoding: .utf8) ?? "<non-utf8 output>"
-            throw SomaError("Prompt Compiler returned JSON that the app could not decode: \(decodeErrorSummary(error)). Output starts with: \(preview)")
+            throw SomaError(
+                "Prompt Compiler returned JSON that the app could not decode: \(decodeErrorSummary(error)). Output starts with: \(preview)")
         }
     }
     private func decodeErrorSummary(_ error: Error) -> String {

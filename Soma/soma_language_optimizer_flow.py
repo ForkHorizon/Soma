@@ -5,7 +5,19 @@ import sys
 from typing import Any
 
 from token_calculator import estimate_tokens
-from soma_language_optimizer_core import TARGET_LANGUAGE, _compute_metadata, _cyrillic_count, _restore_valid_improved_prompt, _sha, detect_language, is_codex_stage_model, is_deepseek_stage_model, invalid_placeholders, protect_spans, restore_spans
+from soma_language_optimizer_core import (
+    TARGET_LANGUAGE,
+    _compute_metadata,
+    _cyrillic_count,
+    _restore_valid_improved_prompt,
+    _sha,
+    detect_language,
+    is_codex_stage_model,
+    is_deepseek_stage_model,
+    invalid_placeholders,
+    protect_spans,
+    restore_spans,
+)
 
 
 def _api():
@@ -25,14 +37,36 @@ def optimize_prompt_language(goal: str, model_profile: str = "gpt-5.5") -> tuple
     try:
         translated_protected, engine = _translate_protected(protected.text, provider, translator_model, timeout)
         normalized = _restore_translation(goal, protected, translated_protected)
-        return normalized, _metadata(goal, normalized, source_language, "translated", engine, len(protected.spans), model_profile=model_profile)
+        return normalized, _metadata(
+            goal, normalized, source_language, "translated", engine, len(protected.spans), model_profile=model_profile
+        )
     except Exception as exc:
         engine = f"{provider}:{translator_model}" if provider == "local" else provider
-        return goal, _metadata(goal, goal, source_language, "failed_fallback", engine, len(protected.spans), warning=str(exc), model_profile=model_profile)
+        return goal, _metadata(
+            goal,
+            goal,
+            source_language,
+            "failed_fallback",
+            engine,
+            len(protected.spans),
+            warning=str(exc),
+            model_profile=model_profile,
+        )
 
 
-def _metadata(original, normalized, source_language, status, engine, protected_count, warning=None, model_profile="gpt-5.5"):
-    return _compute_metadata(original=original, normalized=normalized, source_language=source_language, status=status, engine=engine, protected_count=protected_count, warning=warning, model_profile=model_profile)
+def _metadata(
+    original, normalized, source_language, status, engine, protected_count, warning=None, model_profile="gpt-5.5"
+):
+    return _compute_metadata(
+        original=original,
+        normalized=normalized,
+        source_language=source_language,
+        status=status,
+        engine=engine,
+        protected_count=protected_count,
+        warning=warning,
+        model_profile=model_profile,
+    )
 
 
 def _translate_protected(text, provider, translator_model, timeout):
@@ -51,7 +85,12 @@ def _restore_translation(original, protected, translated_protected):
 
 
 def _translator_model() -> str:
-    return os.environ.get("SOMA_TRANSLATOR_MODEL") or os.environ.get("SOMA_RANKER_MODEL") or os.environ.get("SOMA_LOCAL_MODEL") or "gemma4:e4b"
+    return (
+        os.environ.get("SOMA_TRANSLATOR_MODEL")
+        or os.environ.get("SOMA_RANKER_MODEL")
+        or os.environ.get("SOMA_LOCAL_MODEL")
+        or "gemma4:e4b"
+    )
 
 
 def translate_general_prompt(prompt: str, model: str | None = None, model_profile: str = "gpt-5.5") -> dict[str, Any]:
@@ -63,22 +102,47 @@ def translate_general_prompt(prompt: str, model: str | None = None, model_profil
         warnings.append("Prompt is empty.")
         return result
     if source_language == "en":
-        result.update({"status": "ok", "translation_status": "original_english", "translation_engine": None, "translation": original, "translation_tokens": estimate_tokens(original, model_profile)})
+        result.update(
+            {
+                "status": "ok",
+                "translation_status": "original_english",
+                "translation_engine": None,
+                "translation": original,
+                "translation_tokens": estimate_tokens(original, model_profile),
+            }
+        )
         return result
     if is_codex_stage_model(translator_model):
-        return _api()._translate_general_prompt_codex(original, source_language, translator_model, model_profile, _translation_timeout())
+        return _api()._translate_general_prompt_codex(
+            original, source_language, translator_model, model_profile, _translation_timeout()
+        )
     if is_deepseek_stage_model(translator_model):
-        return _api()._translate_general_prompt_deepseek(original, source_language, translator_model, model_profile, _translation_timeout())
+        return _api()._translate_general_prompt_deepseek(
+            original, source_language, translator_model, model_profile, _translation_timeout()
+        )
     return _translate_general_local(original, translator_model, model_profile, result, warnings)
 
 
 def _translation_result(original, source_language, translator_model):
     warnings: list[str] = []
-    return {"status": "failed", "source_language": source_language, "target_language": TARGET_LANGUAGE, "translation_status": None, "translation_engine": None, "translation": "", "translator_model": translator_model, "warnings": warnings, "protected_spans_count": 0, "original_prompt_hash": _sha(original)}, warnings
+    return {
+        "status": "failed",
+        "source_language": source_language,
+        "target_language": TARGET_LANGUAGE,
+        "translation_status": None,
+        "translation_engine": None,
+        "translation": "",
+        "translator_model": translator_model,
+        "warnings": warnings,
+        "protected_spans_count": 0,
+        "original_prompt_hash": _sha(original),
+    }, warnings
 
 
 def _translation_timeout():
-    return float(os.environ.get("SOMA_PROMPT_TRANSLATION_TIMEOUT", os.environ.get("SOMA_TRANSLATION_TIMEOUT", "45")) or 45)
+    return float(
+        os.environ.get("SOMA_PROMPT_TRANSLATION_TIMEOUT", os.environ.get("SOMA_TRANSLATION_TIMEOUT", "45")) or 45
+    )
 
 
 def _translate_general_local(original, translator_model, model_profile, result, warnings):
@@ -89,15 +153,35 @@ def _translate_general_local(original, translator_model, model_profile, result, 
         if invalid:
             raise RuntimeError("translation corrupted protected placeholders: " + ", ".join(invalid[:5]))
         translation = _restore_translation(original, protected, translated_protected)
-        result.update({"status": "ok", "translation_status": "translated", "translation_engine": f"local:{translator_model}", "translation": translation, "protected_spans_count": len(protected.spans), "translation_tokens": estimate_tokens(translation, model_profile)})
+        result.update(
+            {
+                "status": "ok",
+                "translation_status": "translated",
+                "translation_engine": f"local:{translator_model}",
+                "translation": translation,
+                "protected_spans_count": len(protected.spans),
+                "translation_tokens": estimate_tokens(translation, model_profile),
+            }
+        )
     except Exception as exc:
         warnings.append(str(exc))
-        result.update({"translation_status": "failed_fallback", "translation_engine": f"local:{translator_model}", "protected_spans_count": len(protected.spans)})
+        result.update(
+            {
+                "translation_status": "failed_fallback",
+                "translation_engine": f"local:{translator_model}",
+                "protected_spans_count": len(protected.spans),
+            }
+        )
     return result
 
 
 def _improver_model() -> str:
-    return os.environ.get("SOMA_ANALYST_MODEL") or os.environ.get("SOMA_RANKER_MODEL") or os.environ.get("SOMA_LOCAL_MODEL") or "qwen3-coder:30b-a3b-q4_K_M"
+    return (
+        os.environ.get("SOMA_ANALYST_MODEL")
+        or os.environ.get("SOMA_RANKER_MODEL")
+        or os.environ.get("SOMA_LOCAL_MODEL")
+        or "qwen3-coder:30b-a3b-q4_K_M"
+    )
 
 
 def improve_general_prompt(prompt: str, model: str | None = None, model_profile: str = "gpt-5.5") -> dict[str, Any]:
@@ -110,13 +194,22 @@ def improve_general_prompt(prompt: str, model: str | None = None, model_profile:
     if is_codex_stage_model(improver_model):
         return _api()._improve_general_prompt_codex(translation, improver_model, model_profile, _improvement_timeout())
     if is_deepseek_stage_model(improver_model):
-        return _api()._improve_general_prompt_deepseek(translation, improver_model, model_profile, _improvement_timeout())
+        return _api()._improve_general_prompt_deepseek(
+            translation, improver_model, model_profile, _improvement_timeout()
+        )
     return _improve_general_local(translation, improver_model, model_profile, result, warnings)
 
 
 def _improvement_result(improver_model):
     warnings: list[str] = []
-    return {"status": "failed", "improved_prompt": "", "improver_model": improver_model, "warnings": warnings, "protected_spans_count": 0, "improvement_retry_used": False}, warnings
+    return {
+        "status": "failed",
+        "improved_prompt": "",
+        "improver_model": improver_model,
+        "warnings": warnings,
+        "protected_spans_count": 0,
+        "improvement_retry_used": False,
+    }, warnings
 
 
 def _improvement_timeout():
@@ -126,11 +219,28 @@ def _improvement_timeout():
 def _improve_general_local(translation, improver_model, model_profile, result, warnings):
     protected = protect_spans(translation)
     try:
-        improved, retry_used = _validated_local_improvement(translation, protected, improver_model, _improvement_timeout(), warnings)
-        result.update({"status": "ok", "improved_prompt": improved, "protected_spans_count": len(protected.spans), "improved_prompt_tokens": estimate_tokens(improved, model_profile), "improvement_retry_used": retry_used})
+        improved, retry_used = _validated_local_improvement(
+            translation, protected, improver_model, _improvement_timeout(), warnings
+        )
+        result.update(
+            {
+                "status": "ok",
+                "improved_prompt": improved,
+                "protected_spans_count": len(protected.spans),
+                "improved_prompt_tokens": estimate_tokens(improved, model_profile),
+                "improvement_retry_used": retry_used,
+            }
+        )
     except Exception as exc:
         warnings.append(f"Prompt improvement failed: {exc}")
-        result.update({"status": "degraded", "improved_prompt": translation, "protected_spans_count": len(protected.spans), "improved_prompt_tokens": estimate_tokens(translation, model_profile)})
+        result.update(
+            {
+                "status": "degraded",
+                "improved_prompt": translation,
+                "protected_spans_count": len(protected.spans),
+                "improved_prompt_tokens": estimate_tokens(translation, model_profile),
+            }
+        )
     return result
 
 
@@ -146,7 +256,9 @@ def _validated_local_improvement(translation, protected, improver_model, timeout
 
     while attempts < max_retries:
         try:
-            repaired_protected = _api()._local_ollama_repair_prompt(protected.text, improver_model, timeout, current_error, current_protected)
+            repaired_protected = _api()._local_ollama_repair_prompt(
+                protected.text, improver_model, timeout, current_error, current_protected
+            )
             repaired, repair_error = _restore_valid_improved_prompt(translation, protected, repaired_protected)
             if not repair_error:
                 warnings.append(f"Prompt improvement retry recovered after: {current_error}")
@@ -164,10 +276,28 @@ def optimize_general_prompt(prompt: str, model_profile: str = "gpt-5.5") -> dict
     translator_model = _translator_model()
     improver_model = _improver_model()
     translation_result = translate_general_prompt(prompt, translator_model, model_profile)
-    result = {**translation_result, "translator_model": translator_model, "improver_model": improver_model, "improved_prompt": "", "improved_prompt_tokens": None}
+    result = {
+        **translation_result,
+        "translator_model": translator_model,
+        "improver_model": improver_model,
+        "improved_prompt": "",
+        "improved_prompt_tokens": None,
+    }
     if translation_result.get("status") != "ok":
         return result
-    improve_result = improve_general_prompt(str(translation_result.get("translation") or ""), improver_model, model_profile)
+    improve_result = improve_general_prompt(
+        str(translation_result.get("translation") or ""), improver_model, model_profile
+    )
     warnings = list(translation_result.get("warnings") or []) + list(improve_result.get("warnings") or [])
-    result.update({"status": improve_result.get("status"), "improved_prompt": improve_result.get("improved_prompt"), "improved_prompt_tokens": improve_result.get("improved_prompt_tokens"), "improvement_retry_used": improve_result.get("improvement_retry_used", False), "warnings": warnings, "protected_spans_count": int(translation_result.get("protected_spans_count") or 0) + int(improve_result.get("protected_spans_count") or 0)})
+    result.update(
+        {
+            "status": improve_result.get("status"),
+            "improved_prompt": improve_result.get("improved_prompt"),
+            "improved_prompt_tokens": improve_result.get("improved_prompt_tokens"),
+            "improvement_retry_used": improve_result.get("improvement_retry_used", False),
+            "warnings": warnings,
+            "protected_spans_count": int(translation_result.get("protected_spans_count") or 0)
+            + int(improve_result.get("protected_spans_count") or 0),
+        }
+    )
     return result

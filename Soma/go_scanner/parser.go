@@ -95,7 +95,7 @@ type ExcerptResult struct {
 
 func excerptForTextCmd(text string, termsJson string) (string, error) {
 	var terms []string
-	json.Unmarshal([]byte(termsJson), &terms)
+	_ = json.Unmarshal([]byte(termsJson), &terms)
 
 	if len(text) == 0 {
 		out, _ := json.Marshal(ExcerptResult{Text: ""})
@@ -147,7 +147,7 @@ func excerptForTextCmd(text string, termsJson string) (string, error) {
 
 func excerptForLogCmd(text string, termsJson string) (string, error) {
 	var terms []string
-	json.Unmarshal([]byte(termsJson), &terms)
+	_ = json.Unmarshal([]byte(termsJson), &terms)
 
 	lines := strings.Split(text, "\n")
 	tokens := []string{"ERROR", "EXCEPTION", "FATAL", "TRACEBACK", "CRASH"}

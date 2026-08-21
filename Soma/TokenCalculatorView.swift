@@ -36,22 +36,31 @@ struct TokenCalculatorView: View {
     }
 
     private let categories = [
-        ModelCategory(name: "OpenAI", models: [
-            "GPT-5.5", "GPT-5.4 Pro", "o3-pro", "o3", "GPT-5 Turbo", "GPT-5 Mini", "GPT-4.5", "GPT-4o", "GPT-4.1", "o4-mini"
-        ]),
-        ModelCategory(name: "Google DeepMind", models: [
-            "Gemini 3.1 Pro Deep Think", "Gemini 3.1 Pro", "Gemini 3.1 Flash", "Gemini 3.1 Flash Lite", "Gemini 3 Pro", "Gemini 3 Flash", "Gemini 2.5 Ultra", "Gemini 2.5 Pro", "Gemma 4 27B", "Gemma 4 E4B"
-        ]),
-        ModelCategory(name: "Anthropic", models: [
-            "Claude Opus 4.7", "Claude Opus 4.5", "Claude Sonnet 4.5", "Claude Sonnet 4", "Claude Haiku 4", "Claude Opus 3.7", "Claude Sonnet 3.7", "Claude Haiku 3.5", "Claude Sonnet 3.5", "Claude Opus 3"
-        ])
+        ModelCategory(
+            name: "OpenAI",
+            models: [
+                "GPT-5.5", "GPT-5.4 Pro", "o3-pro", "o3", "GPT-5 Turbo", "GPT-5 Mini", "GPT-4.5", "GPT-4o", "GPT-4.1", "o4-mini",
+            ]),
+        ModelCategory(
+            name: "Google DeepMind",
+            models: [
+                "Gemini 3.1 Pro Deep Think", "Gemini 3.1 Pro", "Gemini 3.1 Flash", "Gemini 3.1 Flash Lite", "Gemini 3 Pro",
+                "Gemini 3 Flash", "Gemini 2.5 Ultra", "Gemini 2.5 Pro", "Gemma 4 27B", "Gemma 4 E4B",
+            ]),
+        ModelCategory(
+            name: "Anthropic",
+            models: [
+                "Claude Opus 4.7", "Claude Opus 4.5", "Claude Sonnet 4.5", "Claude Sonnet 4", "Claude Haiku 4", "Claude Opus 3.7",
+                "Claude Sonnet 3.7", "Claude Haiku 3.5", "Claude Sonnet 3.5", "Claude Opus 3",
+            ]),
     ]
 
     var body: some View {
         SomaPage(maxWidth: 1180) {
             WorkflowHeader(
                 title: "Token Calculator",
-                subtitle: "Estimate prompt and packet size inside Soma. This utility is available when you need numbers, without opening a separate floating lab window.",
+                subtitle:
+                    "Estimate prompt and packet size inside Soma. This utility is available when you need numbers, without opening a separate floating lab window.",
                 icon: "number.square",
                 tone: .info,
                 trailing: AnyView(StatusChip(text: selectedProfile.label, tone: .info, icon: "function"))
@@ -70,7 +79,10 @@ struct TokenCalculatorView: View {
     }
 
     private var editorPanel: some View {
-        SomaPanel(title: "Prompt Text", subtitle: "Paste any prompt, transcript, or packet excerpt to estimate token size.", icon: "text.alignleft", tone: .info) {
+        SomaPanel(
+            title: "Prompt Text", subtitle: "Paste any prompt, transcript, or packet excerpt to estimate token size.",
+            icon: "text.alignleft", tone: .info
+        ) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Text("Target model")
@@ -136,18 +148,26 @@ struct TokenCalculatorView: View {
     }
 
     private var summaryPanel: some View {
-        SomaPanel(title: "Count Summary", subtitle: "Approximate tokenizer profile for planning budgets, not billing-grade accounting.", icon: "speedometer", tone: tokenTone) {
+        SomaPanel(
+            title: "Count Summary", subtitle: "Approximate tokenizer profile for planning budgets, not billing-grade accounting.",
+            icon: "speedometer", tone: tokenTone
+        ) {
             VStack(alignment: .leading, spacing: 10) {
                 MetricTile(title: "Estimated Tokens", value: "\(estimateTokens(inputText))", detail: selectedModel, tone: tokenTone)
                 SomaKeyValueRow(label: "Characters", value: "\(inputText.count)", tone: .neutral)
                 SomaKeyValueRow(label: "Words", value: "\(wordCount(inputText))", tone: .neutral)
-                SomaKeyValueRow(label: "Estimator", value: "\(selectedProfile.key) · \(String(format: "%.1f", selectedProfile.charsPerToken)) chars/token", tone: .info)
+                SomaKeyValueRow(
+                    label: "Estimator",
+                    value: "\(selectedProfile.key) · \(String(format: "%.1f", selectedProfile.charsPerToken)) chars/token", tone: .info)
             }
         }
     }
 
     private var comparisonPanel: some View {
-        SomaPanel(title: "Raw vs Soma Packet", subtitle: "Optional comparison for context compression experiments.", icon: "rectangle.split.2x1", tone: .neutral) {
+        SomaPanel(
+            title: "Raw vs Soma Packet", subtitle: "Optional comparison for context compression experiments.", icon: "rectangle.split.2x1",
+            tone: .neutral
+        ) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 12) {
                     comparisonEditor(title: "Raw context", placeholder: "Paste original context…", text: $rawText)
@@ -163,17 +183,23 @@ struct TokenCalculatorView: View {
                     MetricTile(title: "Raw", value: "\(rawTokens)", detail: "tokens", tone: .neutral)
                     MetricTile(title: "Soma", value: "\(somaTokens)", detail: "tokens", tone: .info)
                     MetricTile(title: "Saved", value: "\(saved)", detail: "tokens", tone: saved > 0 ? .good : .neutral)
-                    MetricTile(title: "Savings", value: String(format: "%.1f%%", pct), detail: "raw vs packet", tone: pct > 0 ? .good : .neutral)
+                    MetricTile(
+                        title: "Savings", value: String(format: "%.1f%%", pct), detail: "raw vs packet", tone: pct > 0 ? .good : .neutral)
                 }
             }
         }
     }
 
     private var explanationPanel: some View {
-        SomaPanel(title: "What This Means", subtitle: "Use this before sending huge prompts or evaluating packet size.", icon: "info.circle", tone: .info) {
+        SomaPanel(
+            title: "What This Means", subtitle: "Use this before sending huge prompts or evaluating packet size.", icon: "info.circle",
+            tone: .info
+        ) {
             VStack(alignment: .leading, spacing: 8) {
                 Label("Estimates use model-family character/token profiles bundled with Soma.", systemImage: "checkmark.circle")
-                Label("Exact counts can differ from provider tokenizers and tool-call serialization.", systemImage: "exclamationmark.triangle")
+                Label(
+                    "Exact counts can differ from provider tokenizers and tool-call serialization.", systemImage: "exclamationmark.triangle"
+                )
                 Label("Prepare Packet remains the primary workflow for real context gathering.", systemImage: "doc.text.magnifyingglass")
             }
             .font(.caption)
@@ -195,12 +221,17 @@ struct TokenCalculatorView: View {
     }
 
     private var advancedBreakdownPanel: some View {
-        SomaPanel(title: "Advanced Breakdown", subtitle: "Collapsed by default so the utility stays lightweight.", icon: "slider.horizontal.3", tone: .neutral) {
+        SomaPanel(
+            title: "Advanced Breakdown", subtitle: "Collapsed by default so the utility stays lightweight.", icon: "slider.horizontal.3",
+            tone: .neutral
+        ) {
             DisclosureGroup(isExpanded: $showAdvancedBreakdown) {
                 VStack(alignment: .leading, spacing: 6) {
                     SomaKeyValueRow(label: "Profile label", value: selectedProfile.label, tone: .info)
                     SomaKeyValueRow(label: "Profile key", value: selectedProfile.key, tone: .neutral)
-                    SomaKeyValueRow(label: "Aliases", value: selectedProfile.aliases.isEmpty ? "—" : selectedProfile.aliases.joined(separator: ", "), tone: .neutral)
+                    SomaKeyValueRow(
+                        label: "Aliases", value: selectedProfile.aliases.isEmpty ? "—" : selectedProfile.aliases.joined(separator: ", "),
+                        tone: .neutral)
                     SomaKeyValueRow(label: "Line count", value: "\(lineCount(inputText))", tone: .neutral)
                     SomaKeyValueRow(label: "Whitespace", value: "\(inputText.filter { $0.isWhitespace }.count)", tone: .neutral)
                 }
@@ -240,7 +271,8 @@ struct TokenCalculatorView: View {
     private func budgetRow(name: String, limit: String, desc: String) -> some View {
         HStack(spacing: 10) {
             Text(name).font(.caption.bold()).frame(width: 70, alignment: .leading)
-            Text(limit).font(.system(.caption, design: .monospaced).bold()).foregroundColor(.secondary).frame(width: 44, alignment: .leading)
+            Text(limit).font(.system(.caption, design: .monospaced).bold()).foregroundColor(.secondary).frame(
+                width: 44, alignment: .leading)
             Text(desc).font(.caption).foregroundColor(.secondary)
             Spacer(minLength: 0)
         }
@@ -273,13 +305,13 @@ struct TokenCalculatorView: View {
 
     private func copySummary() {
         let summary = """
-        Token estimate
-        Model: \(selectedModel)
-        Profile: \(selectedProfile.label) (\(String(format: "%.1f", selectedProfile.charsPerToken)) chars/token)
-        Characters: \(inputText.count)
-        Words: \(wordCount(inputText))
-        Estimated tokens: \(estimateTokens(inputText))
-        """
+            Token estimate
+            Model: \(selectedModel)
+            Profile: \(selectedProfile.label) (\(String(format: "%.1f", selectedProfile.charsPerToken)) chars/token)
+            Characters: \(inputText.count)
+            Words: \(wordCount(inputText))
+            Estimated tokens: \(estimateTokens(inputText))
+            """
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(summary, forType: .string)
@@ -303,8 +335,9 @@ struct TokenCalculatorView: View {
         let bundledURL = Bundle.main.url(forResource: "token_profiles", withExtension: "json")
         let profileURL = FileManager.default.fileExists(atPath: sourceURL.path) ? sourceURL : bundledURL
         if let profileURL,
-           let data = try? Data(contentsOf: profileURL),
-           let decoded = try? JSONDecoder().decode(ProfileFile.self, from: data) {
+            let data = try? Data(contentsOf: profileURL),
+            let decoded = try? JSONDecoder().decode(ProfileFile.self, from: data)
+        {
             return decoded.profiles.map {
                 ModelProfile(key: $0.key, label: $0.label, charsPerToken: $0.chars_per_token, aliases: $0.aliases)
             }

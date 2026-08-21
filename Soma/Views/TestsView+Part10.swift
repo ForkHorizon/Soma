@@ -37,7 +37,6 @@ extension TestsView {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.12)))
     }
 
-
     var caseResultHeaderRow: some View {
         HStack(spacing: 10) {
             Text("Pipeline").frame(maxWidth: .infinity, alignment: .leading)
@@ -53,7 +52,6 @@ extension TestsView {
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
     }
-
 
     var resultHeaderRow: some View {
         HStack(spacing: 10) {
@@ -71,7 +69,6 @@ extension TestsView {
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
     }
-
 
     func resultMatrixRow(_ row: TestModelCombinationSummary) -> some View {
         Button {
@@ -118,7 +115,6 @@ extension TestsView {
         }
         .buttonStyle(.plain)
     }
-
 
     func caseRunRow(_ row: TestRunResult) -> some View {
         Button {
@@ -167,7 +163,6 @@ extension TestsView {
         .buttonStyle(.plain)
     }
 
-
     func confidenceSummaryCell(_ stats: TestConfidenceAggregate) -> some View {
         HStack(spacing: 4) {
             Text(formatConfidence(stats.avg))
@@ -181,7 +176,6 @@ extension TestsView {
         }
         .help("avg \(formatConfidence(stats.avg)), min \(formatConfidence(stats.min)), failed \(stats.failed ?? 0)")
     }
-
 
     func runConfidenceCell(_ confidence: TestRunConfidence?) -> some View {
         let failed = confidence?.isFailed == true

@@ -4,16 +4,17 @@ import AppKit
 import Combine
 import UniformTypeIdentifiers
 extension SomaViewModel {
-nonisolated func pythonPath() -> String {
+    nonisolated func pythonPath() -> String {
         if FileManager.default.fileExists(atPath: "/opt/homebrew/bin/python3") {
             return "/opt/homebrew/bin/python3"
         }
         return "/usr/bin/python3"
     }
-func scriptEnvironment(projectRoot: String? = nil, includeProjectRoot: Bool = true) -> [String: String] {
+    func scriptEnvironment(projectRoot: String? = nil, includeProjectRoot: Bool = true) -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
         let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
-        environment["PATH"] = (environment["PATH"] ?? "") + ":/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:\(homeDir)/.local/bin"
+        environment["PATH"] =
+            (environment["PATH"] ?? "") + ":/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:\(homeDir)/.local/bin"
         environment["PYTHONDONTWRITEBYTECODE"] = "1"
         LocalModelSettingsStore.apply(to: &environment)
         DeepSeekCredentialStore.apply(to: &environment)
@@ -26,15 +27,18 @@ func scriptEnvironment(projectRoot: String? = nil, includeProjectRoot: Bool = tr
         }
         return environment
     }
-func runScript(path: String, args: [String], workingDirectory: String? = nil) async throws -> Data {
+    func runScript(path: String, args: [String], workingDirectory: String? = nil) async throws -> Data {
         let env = scriptEnvironment()
         return try await Self.executeProcess(path: path, args: args, workingDirectory: workingDirectory, environment: env)
     }
-static func executeProcess(path: String, args: [String], workingDirectory: String? = nil, environment: [String: String], timeout: TimeInterval = 300) async throws -> Data {
+    static func executeProcess(
+        path: String, args: [String], workingDirectory: String? = nil, environment: [String: String], timeout: TimeInterval = 300
+    ) async throws -> Data {
         return try await withThrowingTaskGroup(of: Data.self) { group in
             let process = Process()
             group.addTask {
-                return try await Self.runProcessTask(process, path: path, args: args, workingDirectory: workingDirectory, environment: environment)
+                return try await Self.runProcessTask(
+                    process, path: path, args: args, workingDirectory: workingDirectory, environment: environment)
             }
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
@@ -53,7 +57,9 @@ static func executeProcess(path: String, args: [String], workingDirectory: Strin
         }
     }
 
-    private static func runProcessTask(_ process: Process, path: String, args: [String], workingDirectory: String?, environment: [String: String]) async throws -> Data {
+    private static func runProcessTask(
+        _ process: Process, path: String, args: [String], workingDirectory: String?, environment: [String: String]
+    ) async throws -> Data {
         return try await withTaskCancellationHandler {
             return try await withCheckedThrowingContinuation { continuation in
                 process.executableURL = URL(fileURLWithPath: path)
@@ -74,8 +80,7 @@ static func executeProcess(path: String, args: [String], workingDirectory: Strin
                         process.waitUntilExit()
                         if process.terminationStatus == 0 {
                             continuation.resume(returning: outputData)
-                        }
- else {
+                        } else {
                             continuation.resume(throwing: SomaError(String(data: errorData, encoding: .utf8) ?? "Unknown error"))
                         }
                     }

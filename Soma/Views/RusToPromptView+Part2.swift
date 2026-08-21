@@ -15,7 +15,8 @@ extension RusToPromptView {
                     .font(.headline)
                 Spacer()
                 StatusChip(text: modelStatsPopoverStatus, tone: modelStats == nil ? .neutral : .info)
-                StatusChip(text: ollama.isOllamaRunning ? "Ollama online" : "Ollama offline", tone: ollama.isOllamaRunning ? .good : .warning)
+                StatusChip(
+                    text: ollama.isOllamaRunning ? "Ollama online" : "Ollama offline", tone: ollama.isOllamaRunning ? .good : .warning)
             }
 
             HStack(alignment: .top, spacing: 14) {
@@ -62,11 +63,13 @@ extension RusToPromptView {
             }
         }
         .padding(14)
-        .frame(width: 1180)
+        .frame(minWidth: 840, idealWidth: 1040, maxWidth: 1120)
     }
 
-
-    func presetSection(title: String, selection: Binding<String>, presets: [RusToPromptModelPreset], role: TestModelRole? = nil, requiresOllama: Bool = true) -> some View {
+    func presetSection(
+        title: String, selection: Binding<String>, presets: [RusToPromptModelPreset], role: TestModelRole? = nil,
+        requiresOllama: Bool = true
+    ) -> some View {
         let rows = rusToPromptScoredPresets(presets: presets, role: role, selectedModel: selection.wrappedValue)
         return VStack(alignment: .leading, spacing: 8) {
             Text(title)
@@ -82,7 +85,6 @@ extension RusToPromptView {
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
-
 
     func presetRow(_ row: RusToPromptScoredPreset, selection: Binding<String>, requiresOllama: Bool) -> some View {
         let preset = row.preset
@@ -138,13 +140,11 @@ extension RusToPromptView {
         .help(rusToPromptModelHelp(preset: preset, stats: row.stats))
     }
 
-
     var modelStatsPopoverStatus: String {
         if isLoadingModelStats { return "Loading stats" }
         guard let modelStats else { return "No scores" }
         return "\(modelStats.translationModels.count + modelStats.improverModels.count) scored"
     }
-
 
     func rusToPromptScoredPresets(
         presets: [RusToPromptModelPreset],
@@ -177,10 +177,18 @@ extension RusToPromptView {
             }
         }
         if !selectedModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           rowsByModel[selectedModel.lowercased()] == nil {
+            rowsByModel[selectedModel.lowercased()] == nil
+        {
             let normalized = selectedModel.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            let isCodex = !normalized.hasPrefix("gpt-oss") && (normalized.hasPrefix("gpt-") || normalized.hasPrefix("codex-") || normalized.hasPrefix("o1") || normalized.hasPrefix("o3") || normalized.hasPrefix("o4"))
-            let provider = normalized.hasPrefix("deepseek-") ? "deepseek" : (normalized.hasPrefix("gemini-") || normalized.hasPrefix("auto-gemini") || normalized.hasPrefix("gemma-4-") ? "gemini" : nil)
+            let isCodex =
+                !normalized.hasPrefix("gpt-oss")
+                && (normalized.hasPrefix("gpt-") || normalized.hasPrefix("codex-") || normalized.hasPrefix("o1")
+                    || normalized.hasPrefix("o3") || normalized.hasPrefix("o4"))
+            let provider =
+                normalized.hasPrefix("deepseek-")
+                ? "deepseek"
+                : (normalized.hasPrefix("gemini-") || normalized.hasPrefix("auto-gemini") || normalized.hasPrefix("gemma-4-")
+                    ? "gemini" : nil)
             rowsByModel[selectedModel.lowercased()] = RusToPromptModelPreset(
                 model: selectedModel,
                 quality: "Unknown",
@@ -199,7 +207,6 @@ extension RusToPromptView {
         return rows.sorted { compareRusToPromptScoredPreset($0, $1, selectedModel: selectedModel) }
     }
 
-
     func statsBackedPreset(_ stats: TestModelRoleStats) -> RusToPromptModelPreset {
         let isCodex = stats.provider == "Codex"
         let isGemini = stats.provider == "Gemini"
@@ -215,7 +222,6 @@ extension RusToPromptView {
             provider: isDeepSeek ? "deepseek" : (isGemini ? "gemini" : nil)
         )
     }
-
 
     func compareRusToPromptScoredPreset(
         _ lhs: RusToPromptScoredPreset,
@@ -246,7 +252,6 @@ extension RusToPromptView {
         return lhs.preset.model.localizedStandardCompare(rhs.preset.model) == .orderedAscending
     }
 
-
     func rusToPromptStatsRows(for role: TestModelRole?) -> [TestModelRoleStats] {
         guard let modelStats, let role else { return [] }
         switch role {
@@ -257,7 +262,6 @@ extension RusToPromptView {
         }
     }
 
-
     func rusToPromptStatsLookup(_ rows: [TestModelRoleStats]) -> [String: TestModelRoleStats] {
         var lookup: [String: TestModelRoleStats] = [:]
         for row in rows {
@@ -265,7 +269,6 @@ extension RusToPromptView {
         }
         return lookup
     }
-
 
     @ViewBuilder
     func rusToPromptScopeSummary(_ stats: TestModelRoleStats?) -> some View {
@@ -286,14 +289,12 @@ extension RusToPromptView {
         }
     }
 
-
     func rusToPromptScopeSummaryColor(_ stats: TestModelRoleStats) -> Color {
         let clean = rusToPromptCleanRate(stats) ?? 0
         if stats.attempts > 0 && clean == 0 { return .red }
         if rusToPromptProblemCount(stats) > 0 || clean < 0.80 { return .orange }
         return .secondary
     }
-
 
     func rusToPromptScopeDecisionChip(_ stats: TestModelRoleStats?) -> (text: String, tone: SomaStatusTone)? {
         guard let stats, stats.attempts > 0 else { return nil }
@@ -314,7 +315,6 @@ extension RusToPromptView {
         return nil
     }
 
-
     func rusToPromptModelHelp(preset: RusToPromptModelPreset, stats: TestModelRoleStats?) -> String {
         guard let stats else {
             return "\(preset.detail)\nNo benchmark score yet."
@@ -324,25 +324,23 @@ extension RusToPromptView {
             preset.detail,
             "Scope: \(stats.attempts) runs, \(stats.confidenceCount) usable scores.",
             "Score \(formatModelScore(stats.qualityScore)); clean \(formatPercent(rusToPromptCleanRate(stats) ?? 0)); problems \(rusToPromptProblemCount(stats)) (\(formatPercent(problemRate))).",
-            "Judge failed \(stats.confidenceFailedCount), run failed \(stats.pipelineFailedCount), degraded \(stats.degradedCount)."
+            "Judge failed \(stats.confidenceFailedCount), run failed \(stats.pipelineFailedCount), degraded \(stats.degradedCount).",
         ]
         .joined(separator: "\n")
     }
 
-
     func rusToPromptProblemCount(_ stats: TestModelRoleStats) -> Int {
-        stats.problemCount ?? stats.worstCases.filter { item in
-            item.confidenceFailed == true || item.status != "ok"
-        }.count
+        stats.problemCount
+            ?? stats.worstCases.filter { item in
+                item.confidenceFailed == true || item.status != "ok"
+            }.count
     }
-
 
     func rusToPromptCleanRate(_ stats: TestModelRoleStats) -> Double? {
         guard stats.attempts > 0 else { return nil }
         let cleanCount = max(0, stats.attempts - rusToPromptProblemCount(stats))
         return Double(cleanCount) / Double(stats.attempts)
     }
-
 
     func modelScoreTone(_ stats: TestModelRoleStats?) -> SomaStatusTone {
         guard let score = stats?.qualityScore else { return .neutral }
@@ -352,17 +350,14 @@ extension RusToPromptView {
         return .danger
     }
 
-
     func formatModelScore(_ value: Double?) -> String {
         guard let value else { return "n/a" }
         return String(format: "%.2f", value)
     }
 
-
     func formatPercent(_ value: Double) -> String {
         String(format: "%.0f%%", value * 100)
     }
-
 
     var rusToPromptRepoRootURL: URL {
         URL(fileURLWithPath: #filePath)
@@ -371,24 +366,20 @@ extension RusToPromptView {
             .deletingLastPathComponent()
     }
 
-
     var rusToPromptStatsScriptURL: URL {
         rusToPromptRepoRootURL
             .appendingPathComponent("Scripts")
             .appendingPathComponent("rus_to_prompt_stats.py")
     }
 
-
     var rusToPromptStressDirectoryURL: URL {
         rusToPromptRepoRootURL.appendingPathComponent(".stress")
     }
-
 
     func loadRusToPromptModelStatsIfNeeded() {
         guard modelStats == nil, !isLoadingModelStats else { return }
         loadRusToPromptModelStats()
     }
-
 
     func loadRusToPromptModelStats() {
         guard !isLoadingModelStats else { return }
@@ -418,7 +409,7 @@ extension RusToPromptView {
             process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
             process.arguments = [
                 scriptURL.path,
-                "--stress-dir", stressURL.path
+                "--stress-dir", stressURL.path,
             ]
             process.environment = environment
 
@@ -468,7 +459,6 @@ extension RusToPromptView {
         }
     }
 
-
     var phasePill: some View {
         HStack(spacing: 7) {
             if viewModel.isBusy {
@@ -494,7 +484,6 @@ extension RusToPromptView {
         .frame(maxWidth: 360, alignment: .leading)
     }
 
-
     var outputText: String {
         switch selectedOutput {
         case .improved:
@@ -505,7 +494,6 @@ extension RusToPromptView {
             return confidenceOutputText
         }
     }
-
 
     var emptyOutputText: String {
         switch viewModel.phase {
@@ -524,18 +512,16 @@ extension RusToPromptView {
         }
     }
 
-
     var transformDisabled: Bool {
-        viewModel.isBusy || (selectedModelsNeedOllama && !ollama.isOllamaRunning) || viewModel.inputPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        viewModel.isBusy || (selectedModelsNeedOllama && !ollama.isOllamaRunning)
+            || viewModel.inputPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
-
 
     var transformDisabledReason: String {
         if viewModel.isBusy { return "Rus to Prompt is already running." }
         if selectedModelsNeedOllama && !ollama.isOllamaRunning { return "Launch Ollama first." }
         return "Enter a prompt."
     }
-
 
     var phaseTitle: String {
         if selectedModelsNeedOllama && !ollama.isOllamaRunning && !viewModel.isBusy { return "Offline" }
@@ -550,11 +536,9 @@ extension RusToPromptView {
         }
     }
 
-
     var selectedModelsNeedOllama: Bool {
         !isRusToPromptOnlineModel(viewModel.translatorModel) || !isRusToPromptOnlineModel(viewModel.analyzerModel)
     }
-
 
     func isRusToPromptOnlineModel(_ model: String) -> Bool {
         let normalized = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -566,14 +550,14 @@ extension RusToPromptView {
         return false
     }
 
-
     var phaseDetail: String {
         if let error = viewModel.errorMessage, viewModel.phase == .failed { return error }
         if let warning = viewModel.warningMessage, viewModel.phase == .degraded { return warning }
         switch viewModel.phase {
         case .idle:
             let confidence = viewModel.confidenceEnabled ? " | Confidence \(shortModelName(viewModel.confidenceModel))" : ""
-            return "Translator \(shortModelName(viewModel.translatorModel)) | Analyzer \(shortModelName(viewModel.analyzerModel))\(confidence)"
+            return
+                "Translator \(shortModelName(viewModel.translatorModel)) | Analyzer \(shortModelName(viewModel.analyzerModel))\(confidence)"
         case .translating:
             return viewModel.translatorModel
         case .analyzing:

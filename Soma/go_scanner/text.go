@@ -16,7 +16,7 @@ func readTextFile(path string) string {
 	if err != nil {
 		return fmt.Sprintf("[Unable to read file: %v]", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	buf := make([]byte, MaxFileBytes)
 	n, err := file.Read(buf)
@@ -35,21 +35,22 @@ func extractSymbols(path string, text string) []string {
 	ext := strings.ToLower(filepath.Ext(path))
 	var patterns []string
 
-	if ext == ".cs" {
+	switch ext {
+	case ".cs":
 		patterns = []string{
 			`\b(?:class|struct|interface|enum)\s+([A-Za-z_][A-Za-z0-9_]*)`,
 			`\b(?:public|private|protected|internal|static|virtual|override|async|\s)+\s*[A-Za-z_][A-Za-z0-9_<>,\[\]?]*\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(`,
 		}
-	} else if ext == ".swift" {
+	case ".swift":
 		patterns = []string{
 			`\b(?:class|struct|enum|protocol|actor)\s+([A-Za-z_][A-Za-z0-9_]*)`,
 			`\bfunc\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(`,
 		}
-	} else if ext == ".py" {
+	case ".py":
 		patterns = []string{
 			`(?m)^\s*(?:class|def)\s+([A-Za-z_][A-Za-z0-9_]*)`,
 		}
-	} else if ext == ".js" || ext == ".jsx" || ext == ".ts" || ext == ".tsx" {
+	case ".js", ".jsx", ".ts", ".tsx":
 		patterns = []string{
 			`\b(?:class|function)\s+([A-Za-z_][A-Za-z0-9_]*)`,
 			`\b(?:const|let|var)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:async\s*)?\(`,

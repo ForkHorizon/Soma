@@ -1,0 +1,26 @@
+target-version = "py311"
+line-length = 120
+
+exclude = [
+    "tests/fixtures",
+    "tests/fixtures/**",
+    "DerivedData",
+    ".build",
+]
+
+[lint]
+select = [
+    "E", "W", "F",
+]
+ignore = [
+    "E501",
+    "E402",
+    "E701",
+    "E722",
+    "E731",
+    "F401",
+    "F403",
+    "F405",
+    "F841",
+    "W291",
+]

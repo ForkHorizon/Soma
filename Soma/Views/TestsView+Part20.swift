@@ -15,7 +15,6 @@ extension TestsView {
         return presets
     }
 
-
     func knownPresetLookup(_ knownPresets: [RusToPromptModelPreset]) -> [String: RusToPromptModelPreset] {
         var lookup: [String: RusToPromptModelPreset] = [:]
         for preset in knownPresets where lookup[preset.model.lowercased()] == nil {
@@ -23,7 +22,6 @@ extension TestsView {
         }
         return lookup
     }
-
 
     func installedPresetRows(
         knownByName: [String: RusToPromptModelPreset],
@@ -45,7 +43,6 @@ extension TestsView {
         }
     }
 
-
     func mergedInstalledPreset(_ installed: OllamaInstalledModel, known: RusToPromptModelPreset) -> RusToPromptModelPreset {
         RusToPromptModelPreset(
             model: installed.name,
@@ -58,7 +55,6 @@ extension TestsView {
             provider: known.provider
         )
     }
-
 
     func appendKnownExternalPresets(
         _ knownPresets: [RusToPromptModelPreset],
@@ -74,7 +70,6 @@ extension TestsView {
         }
     }
 
-
     func appendExtraModelPresets(
         _ extraModels: Set<String>,
         to presets: inout [RusToPromptModelPreset],
@@ -89,8 +84,9 @@ extension TestsView {
         }
     }
 
-
-    func queueStageModelRows(selected: [String], statsByModel: [String: TestModelRoleStats], role: TestModelRole) -> [RusToPromptModelPreset] {
+    func queueStageModelRows(selected: [String], statsByModel: [String: TestModelRoleStats], role: TestModelRole)
+        -> [RusToPromptModelPreset]
+    {
         let knownPresets = role == .translator ? testTranslatorPresets : testImproverPresets
         var rows = installedModelPresets(knownPresets: knownPresets)
             .filter { RusToPromptQueueManager.isStageCandidateModel($0.model) }
@@ -121,7 +117,6 @@ extension TestsView {
         }
     }
 
-
     func queueItemTone(_ status: RusToPromptQueueItemStatus) -> SomaStatusTone {
         switch status {
         case .queued, .waitingLocalAI:
@@ -134,7 +129,6 @@ extension TestsView {
             return .warning
         }
     }
-
 
     func queueItemTone(_ item: RusToPromptQueueItem) -> SomaStatusTone {
         if item.statusMessage == "Waiting for power adapter" {
@@ -149,7 +143,6 @@ extension TestsView {
         return queueItemTone(item.status)
     }
 
-
     func queueItemStatusText(_ item: RusToPromptQueueItem) -> String {
         if item.status == .completed && queueItemHasCompletionIssues(item) {
             return "completed with issues"
@@ -157,19 +150,18 @@ extension TestsView {
         return item.status.rawValue.replacingOccurrences(of: "_", with: " ")
     }
 
-
     func queueItemHasCompletionIssues(_ item: RusToPromptQueueItem) -> Bool {
         guard item.status == .completed else { return false }
         let message = item.statusMessage.lowercased()
         return message.contains("with issues") || message.contains("failed summary") || message.contains("summary missing")
     }
 
-
     func setQueueLocalConfidenceModels(_ models: [String]) {
-        let clean = Array(models
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .prefix(2))
+        let clean = Array(
+            models
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .prefix(2))
         let fallback = queueConfidenceFallbackReferee
         let onlineModel = queueDefaultConfidenceModel(for: fallback, current: queueManager.settings.confidenceModel)
         queueManager.updateConfidence(
@@ -181,7 +173,6 @@ extension TestsView {
             batchSize: queueManager.settings.confidenceBatchSize
         )
     }
-
 
     func setQueueConfidenceFallbackReferee(_ fallback: String) {
         let normalized = ["off", "gemini", "codex", "deepseek"].contains(fallback) ? fallback : "off"
@@ -197,7 +188,6 @@ extension TestsView {
         )
     }
 
-
     func setQueueOnlineConfidenceModel(_ model: String) {
         let fallback = providerForOnlineModelName(model) ?? "codex"
         let localModels = queueManager.settings.localConfidenceModels
@@ -211,7 +201,6 @@ extension TestsView {
         )
     }
 
-
     func queueEffectiveConfidenceReferee(localModels: [String], fallbackReferee: String) -> String {
         if localModels.count >= 2 { return "hybrid" }
         if fallbackReferee == "off" {
@@ -220,14 +209,12 @@ extension TestsView {
         return fallbackReferee
     }
 
-
     func queueConfidenceModelFor(localModels: [String], fallbackReferee: String, onlineModel: String? = nil) -> String {
         if localModels.count == 1 && fallbackReferee == "off" {
             return localModels[0]
         }
         return onlineModel ?? queueManager.settings.confidenceModel
     }
-
 
     func queueDefaultConfidenceModel(for fallbackReferee: String, current: String) -> String {
         switch fallbackReferee {
@@ -245,17 +232,14 @@ extension TestsView {
         }
     }
 
-
     func isInstalled(_ model: String) -> Bool {
         ollama.installedModels.contains { $0.name.caseInsensitiveCompare(model) == .orderedSame }
     }
-
 
     func shortModelName(_ model: String) -> String {
         if model.count <= 30 { return model }
         return String(model.prefix(27)) + "..."
     }
-
 
     var localConfidenceModelPresets: [RusToPromptModelPreset] {
         let knownLocal = (RusToPromptViewModel.analyzerPresets + RusToPromptViewModel.translatorPresets)
@@ -263,16 +247,18 @@ extension TestsView {
         var presets = installedModelPresets(knownPresets: knownLocal)
             .filter { !$0.isOnlineProvider }
         var seen = Set(presets.map { $0.model.lowercased() })
-        let pinned = knownLocal + selectedLocalConfidenceModels.map {
-            RusToPromptModelPreset(
-                model: $0,
-                quality: "Unknown",
-                speed: "Unknown",
-                ram: "Missing",
-                detail: "Selected local confidence judge. Install it in Ollama if it is missing from the installed model list.",
-                recommended: false
-            )
-        }
+        let pinned =
+            knownLocal
+            + selectedLocalConfidenceModels.map {
+                RusToPromptModelPreset(
+                    model: $0,
+                    quality: "Unknown",
+                    speed: "Unknown",
+                    ram: "Missing",
+                    detail: "Selected local confidence judge. Install it in Ollama if it is missing from the installed model list.",
+                    recommended: false
+                )
+            }
         for preset in pinned where !seen.contains(preset.model.lowercased()) {
             presets.append(preset)
             seen.insert(preset.model.lowercased())
@@ -285,13 +271,12 @@ extension TestsView {
         }
     }
 
-
     func modelMenuLabel(_ preset: RusToPromptModelPreset) -> String {
         var parts = [
             preset.model,
             "Quality \(preset.quality)",
             "Speed \(preset.speed)",
-            preset.ram
+            preset.ram,
         ]
         if preset.recommended {
             parts.append("Recommended")

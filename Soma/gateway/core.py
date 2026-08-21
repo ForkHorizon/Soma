@@ -13,7 +13,7 @@ from gateway.memory_store import MemoryStore
 
 MAX_TEXT_FIELD_CHARS = 4000
 NEXUS_POLL_INTERVAL = 5
-ANALYSIS_DEPTHS = {'deterministic', 'ranked', 'analyst'}
+ANALYSIS_DEPTHS = {"deterministic", "ranked", "analyst"}
 
 
 def _json(data: dict[str, Any]) -> str:
@@ -102,7 +102,9 @@ class NexusClient:
         selected = port or self.state.port or (self.ports[0] if self.ports else 8081)
         return f"http://127.0.0.1:{selected}/"
 
-    def call(self, method: str, params: dict[str, Any] | None = None, timeout: int = 30, port: int | None = None) -> dict[str, Any]:
+    def call(
+        self, method: str, params: dict[str, Any] | None = None, timeout: int = 30, port: int | None = None
+    ) -> dict[str, Any]:
         payload = {"jsonrpc": "2.0", "method": method, "params": params or {}, "id": 1}
         req = urllib.request.Request(
             self._url(port),
@@ -167,7 +169,9 @@ class NexusClient:
         params = {"generation": generation or 0}
         return self.call("scene_delta", params, timeout=30)
 
-    def inspect(self, instance_id: int, component_name: str | None = None, fields: list[str] | None = None) -> dict[str, Any]:
+    def inspect(
+        self, instance_id: int, component_name: str | None = None, fields: list[str] | None = None
+    ) -> dict[str, Any]:
         if component_name and fields:
             return self.call(
                 "component_values",
@@ -175,7 +179,9 @@ class NexusClient:
                 timeout=20,
             )
         if component_name:
-            return self.call("inspect_component", {"instance_id": instance_id, "component_name": component_name}, timeout=20)
+            return self.call(
+                "inspect_component", {"instance_id": instance_id, "component_name": component_name}, timeout=20
+            )
         return self.call("get_game_object", {"instance_id": instance_id}, timeout=20)
 
     def batch_execute(self, requests: list[dict[str, Any]]) -> dict[str, Any]:
@@ -184,9 +190,12 @@ class NexusClient:
     def apply_code_change(self, files: list[dict[str, Any]]) -> dict[str, Any]:
         return self.call("apply_code_change", {"files": files}, timeout=180)
 
+
 nexus = NexusClient()
 graphify = GraphifyAdapter()
 memory_store = MemoryStore()
+
+
 def _packet_budget(budget: str) -> str:
     return budget if budget in TOKEN_BUDGETS else DEFAULT_TOKEN_BUDGET
 
@@ -252,7 +261,9 @@ def _enforce_packet_budget(goal: str, bundle: dict[str, Any], packet: str, budge
     omitted["budget_guard"] = "Soma replaced verbose snippets with evidence index to stay within budget"
     lines.extend(["", "Omitted context:"])
     lines.extend(f"- {key}: {value}" for key, value in omitted.items())
-    lines.extend(["", "Expected Codex behavior:", "- Use the evidence index first.", "- Request only the exact missing context."])
+    lines.extend(
+        ["", "Expected Codex behavior:", "- Use the evidence index first.", "- Request only the exact missing context."]
+    )
 
     bounded = "\n".join(lines).strip()
     while estimate_tokens(bounded) > max_tokens and len(lines) > 14:
@@ -271,6 +282,7 @@ def get_active_project_root() -> str | None:
     import os
 
     from scout_pipeline import normalize_path
+
     explicit = os.environ.get("SOMA_PROJECT_ROOT")
     if explicit and os.path.isdir(explicit):
         return normalize_path(explicit)
@@ -278,5 +290,6 @@ def get_active_project_root() -> str | None:
     if state.connected and state.project_path and os.path.isdir(state.project_path):
         return normalize_path(state.project_path)
     return None
+
 
 _last_scene_generation: int | None = None

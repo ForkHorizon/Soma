@@ -1,4 +1,5 @@
 """Lightweight line-delimited JSON-RPC daemon for Swift-side process control."""
+
 from __future__ import annotations
 
 import json
@@ -74,11 +75,7 @@ async def _dispatch(method: str | None, params: dict[str, Any]) -> str:
             }
         )
     if method == "tools/list":
-        return json.dumps(
-            {
-                "tools": [tool_descriptor(name) for name in TOOL_CATALOG]
-            }
-        )
+        return json.dumps({"tools": [tool_descriptor(name) for name in TOOL_CATALOG]})
     if method == "tools/call":
         name = str(params.get("name") or "")
         arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}

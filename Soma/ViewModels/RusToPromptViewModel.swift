@@ -91,6 +91,12 @@ enum RusToPromptPhase: String {
     case degraded
     case failed
 }
+/// What the Rus-to-Prompt run should produce. `translateOnly` stops after the English
+/// translation (no prompt-improve, no confidence) — for when the user just wants a translation.
+enum RusToPromptMode {
+    case translateOnly
+    case fullPrompt
+}
 nonisolated struct RusToPromptModelPreset: Identifiable, Hashable {
     let model: String
     let quality: String
@@ -122,9 +128,11 @@ nonisolated enum RusToPromptSettingsStore {
     static let analyzerKey = "rusToPrompt.analyzerModel"
     static let confidenceKey = "rusToPrompt.confidenceModel"
     static let confidenceEnabledKey = "rusToPrompt.confidenceEnabled"
-    static let defaultTranslator = "qwen3.5:9b"
-    static let defaultAnalyzer = "qwen3-coder:30b-a3b-q4_K_M"
-    static let defaultConfidence = "gpt-5.4-mini"
+    // Defaults reflect the model-bench conclusion (June 2026): DeepSeek Pro is fast
+    // and RAM-free; heavy local 30B stage models evict the working set on a 32 GB box.
+    static let defaultTranslator = "deepseek-v4-pro"
+    static let defaultAnalyzer = "deepseek-v4-pro"
+    static let defaultConfidence = "gemini-3.1-flash-lite-preview"
     nonisolated static let defaultConfidenceReasoning = "medium"
     static func translatorModel() -> String {
         UserDefaults.standard.string(forKey: translatorKey) ?? defaultTranslator

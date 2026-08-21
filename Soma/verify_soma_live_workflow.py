@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Verify Soma MCP through a real stdio MCP client session."""
+
 from __future__ import annotations
 
 import argparse
@@ -41,7 +42,7 @@ DEFAULT_APPLY_PATH = "Assets/NexusUnity/Editor/Tests/SomaApplySmokeTest.cs"
 DEFAULT_APPLY_CONTENT = (
     "namespace UnityMCP.Editor.Tests {\n"
     "    internal static class SomaApplySmokeTest {\n"
-    "        internal const string Marker = \"SomaApplySmokeTest\";\n"
+    '        internal const string Marker = "SomaApplySmokeTest";\n'
     "    }\n"
     "}\n"
 )
@@ -131,7 +132,9 @@ def _find_instance_id(value: Any) -> int | None:
     return None
 
 
-async def _call_compact(session: Any, name: str, params: dict[str, Any]) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+async def _call_compact(
+    session: Any, name: str, params: dict[str, Any]
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     start = time.monotonic()
     payload, compact = _json_payload(await session.call_tool(name, params))
     compact["duration_ms"] = round((time.monotonic() - start) * 1000, 1)
@@ -214,7 +217,10 @@ async def verify_session(session: Any, args: argparse.Namespace) -> dict[str, An
         if inspect_id is None and scene_payload:
             inspect_id = _find_instance_id(scene_payload.get("scene", scene_payload))
         if inspect_id is None:
-            report["calls"]["soma_inspect"] = {"status": "skipped", "summary": "No inspectable instance id found in scene."}
+            report["calls"]["soma_inspect"] = {
+                "status": "skipped",
+                "summary": "No inspectable instance id found in scene.",
+            }
             report["issues"].append("inspect_id_not_found")
         else:
             _, compact = await _call_compact(session, "soma_inspect", {"instance_id": inspect_id})
@@ -222,7 +228,10 @@ async def verify_session(session: Any, args: argparse.Namespace) -> dict[str, An
             if compact["status"] != "ok":
                 report["issues"].append("live_inspect_failed")
     else:
-        report["calls"]["soma_scene"] = {"status": "skipped", "summary": "Pass --live-unity when Unity plugin should be verified."}
+        report["calls"]["soma_scene"] = {
+            "status": "skipped",
+            "summary": "Pass --live-unity when Unity plugin should be verified.",
+        }
         report["calls"]["soma_inspect"] = {"status": "skipped", "summary": "Pass --live-unity when Nexus is online."}
 
     _, compact = await _call_compact(session, "soma_delta", {})
@@ -265,14 +274,31 @@ async def verify_session(session: Any, args: argparse.Namespace) -> dict[str, An
                 report["issues"].append("cleanup_apply_failed")
                 report["leftover_path"] = args.apply_path
     else:
-        report["calls"]["soma_apply"] = {"status": "skipped", "summary": "Pass --run-apply for live Unity compile check."}
+        report["calls"]["soma_apply"] = {
+            "status": "skipped",
+            "summary": "Pass --run-apply for live Unity compile check.",
+        }
 
     if report["issues"]:
         report["status"] = "degraded"
-    report["core_status"] = "ok" if not any(issue.endswith("invalid_json") or issue.startswith("tool_") for issue in report["issues"]) else "degraded"
+    report["core_status"] = (
+        "ok"
+        if not any(issue.endswith("invalid_json") or issue.startswith("tool_") for issue in report["issues"])
+        else "degraded"
+    )
     if args.live_unity:
-        plugin_issues = {"nexus_offline", "live_scene_failed", "inspect_id_not_found", "live_inspect_failed", "wrong_project", "live_apply_failed", "cleanup_apply_failed"}
-        report["plugin_status"]["unity_nexus"] = "degraded" if any(issue in plugin_issues for issue in report["issues"]) else "ok"
+        plugin_issues = {
+            "nexus_offline",
+            "live_scene_failed",
+            "inspect_id_not_found",
+            "live_inspect_failed",
+            "wrong_project",
+            "live_apply_failed",
+            "cleanup_apply_failed",
+        }
+        report["plugin_status"]["unity_nexus"] = (
+            "degraded" if any(issue in plugin_issues for issue in report["issues"]) else "ok"
+        )
     return report
 
 

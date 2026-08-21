@@ -103,7 +103,7 @@ class RusToPromptConfidenceBatchingTests(unittest.TestCase):
         )
 
         self.assertTrue(line.startswith(rus_to_prompt_stress.PROGRESS_PREFIX))
-        payload = json.loads(line[len(rus_to_prompt_stress.PROGRESS_PREFIX):])
+        payload = json.loads(line[len(rus_to_prompt_stress.PROGRESS_PREFIX) :])
         self.assertEqual(payload["event"], "stage_start")
         self.assertEqual(payload["stage"], "translating")
         self.assertEqual(payload["case_id"], "rtp-progress")
@@ -125,7 +125,7 @@ class RusToPromptConfidenceBatchingTests(unittest.TestCase):
             batch_total=2,
             status="running",
         )
-        payload = json.loads(line[len(rus_to_prompt_stress.PROGRESS_PREFIX):])
+        payload = json.loads(line[len(rus_to_prompt_stress.PROGRESS_PREFIX) :])
 
         self.assertEqual(payload["case_id"], "rtp-progress")
         self.assertEqual(payload["translator_model"], "translator-a")
@@ -145,7 +145,7 @@ class RusToPromptConfidenceBatchingTests(unittest.TestCase):
             status="running",
             reason="improver stage finished; 30.0s",
         )
-        payload = json.loads(line[len(rus_to_prompt_stress.PROGRESS_PREFIX):])
+        payload = json.loads(line[len(rus_to_prompt_stress.PROGRESS_PREFIX) :])
 
         self.assertEqual(payload["event"], "cooldown_start")
         self.assertEqual(payload["stage"], "cooldown")

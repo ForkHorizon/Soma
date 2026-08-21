@@ -4,7 +4,7 @@ import AppKit
 import Combine
 import UniformTypeIdentifiers
 extension SomaViewModel {
-func runScout(ollama: OllamaManager) {
+    func runScout(ollama: OllamaManager) {
         let prompt = scoutPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty else { return }
         scoutLoading = true
@@ -12,7 +12,8 @@ func runScout(ollama: OllamaManager) {
         scoutPrompt = ""
         logActivity("Starting Scout: \(prompt)")
         let startTime = Date()
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 self.logActivity("Calling scout_pipeline.py...")
                 let stepStart = Date()
@@ -35,7 +36,7 @@ func runScout(ollama: OllamaManager) {
             }
         }
     }
-func runRelay(ollama: OllamaManager) {
+    func runRelay(ollama: OllamaManager) {
         let prompt = relayPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty else { return }
         relayPrompt = ""
@@ -46,7 +47,8 @@ func runRelay(ollama: OllamaManager) {
         activityLogs = []
         logActivity("Starting Relay: \(prompt)")
         let startTime = Date()
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 self.relayPhase = .gathering
                 let rootLabel = selectedProjectRoot.isEmpty ? "no selected root" : selectedProjectRoot
@@ -62,7 +64,9 @@ func runRelay(ollama: OllamaManager) {
                 if let error = bundle.error {
                     throw SomaError(error)
                 }
-                self.logActivity("Prepared \(bundle.packet_mode ?? "unknown") packet with \(bundle.evidence_items?.count ?? 0) items. Confidence: \(bundle.confidence ?? 0)", duration: stepDuration)
+                self.logActivity(
+                    "Prepared \(bundle.packet_mode ?? "unknown") packet with \(bundle.evidence_items?.count ?? 0) items. Confidence: \(bundle.confidence ?? 0)",
+                    duration: stepDuration)
                 await MainActor.run {
                     self.applyGatherBundle(bundle, prompt: prompt, startTime: startTime, ollama: ollama)
                 }
@@ -79,7 +83,6 @@ func runRelay(ollama: OllamaManager) {
     func applyGatherBundle(_ bundle: GatherBundle, prompt: String, startTime: Date, ollama: OllamaManager) {
         gatherBundle = bundle
         latestTokenSavings = bundle.token_savings
-        _ = recordPacketRun(prompt: prompt, bundle: bundle)
         auditRawCaptureNextRun = false
         showContextPanel = true
         relayPhase = .done

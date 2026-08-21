@@ -11,9 +11,10 @@ struct RusToPromptQueueRunContext {
 
 extension RusToPromptQueueManager {
     func startNextIfPossible(allowBatteryStart: Bool = false) {
+        startTimerIfNeeded()  // any start path (UI, enqueue, resume) revives the housekeeping timer
         refreshPowerSourceValue()
         applyPowerGate()
-        guard activeProcess == nil, !isPaused else { return }
+        guard activeProcess == nil, activeReattachedPID == nil, !isPaused else { return }
         guard let index = nextStartableQueueIndex() else {
             isRunning = false
             currentStage = "Idle"
@@ -45,7 +46,6 @@ extension RusToPromptQueueManager {
         }
     }
 
-
     func nextStartableQueueIndex() -> Int? {
         items.indices
             .filter { isStartableQueueItem(items[$0]) }
@@ -59,11 +59,9 @@ extension RusToPromptQueueManager {
             }
     }
 
-
     func isStartableQueueItem(_ item: RusToPromptQueueItem) -> Bool {
         item.status == .queued || item.status == .waitingLocalAI
     }
-
 
     func startItem(at index: Int, installedModels: Set<String>, allowBatteryStart: Bool = false) {
         guard activeProcess == nil, items.indices.contains(index) else { return }
@@ -78,12 +76,16 @@ extension RusToPromptQueueManager {
             batteryStartOverrideItemID = context.item.id
         }
         let process = makeQueueProcess(context: context, translators: translators, improvers: improvers)
-        attachQueueHandlers(to: process)
+        attachQueueHandlers(to: process, runURL: context.runURL)
 
         do {
             try process.run()
             activeProcess = process
-            appendActivity("Started queue run \(context.item.id): \(translators.count) translators, \(improvers.count) improvers.")
+            items[index].pid = process.processIdentifier
+            saveToDisk()
+            appendActivity(
+                "Started queue run \(context.item.id) (pid \(process.processIdentifier)): \(translators.count) translators, \(improvers.count) improvers."
+            )
         } catch {
             batteryStartOverrideItemID = nil
             activeProcess = nil
@@ -126,7 +128,10 @@ extension RusToPromptQueueManager {
     func prepareRunContext(index: Int, translators: [String], improvers: [String]) -> RusToPromptQueueRunContext? {
         let item = items[index]
         let resumedURL = item.recoveredAfterRestart ? item.outputPath.flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) } : nil
-        let runURL = resumedURL ?? repoRootURL.appendingPathComponent(".stress").appendingPathComponent("queue-runs").appendingPathComponent("\(Self.timestampID())-\(item.id)")
+        let runURL =
+            resumedURL
+            ?? repoRootURL.appendingPathComponent(".stress").appendingPathComponent("queue-runs").appendingPathComponent(
+                "\(Self.timestampID())-\(item.id)")
         let workspaceURL = appSupportURL.appendingPathComponent(item.id)
         let casesURL = workspaceURL.appendingPathComponent("case.txt")
         let controlURL = workspaceURL.appendingPathComponent("control.json")
@@ -139,11 +144,17 @@ extension RusToPromptQueueManager {
             mark(index: index, status: .failed, message: "Could not prepare queue run: \(error.localizedDescription)")
             return nil
         }
-        return RusToPromptQueueRunContext(item: item, runURL: runURL, casesURL: casesURL, controlURL: controlURL, snapshot: queueSnapshot(translators: translators, improvers: improvers))
+        return RusToPromptQueueRunContext(
+            item: item, runURL: runURL, casesURL: casesURL, controlURL: controlURL,
+            snapshot: queueSnapshot(translators: translators, improvers: improvers))
     }
 
     func queueSnapshot(translators: [String], improvers: [String]) -> RusToPromptQueueItemSnapshot {
-        RusToPromptQueueItemSnapshot(translatorModels: translators, improverModels: improvers, confidenceReferee: settings.confidenceReferee, confidenceModel: settings.confidenceModel, localConfidenceModels: Array(settings.localConfidenceModels.prefix(2)), hybridGeminiModel: settings.hybridGeminiModel, hybridFallbackReferee: settings.hybridFallbackReferee ?? "gemini", confidenceBatchSize: settings.confidenceBatchSize, cooldownSeconds: settings.cooldownSeconds)
+        RusToPromptQueueItemSnapshot(
+            translatorModels: translators, improverModels: improvers, confidenceReferee: settings.confidenceReferee,
+            confidenceModel: settings.confidenceModel, localConfidenceModels: Array(settings.localConfidenceModels.prefix(2)),
+            hybridGeminiModel: settings.hybridGeminiModel, hybridFallbackReferee: settings.hybridFallbackReferee ?? "gemini",
+            confidenceBatchSize: settings.confidenceBatchSize, cooldownSeconds: settings.cooldownSeconds)
     }
 
     func markRunStarted(index: Int, context: RusToPromptQueueRunContext) {
@@ -162,7 +173,7 @@ extension RusToPromptQueueManager {
         currentStage = "Starting"
         currentModel = "-"
         resetModelProgress(itemID: context.item.id, snapshot: context.snapshot)
-        processOutputBuffer = ""
+        armProgressTail(runURL: context.runURL)
         isRunning = true
     }
 
@@ -177,12 +188,16 @@ extension RusToPromptQueueManager {
         environment["PATH"] = Self.searchPath(existing: environment["PATH"])
         LocalModelSettingsStore.apply(to: &environment)
         DeepSeekCredentialStore.apply(to: &environment)
+        GeminiCredentialStore.apply(to: &environment)
         process.environment = environment
         return process
     }
 
     func queueArguments(context: RusToPromptQueueRunContext, translators: [String], improvers: [String]) -> [String] {
-        var arguments = [stressScriptURL.path, "--benchmark-mode", "staged", "--cases-file", context.casesURL.path, "--limit", "1", "--translator-models"]
+        var arguments = [
+            stressScriptURL.path, "--benchmark-mode", "staged", "--cases-file", context.casesURL.path, "--limit", "1",
+            "--translator-models",
+        ]
         arguments.append(contentsOf: translators)
         arguments.append("--analyzer-models")
         arguments.append(contentsOf: improvers)
@@ -196,30 +211,44 @@ extension RusToPromptQueueManager {
     func queueConfidenceArguments(context: RusToPromptQueueRunContext) -> [String] {
         let snapshot = context.snapshot
         let model = snapshot.confidenceReferee == "hybrid" ? snapshot.hybridGeminiModel : snapshot.confidenceModel
-        var arguments = ["--confidence-referee", snapshot.confidenceReferee, "--confidence-model", model, "--confidence-reasoning-effort", RusToPromptSettingsStore.defaultConfidenceReasoning, "--confidence-workers", ["hybrid", "local"].contains(snapshot.confidenceReferee) ? "1" : "3", "--confidence-batch-size", "\(snapshot.confidenceBatchSize)", "--translation-confidence-threshold", "0.75", "--codex-bin", Self.codexExecutablePath(), "--gemini-bin", Self.geminiExecutablePath(), "--codex-stage-reasoning-effort", RusToPromptSettingsStore.defaultConfidenceReasoning, "--workers", "1", "--stage-cooldown-seconds", String(format: "%.1f", snapshot.cooldownSeconds), "--control-file", context.controlURL.path, "--out-dir", context.runURL.path]
+        var arguments = [
+            "--confidence-referee", snapshot.confidenceReferee, "--confidence-model", model, "--confidence-reasoning-effort",
+            RusToPromptSettingsStore.defaultConfidenceReasoning, "--confidence-workers",
+            ["hybrid", "local"].contains(snapshot.confidenceReferee) ? "1" : "3", "--confidence-batch-size",
+            "\(snapshot.confidenceBatchSize)", "--translation-confidence-threshold", "0.75", "--codex-bin", Self.codexExecutablePath(),
+            "--gemini-bin", Self.geminiExecutablePath(), "--codex-stage-reasoning-effort",
+            RusToPromptSettingsStore.defaultConfidenceReasoning, "--workers", "1", "--stage-cooldown-seconds",
+            String(format: "%.1f", snapshot.cooldownSeconds), "--control-file", context.controlURL.path, "--out-dir", context.runURL.path,
+        ]
         if snapshot.confidenceReferee == "hybrid" {
             arguments.append("--local-confidence-models")
             arguments.append(contentsOf: snapshot.localConfidenceModels)
-            arguments.append(contentsOf: ["--hybrid-confidence-online-model", snapshot.hybridGeminiModel, "--hybrid-confidence-fallback-referee", snapshot.hybridFallbackReferee ?? "gemini", "--hybrid-confidence-local-threshold", "0.80", "--hybrid-confidence-disagreement-threshold", "0.15"])
+            arguments.append(contentsOf: [
+                "--hybrid-confidence-online-model", snapshot.hybridGeminiModel, "--hybrid-confidence-fallback-referee",
+                snapshot.hybridFallbackReferee ?? "gemini", "--hybrid-confidence-local-threshold", "0.80",
+                "--hybrid-confidence-disagreement-threshold", "0.15",
+            ])
         }
         return arguments
     }
 
-    func attachQueueHandlers(to process: Process) {
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
-            DispatchQueue.main.async { self?.consumeProcessOutput(text) }
+    func attachQueueHandlers(to process: Process, runURL: URL) {
+        // Detach the child from an app-held pipe: route stdout/stderr to a file so app
+        // quit/crash can't break the pipe (which killed the run) and the orphaned child
+        // keeps running. Live progress is read by tailing progress.log on the timer.
+        let captureURL = runURL.appendingPathComponent("process.out")
+        if !FileManager.default.fileExists(atPath: captureURL.path) {
+            FileManager.default.createFile(atPath: captureURL.path, contents: nil)
+        }
+        if let handle = try? FileHandle(forWritingTo: captureURL) {
+            handle.seekToEndOfFile()
+            process.standardOutput = handle
+            process.standardError = handle
         }
         process.terminationHandler = { [weak self] finishedProcess in
-            pipe.fileHandleForReading.readabilityHandler = nil
             DispatchQueue.main.async { self?.handleProcessFinished(status: finishedProcess.terminationStatus) }
         }
     }
-
 
     func handleProcessFinished(status: Int32) {
         let itemID = activeItemID
@@ -237,17 +266,21 @@ extension RusToPromptQueueManager {
             let stopped = status != 0 ? await controlFlagFromActiveFileAsync("stop", controlURL: controlURL) : false
 
             await MainActor.run {
+                pumpProgressLog()  // flush any final progress.log lines before tearing down the tail
                 defer {
                     batteryStartOverrideItemID = nil
                     activeProcess = nil
+                    activeReattachedPID = nil
                     activeItemID = nil
                     activeControlFileURL = nil
+                    disarmProgressTail()
                     isRunning = false
                     currentStage = "Idle"
                     currentModel = "-"
                     startNextIfPossible()
                 }
                 guard let itemID = itemID, let index = items.firstIndex(where: { $0.id == itemID }) else { return }
+                items[index].pid = nil
 
                 if status == 0 {
                     let msg = completionMessage ?? "Completed"

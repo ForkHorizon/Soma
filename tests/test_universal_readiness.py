@@ -25,13 +25,22 @@ class UniversalReadinessScoutTests(UniversalReadinessTestCase):
         for template in fixture_templates(FIXTURES):
             with self.subTest(template=template.name):
                 tmp, root = prepare_fixture_repo(template)
-                with tmp, patch.object(gateway.core.graphify, "query", return_value={"graphs": [], "answers": [], "warnings": []}):
+                with (
+                    tmp,
+                    patch.object(
+                        gateway.core.graphify, "query", return_value={"graphs": [], "answers": [], "warnings": []}
+                    ),
+                ):
                     os.environ["SOMA_PROJECT_ROOT"] = str(root)
-                    payload = json.loads(asyncio.run(gateway.tools.context.soma_prepare_context(
-                        f"Debug recent changed behavior in {template.name}; check source, git, config, and logs.",
-                        "fast",
-                        "deterministic",
-                    )))
+                    payload = json.loads(
+                        asyncio.run(
+                            gateway.tools.context.soma_prepare_context(
+                                f"Debug recent changed behavior in {template.name}; check source, git, config, and logs.",
+                                "fast",
+                                "deterministic",
+                            )
+                        )
+                    )
                 self.assertEqual(payload["status"], "ok")
                 self.assertTrue(payload["packet"])
                 self.assertLessEqual(payload["estimated_tokens"], TOKEN_BUDGETS["fast"])
@@ -53,7 +62,9 @@ class UniversalReadinessScoutTests(UniversalReadinessTestCase):
             diff = get_git_diff_summary(str(root), ["debug"])
             discovered = iter_project_files(str(root))
             index = build_repo_index(str(root), discovered)
-            preflight = build_preflight("debug changed app error", str(root), project_type, discovered, index, git_status, diff)
+            preflight = build_preflight(
+                "debug changed app error", str(root), project_type, discovered, index, git_status, diff
+            )
             evidence = select_evidence(str(root), "debug changed app error", project_type, index, preflight)
 
         self.assertTrue(evidence)
@@ -68,9 +79,14 @@ class UniversalReadinessScoutTests(UniversalReadinessTestCase):
             "the quiet interval crosses midnight. Return likely root cause, exact files to inspect, "
             "test cases that should exist, and a minimal fix plan."
         )
-        with tmp, patch.object(gateway.core.graphify, "query", return_value={"graphs": [], "answers": [], "warnings": []}):
+        with (
+            tmp,
+            patch.object(gateway.core.graphify, "query", return_value={"graphs": [], "answers": [], "warnings": []}),
+        ):
             os.environ["SOMA_PROJECT_ROOT"] = str(root)
-            payload = json.loads(asyncio.run(gateway.tools.context.soma_prepare_context(prompt, "fast", "deterministic")))
+            payload = json.loads(
+                asyncio.run(gateway.tools.context.soma_prepare_context(prompt, "fast", "deterministic"))
+            )
 
         packet = payload["packet"]
         self.assertEqual(payload["status"], "ok")
@@ -91,13 +107,20 @@ class UniversalReadinessScoutTests(UniversalReadinessTestCase):
 
     def test_prepare_context_degrades_when_no_strong_evidence_matches(self):
         tmp, root = make_quiet_hours_repo()
-        with tmp, patch.object(gateway.core.graphify, "query", return_value={"graphs": [], "answers": [], "warnings": []}):
+        with (
+            tmp,
+            patch.object(gateway.core.graphify, "query", return_value={"graphs": [], "answers": [], "warnings": []}),
+        ):
             os.environ["SOMA_PROJECT_ROOT"] = str(root)
-            payload = json.loads(asyncio.run(gateway.tools.context.soma_prepare_context("Debug phantom zyxwvu crash", "fast", "deterministic")))
+            payload = json.loads(
+                asyncio.run(
+                    gateway.tools.context.soma_prepare_context("Debug phantom zyxwvu crash", "fast", "deterministic")
+                )
+            )
 
         self.assertEqual(payload["status"], "degraded")
         self.assertEqual(payload["evidence_quality"]["status"], "degraded")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

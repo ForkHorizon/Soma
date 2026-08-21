@@ -3,6 +3,7 @@
 This stage sends only compact task/evidence metadata, not source previews, to a
 configured cloud model. It is opt-in and must never block deterministic packets.
 """
+
 import asyncio
 import json
 import os
@@ -26,10 +27,8 @@ def _string_list(value):
 
 def cloud_referee_provider():
     provider = (
-        os.environ.get("SOMA_CLOUD_REFEREE_PROVIDER")
-        or os.environ.get("SOMA_REFEREE_PROVIDER")
-        or ""
-    ).strip().lower()
+        (os.environ.get("SOMA_CLOUD_REFEREE_PROVIDER") or os.environ.get("SOMA_REFEREE_PROVIDER") or "").strip().lower()
+    )
     enabled = os.environ.get("SOMA_CLOUD_REFEREE", "").strip().lower()
     if not provider and enabled in {"1", "true", "yes", "on"}:
         provider = "openai"
@@ -43,10 +42,7 @@ def cloud_referee_enabled():
 
 
 def cloud_referee_policy():
-    policy = (
-        os.environ.get("SOMA_CLOUD_REFEREE_POLICY")
-        or "degraded_only"
-    ).strip().lower()
+    policy = (os.environ.get("SOMA_CLOUD_REFEREE_POLICY") or "degraded_only").strip().lower()
     if policy in {"always", "degraded_only"}:
         return policy
     return "degraded_only"
@@ -134,7 +130,7 @@ def _extract_json_object(text):
     if start == -1 or end == -1 or end <= start:
         return None
     try:
-        decoded = json.loads(text[start:end + 1])
+        decoded = json.loads(text[start : end + 1])
         return decoded if isinstance(decoded, dict) else None
     except Exception:
         return None
@@ -153,9 +149,9 @@ def _call_openai_referee(user_payload, timeout):
                     "You are a packet evidence referee. Review whether selected local evidence "
                     "is sufficient for the task and collection plan. Use only metadata; do not "
                     "invent files or facts. Return JSON only: "
-                    "{\"status\":\"ok|degraded\",\"missing_evidence\":[\"...\"],"
-                    "\"recommended_additions\":[\"...\"],\"warnings\":[\"...\"],"
-                    "\"notes\":[\"...\"]}. Recommend at most 3 evidence kinds or concrete "
+                    '{"status":"ok|degraded","missing_evidence":["..."],'
+                    '"recommended_additions":["..."],"warnings":["..."],'
+                    '"notes":["..."]}. Recommend at most 3 evidence kinds or concrete '
                     "repo-relative paths."
                 ),
             },
@@ -200,7 +196,12 @@ async def referee_evidence_with_cloud_model(prompt, collection_plan, preflight, 
         return {}, {**stage, "status": "failed", "error": str(exc), "duration_ms": (time.monotonic() - start) * 1000}
     decoded = _extract_json_object(text or "")
     if not isinstance(decoded, dict):
-        return {}, {**stage, "status": "failed", "error": "invalid cloud_referee JSON", "duration_ms": (time.monotonic() - start) * 1000}
+        return {}, {
+            **stage,
+            "status": "failed",
+            "error": "invalid cloud_referee JSON",
+            "duration_ms": (time.monotonic() - start) * 1000,
+        }
     result = {
         "status": str(decoded.get("status") or "ok"),
         "missing_evidence": _string_list(decoded.get("missing_evidence"))[:6],
@@ -212,7 +213,9 @@ async def referee_evidence_with_cloud_model(prompt, collection_plan, preflight, 
         **stage,
         "status": "ok",
         "referee_status": result["status"],
-        "notes": (result["warnings"] + result["missing_evidence"] + result["recommended_additions"] + result["notes"])[:4],
+        "notes": (result["warnings"] + result["missing_evidence"] + result["recommended_additions"] + result["notes"])[
+            :4
+        ],
         "duration_ms": (time.monotonic() - start) * 1000,
     }
 

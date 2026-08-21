@@ -9,6 +9,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "Soma"))
 from soma_test_bootstrap import install_soma_imports
+
 install_soma_imports()
 
 from gateway.core import (
@@ -18,14 +19,14 @@ from gateway.core import (
     _ok_response,
     _parse_ports,
     NexusClient,
-    NexusState
+    NexusState,
 )
 
 from gateway.graphify_adapter import GraphifyAdapter
 from gateway.memory_store import MemoryStore
 
-class TestGatewayCoreBasic(unittest.TestCase):
 
+class TestGatewayCoreBasic(unittest.TestCase):
     def test_safe_text_string_no_truncation(self):
         text = "short string"
         self.assertEqual(_safe_text(text, 50), text)
@@ -84,5 +85,6 @@ class TestGatewayCoreBasic(unittest.TestCase):
         client.state.port = 8086
         self.assertEqual(client._url(8087), "http://127.0.0.1:8087/")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

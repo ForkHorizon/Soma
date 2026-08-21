@@ -10,7 +10,8 @@ extension TestsView {
             resultConfidenceJudgesByItemID = loadConfidenceJudgesMap(from: outDir)
             let text = try String(contentsOf: resultsURL, encoding: .utf8)
             let decoder = JSONDecoder()
-            resultRunRows = text
+            resultRunRows =
+                text
                 .split(whereSeparator: \.isNewline)
                 .compactMap { line -> TestRunResult? in
                     guard let data = String(line).data(using: .utf8) else { return nil }
@@ -24,7 +25,7 @@ extension TestsView {
                         return lhs > rhs
                     }
                     return $0.caseID < $1.caseID
-            }
+                }
             selectedRunRowID = resultRunRows.first?.id
             expandedRunDebugIDs = selectedRunRowID.map { Set([$0]) } ?? []
         } catch {
@@ -35,21 +36,21 @@ extension TestsView {
         }
     }
 
-
     func loadPromptManifest(from outDir: URL) -> [String: String] {
         let manifestURL = outDir.appendingPathComponent("prompts.json")
         guard let data = try? Data(contentsOf: manifestURL),
-              let decoded = try? JSONDecoder().decode([TestPromptManifestCase].self, from: data) else {
+            let decoded = try? JSONDecoder().decode([TestPromptManifestCase].self, from: data)
+        else {
             return [:]
         }
         return Dictionary(uniqueKeysWithValues: decoded.map { ($0.id, $0.prompt) })
     }
 
-
     func loadConfidenceJudgesMap(from outDir: URL) -> [String: [TestConfidenceJudgeResult]] {
         let stateURL = outDir.appendingPathComponent("confidence_state.json")
         guard let data = try? Data(contentsOf: stateURL),
-              let decoded = try? JSONDecoder().decode(TestConfidenceStateEnvelope.self, from: data) else {
+            let decoded = try? JSONDecoder().decode(TestConfidenceStateEnvelope.self, from: data)
+        else {
             return [:]
         }
 
@@ -76,12 +77,12 @@ extension TestsView {
         return grouped
     }
 
-
     func parseConfidenceStateKey(_ key: String) -> (itemID: String, model: String)? {
         guard let data = key.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data),
-              let array = object as? [Any],
-              array.count == 2 else {
+            let object = try? JSONSerialization.jsonObject(with: data),
+            let array = object as? [Any],
+            array.count == 2
+        else {
             return nil
         }
         let itemID = String(describing: array[0]).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -90,11 +91,9 @@ extension TestsView {
         return (itemID, model)
     }
 
-
     func saveLastRunOutput(_ outDir: URL) {
         UserDefaults.standard.set(outDir.path, forKey: lastRunOutputKey)
     }
-
 
     func loadLastResultsIfAvailable() {
         guard !isRunningTests else { return }
@@ -114,30 +113,33 @@ extension TestsView {
         }
     }
 
-
     func hasNonEmptyResults(at directory: URL) -> Bool {
         let resultsURL = directory.appendingPathComponent("results.jsonl")
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: resultsURL.path),
-              let size = attributes[.size] as? NSNumber else {
+            let size = attributes[.size] as? NSNumber
+        else {
             return false
         }
         return size.intValue > 0
     }
 
-
     func latestResultsOutputDirectory() -> URL? {
         let stressURL = repoRootURL.appendingPathComponent(".stress")
-        guard let directories = try? FileManager.default.contentsOfDirectory(
-            at: stressURL,
-            includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey]
-        ) else {
+        guard
+            let directories = try? FileManager.default.contentsOfDirectory(
+                at: stressURL,
+                includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey]
+            )
+        else {
             return nil
         }
 
-        return directories
+        return
+            directories
             .filter { directory in
                 guard let values = try? directory.resourceValues(forKeys: [.isDirectoryKey]),
-                      values.isDirectory == true else { return false }
+                    values.isDirectory == true
+                else { return false }
                 return FileManager.default.fileExists(atPath: directory.appendingPathComponent("summary.json").path)
                     || hasNonEmptyResults(at: directory)
             }
@@ -149,12 +151,11 @@ extension TestsView {
             .first
     }
 
-
     func codexExecutablePath() -> String {
         let candidates = [
             "/opt/homebrew/bin/codex",
             "/usr/local/bin/codex",
-            "/Applications/Codex.app/Contents/Resources/codex"
+            "/Applications/Codex.app/Contents/Resources/codex",
         ]
         if let existing = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
             return existing
@@ -162,11 +163,10 @@ extension TestsView {
         return "codex"
     }
 
-
     func geminiExecutablePath() -> String {
         let candidates = [
             "/opt/homebrew/bin/gemini",
-            "/usr/local/bin/gemini"
+            "/usr/local/bin/gemini",
         ]
         if let existing = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
             return existing
@@ -174,19 +174,17 @@ extension TestsView {
         return "gemini"
     }
 
-
     func codexSearchPath(existing: String?) -> String {
         let required = [
             "/opt/homebrew/bin",
             "/usr/local/bin",
             "/usr/bin",
-            "/bin"
+            "/bin",
         ]
         let existingParts = (existing ?? "").split(separator: ":").map(String.init)
         let merged = required + existingParts.filter { !required.contains($0) }
         return merged.joined(separator: ":")
     }
-
 
     func runTimestamp() -> String {
         let formatter = DateFormatter()
@@ -194,20 +192,17 @@ extension TestsView {
         return formatter.string(from: Date())
     }
 
-
     func safePathComponent(_ value: String) -> String {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
         let scalars = value.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }
         return String(scalars).replacingOccurrences(of: "--+", with: "-", options: .regularExpression)
     }
 
-
     func selectedModelsSummary(_ selection: Set<String>) -> String {
         let models = Array(selection).sorted()
         if models.isEmpty { return "No models selected" }
         return models.joined(separator: ", ")
     }
-
 
     func mergePresets(_ presets: [RusToPromptModelPreset]) -> [RusToPromptModelPreset] {
         var seen = Set<String>()
@@ -221,7 +216,6 @@ extension TestsView {
         return merged
     }
 
-
     func addCustomModel(
         _ customModel: Binding<String>,
         selection: Binding<Set<String>>,
@@ -234,7 +228,6 @@ extension TestsView {
         customModel.wrappedValue = ""
     }
 
-
     func isCodexModelName(_ model: String) -> Bool {
         let normalized = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if normalized.hasPrefix("gpt-oss") { return false }
@@ -245,7 +238,6 @@ extension TestsView {
             || normalized.hasPrefix("codex-")
     }
 
-
     func isGeminiModelName(_ model: String) -> Bool {
         let normalized = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return normalized.hasPrefix("gemini-")
@@ -253,12 +245,10 @@ extension TestsView {
             || normalized.hasPrefix("gemma-4-")
     }
 
-
     func isDeepSeekModelName(_ model: String) -> Bool {
         let normalized = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return normalized.hasPrefix("deepseek-")
     }
-
 
     func providerForOnlineModelName(_ model: String) -> String? {
         if isDeepSeekModelName(model) { return "deepseek" }
@@ -266,7 +256,6 @@ extension TestsView {
         if isCodexModelName(model) { return "codex" }
         return nil
     }
-
 
     func providerDisplayName(_ provider: String) -> String {
         switch provider {

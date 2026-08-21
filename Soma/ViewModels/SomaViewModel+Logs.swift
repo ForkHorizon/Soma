@@ -3,15 +3,18 @@ import SwiftUI
 import AppKit
 import Combine
 extension SomaViewModel {
-func logActivity(_ message: String, duration: Double? = nil) {
+    func logActivity(_ message: String, duration: Double? = nil) {
         let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
         var log = "[\(timestamp)] \(message)"
         if let duration = duration {
             log += String(format: " (%.2fs)", duration)
         }
         activityLogs.append(log)
+        if activityLogs.count > 500 {
+            activityLogs.removeFirst(activityLogs.count - 500)
+        }
     }
-func startLogRefreshTimer() {
+    func startLogRefreshTimer() {
         logRefreshTimer?.invalidate()
         logRefreshTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             guard let self = self else { return }
@@ -20,13 +23,14 @@ func startLogRefreshTimer() {
             }
         }
     }
-func stopLogRefreshTimer() {
+    func stopLogRefreshTimer() {
         logRefreshTimer?.invalidate()
         logRefreshTimer = nil
     }
-func loadStructuredLogs(date: Date = Date()) {
+    func loadStructuredLogs(date: Date = Date()) {
         logsLoading = true
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             let dateStr = DateFormatter.somaDate.string(from: date)
             let logFile = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".soma/logs/soma_\(dateStr).jsonl")
@@ -34,9 +38,10 @@ func loadStructuredLogs(date: Date = Date()) {
             if let content = try? String(contentsOf: logFile, encoding: .utf8) {
                 for line in content.components(separatedBy: "\n").reversed() {
                     guard !line.isEmpty,
-                          let data = line.data(using: .utf8),
-                          let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                          let entry = SomaLogEntry(from: dict) else { continue }
+                        let data = line.data(using: .utf8),
+                        let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                        let entry = SomaLogEntry(from: dict)
+                    else { continue }
                     entries.append(entry)
                     if entries.count >= 200 { break }
                 }
@@ -72,20 +77,20 @@ func loadStructuredLogs(date: Date = Date()) {
                     self.latestTokenSavings = latestSavings
                 }
                 self.logsLoading = false
-                self.refreshPacketLiveToolCounts()
             }
         }
     }
-func clearAllLogs() {
+    func clearAllLogs() {
         logsClearBusy = true
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             let home = FileManager.default.homeDirectoryForCurrentUser
             let logsDir = home.appendingPathComponent(".soma/logs")
             let analyticsDir = home.appendingPathComponent(".soma/analytics")
             let tokenStatsDir = home.appendingPathComponent(".soma/token_stats")
             let pathsToRemove = [
                 logsDir.appendingPathComponent("session_stats.json"),
-                home.appendingPathComponent(".soma/token_stats.json")
+                home.appendingPathComponent(".soma/token_stats.json"),
             ]
             let manager = FileManager.default
             if let files = try? manager.contentsOfDirectory(at: logsDir, includingPropertiesForKeys: nil) {
@@ -119,9 +124,10 @@ func clearAllLogs() {
             }
         }
     }
-func deleteTodayLogs(date: Date = Date()) {
+    func deleteTodayLogs(date: Date = Date()) {
         logsClearBusy = true
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             let file = Self.logFileURL(for: date)
             try? FileManager.default.removeItem(at: file)
             await MainActor.run {
@@ -134,10 +140,11 @@ func deleteTodayLogs(date: Date = Date()) {
             }
         }
     }
-func deleteVisibleLogs(_ entries: [SomaLogEntry], date: Date = Date()) {
+    func deleteVisibleLogs(_ entries: [SomaLogEntry], date: Date = Date()) {
         guard !entries.isEmpty else { return }
         logsClearBusy = true
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             await rewriteLogFile(date: date, deleting: Set(entries.map(Self.logSignature)))
             let remaining = self.logEntries.filter { !Set(entries.map(Self.logSignature)).contains(Self.logSignature($0)) }
             let stats = computeToolStats(from: remaining)
@@ -152,9 +159,10 @@ func deleteVisibleLogs(_ entries: [SomaLogEntry], date: Date = Date()) {
             }
         }
     }
-func deleteRunLogs(runID: String, date: Date = Date()) {
+    func deleteRunLogs(runID: String, date: Date = Date()) {
         logsClearBusy = true
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             let signatures = Set(self.logEntries.filter { $0.run_id == runID }.map(Self.logSignature))
             await rewriteLogFile(date: date, deleting: signatures)
             let remaining = self.logEntries.filter { $0.run_id != runID }
@@ -170,9 +178,10 @@ func deleteRunLogs(runID: String, date: Date = Date()) {
             }
         }
     }
-func resetAuditTraces() {
+    func resetAuditTraces() {
         logsClearBusy = true
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             let auditDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".soma/audit")
             if let files = try? FileManager.default.contentsOfDirectory(at: auditDir, includingPropertiesForKeys: nil) {
                 for file in files where file.pathExtension == "json" || file.pathExtension == "jsonl" {
@@ -189,9 +198,10 @@ func resetAuditTraces() {
             }
         }
     }
-func startNewLogSession() {
+    func startNewLogSession() {
         logsClearBusy = true
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             let home = FileManager.default.homeDirectoryForCurrentUser
             try? FileManager.default.removeItem(at: home.appendingPathComponent(".soma/logs/session_stats.json"))
             await MainActor.run {
@@ -210,23 +220,30 @@ func startNewLogSession() {
             .appendingPathComponent(".soma/logs/soma_\(dateStr).jsonl")
     }
     private nonisolated static func logSignature(_ entry: SomaLogEntry) -> String {
-        [entry.ts, entry.event, entry.tool ?? "", entry.method ?? "", entry.run_id ?? "", entry.task_id ?? "", entry.status].joined(separator: "|")
+        [entry.ts, entry.event, entry.tool ?? "", entry.method ?? "", entry.run_id ?? "", entry.task_id ?? "", entry.status].joined(
+            separator: "|")
     }
     private func rewriteLogFile(date: Date, deleting signatures: Set<String>) async {
         let file = Self.logFileURL(for: date)
         guard !signatures.isEmpty,
-              let content = try? String(contentsOf: file, encoding: .utf8) else { return }
+            let content = try? String(contentsOf: file, encoding: .utf8)
+        else { return }
         let keptLines = content.components(separatedBy: "\n").filter { line in
             guard !line.isEmpty,
-                  let data = line.data(using: .utf8),
-                  let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let entry = SomaLogEntry(from: dict) else { return true }
+                let data = line.data(using: .utf8),
+                let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let entry = SomaLogEntry(from: dict)
+            else { return true }
             return !signatures.contains(Self.logSignature(entry))
         }
         try? keptLines.joined(separator: "\n").write(to: file, atomically: true, encoding: .utf8)
     }
-func computeToolStats(from entries: [SomaLogEntry]) -> [SomaToolStat] {
-        var map: [String: (calls: Int, errors: Int, totalDur: Double, totalTok: Int, savedTok: Int, savings: [Double], opSavedTok: Int, opSavings: [Double], estSavedTok: Int, estSavings: [Double])] = [:]
+    func computeToolStats(from entries: [SomaLogEntry]) -> [SomaToolStat] {
+        var map:
+            [String: (
+                calls: Int, errors: Int, totalDur: Double, totalTok: Int, savedTok: Int, savings: [Double], opSavedTok: Int,
+                opSavings: [Double], estSavedTok: Int, estSavings: [Double]
+            )] = [:]
         for e in entries where e.event == "tool_call" {
             let name = e.displayName
             var s = map[name] ?? (0, 0, 0, 0, 0, [], 0, [], 0, [])
@@ -258,7 +275,7 @@ func computeToolStats(from entries: [SomaLogEntry]) -> [SomaToolStat] {
             )
         }.sorted { $0.calls > $1.calls }
     }
-func computeLocalModelStats(from entries: [SomaLogEntry]) -> [SomaLocalModelStat] {
+    func computeLocalModelStats(from entries: [SomaLogEntry]) -> [SomaLocalModelStat] {
         var map: [String: (calls: Int, errors: Int, totalDur: Double, totalTok: Int, stages: [String: Int])] = [:]
         for e in entries where e.event == "local_model_call" {
             let model = e.local_model ?? "unknown"

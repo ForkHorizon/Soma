@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Shared token estimation profiles for Soma analytics and benchmarks."""
+
 from __future__ import annotations
 
 import argparse

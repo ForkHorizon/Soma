@@ -19,13 +19,11 @@ class UniversalReadinessLanguageSpanTests(UniversalReadinessTestCase):
         self.assertEqual(cleaned, "/Users/me/project/ActionsView.swift. Check the UI.")
 
     def test_rus_to_prompt_does_not_protect_terminal_path_period(self):
-        protected = soma_language_optimizer.protect_spans(
-            "Check /Users/me/project/ActionsView.swift. Then continue."
-        )
+        protected = soma_language_optimizer.protect_spans("Check /Users/me/project/ActionsView.swift. Then continue.")
 
         self.assertIn("/Users/me/project/ActionsView.swift", protected.spans)
         self.assertNotIn("/Users/me/project/ActionsView.swift.", protected.spans)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

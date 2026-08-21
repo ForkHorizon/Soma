@@ -4,6 +4,7 @@
 The report is metadata-only: no raw packet, source, transcript, or tool body is
 persisted. Tool outputs are reduced to status, summary, size, and hash.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -136,7 +137,9 @@ class DaemonClient:
         return response.get("result") or {}
 
 
-def _safe_tool_record(tool: str, status: str, started: float, result: dict[str, Any] | None = None, reason: str | None = None) -> dict[str, Any]:
+def _safe_tool_record(
+    tool: str, status: str, started: float, result: dict[str, Any] | None = None, reason: str | None = None
+) -> dict[str, Any]:
     rendered = json.dumps(result or {}, default=str, sort_keys=True)
     record = {
         "tool": tool,
@@ -234,7 +237,9 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
                         smoke_status = "ok" if status in {"ok", "degraded"} else "error"
                         record = _safe_tool_record(tool, smoke_status, call_started, result)
                     except Exception as exc:
-                        record = _safe_tool_record(tool, "error", call_started, {"status": "error", "summary": str(exc)})
+                        record = _safe_tool_record(
+                            tool, "error", call_started, {"status": "error", "summary": str(exc)}
+                        )
                 elif tool in SCHEMA_ONLY_CORE:
                     record = _safe_tool_record(tool, "skipped", call_started, reason=SCHEMA_ONLY_CORE[tool])
                 elif tool in PLUGIN_TOOLS:
@@ -267,7 +272,9 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
         },
         "initialize": initialize,
         "tools_list": tools_list,
-        "tool_catalog": [{"name": name, "signature": tool_signature(name), "schema": tool_schema(name)} for name in TOOL_ORDER],
+        "tool_catalog": [
+            {"name": name, "signature": tool_signature(name), "schema": tool_schema(name)} for name in TOOL_ORDER
+        ],
         "tool_results": tool_results,
         "plugin_status": {
             "unity_nexus": plugin_status,
@@ -284,7 +291,9 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
             "duration_ms": round((time.monotonic() - started) * 1000, 1),
         },
         "issues": issues,
-        "log_file": str(Path.home() / ".soma" / "logs" / f"soma_{datetime.now(tz=timezone.utc).strftime('%Y%m%d')}.jsonl"),
+        "log_file": str(
+            Path.home() / ".soma" / "logs" / f"soma_{datetime.now(tz=timezone.utc).strftime('%Y%m%d')}.jsonl"
+        ),
     }
     return report
 

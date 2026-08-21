@@ -20,7 +20,6 @@ extension RusToPromptQueueManager {
         }
     }
 
-
     func saveToDisk() {
         let state = RusToPromptQueueDiskState(settings: settings, items: items, isPaused: isPaused, isPowerPaused: isPowerPaused)
         let queueFileURL = self.queueFileURL
@@ -41,12 +40,21 @@ extension RusToPromptQueueManager {
         }
     }
 
-
     func recoverRunningItems() {
         var changed = false
         for index in items.indices where items[index].status == .running {
+            // Child still alive? Re-attach instead of re-spawning — avoids the duplicate
+            // run_start/resume cycles that previously stacked up errors across restarts.
+            if reattachRunningChildIfAlive(index: index) {
+                changed = true
+                continue
+            }
+            items[index].pid = nil
             items[index].status = .queued
-            items[index].statusMessage = isPowerPaused ? "Paused on battery; connect power to continue" : (isPaused ? "Paused after restart; resume to continue" : "Recovered after restart")
+            items[index].statusMessage =
+                isPowerPaused
+                ? "Paused on battery; connect power to continue"
+                : (isPaused ? "Paused after restart; resume to continue" : "Recovered after restart")
             items[index].recoveredAfterRestart = true
             items[index].updatedAt = Date()
             changed = true
@@ -56,19 +64,50 @@ extension RusToPromptQueueManager {
         }
     }
 
+    /// Whether the queue has anything that needs the housekeeping timer: an
+    /// active/reattached run, or any item still queued/running/waiting. When this
+    /// is false the app is idle and should poll nothing.
+    var hasLiveQueueWork: Bool {
+        activeProcess != nil || activeReattachedPID != nil || activeItemID != nil
+            || items.contains { $0.status == .queued || $0.status == .running || $0.status == .waitingLocalAI }
+    }
+
+    /// Start the 1s housekeeping timer only when there's live work and it isn't
+    /// already running. Idle → no timer, no 5s RAM/power poll.
+    func startTimerIfNeeded() {
+        guard timer == nil, hasLiveQueueWork else { return }
+        startTimer()
+    }
+
+    /// Stop the timer once the queue drains, so an idle app costs zero polling.
+    func stopTimerIfIdle() {
+        guard !hasLiveQueueWork else { return }
+        timer?.invalidate()
+        timer = nil
+    }
 
     func startTimer() {
-        timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+        // Tick fast for live progress (cheap file read + kill(pid,0)); run the heavier
+        // memory/power/queue-advance housekeeping every 5th tick to keep its prior cadence.
+        // The timer only runs while there is live work (see startTimerIfNeeded); it
+        // stops itself once the queue is idle.
+        timer?.invalidate()  // never stack a second 1s timer if called again
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             DispatchQueue.main.async { [weak self] in
-                self?.refreshFreeMemory()
-                self?.refreshPowerSource()
-                self?.startNextIfPossible()
+                guard let self else { return }
+                self.pumpProgressLog()  // live progress comes from tailing progress.log
+                self.pollReattachedExit()  // detect exit of a re-attached (Process-less) run
+                self.progressTickCount += 1
+                guard self.progressTickCount % 5 == 0 else { return }
+                self.refreshFreeMemory()
+                self.refreshPowerSource()
+                self.startNextIfPossible()
+                self.stopTimerIfIdle()  // drained → stop polling until new work
             }
         }
         refreshFreeMemory()
         refreshPowerSource()
     }
-
 
     func appendActivity(_ line: String) {
         let timestamp = Self.activityFormatter.string(from: Date())
@@ -77,7 +116,6 @@ extension RusToPromptQueueManager {
             recentActivity.removeLast(recentActivity.count - 80)
         }
     }
-
 
     func writeControl(_ payload: [String: Bool]) {
         guard let activeControlFileURL else { return }
@@ -93,11 +131,11 @@ extension RusToPromptQueueManager {
         }
     }
 
-
     func controlFlagFromActiveFile(_ key: String) -> Bool {
         guard let activeControlFileURL,
-              let data = try? Data(contentsOf: activeControlFileURL),
-              let decoded = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            let data = try? Data(contentsOf: activeControlFileURL),
+            let decoded = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
             return false
         }
         return (decoded[key] as? Bool) == true
@@ -107,13 +145,13 @@ extension RusToPromptQueueManager {
         guard let url = controlURL else { return false }
         return await Task.detached {
             guard let data = try? Data(contentsOf: url),
-                  let decoded = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                let decoded = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else {
                 return false
             }
             return (decoded[key] as? Bool) == true
         }.value
     }
-
 
     func fetchInstalledModels(completion: @escaping (Set<String>, Bool) -> Void) {
         guard let url = URL(string: "http://127.0.0.1:11434/api/tags") else {
@@ -137,7 +175,6 @@ extension RusToPromptQueueManager {
             }
         }.resume()
     }
-
 
     func cleanLocalModels(_ models: [String]) -> [String] {
         var seen = Set<String>()
@@ -164,7 +201,6 @@ extension RusToPromptQueueManager {
         }
         return cleaned
     }
-
 
     func normalizePrompt(_ prompt: String) -> String {
         prompt

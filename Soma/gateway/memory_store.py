@@ -5,7 +5,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-SOMA_MEMORY_DIR = Path.home() / '.soma'
+SOMA_MEMORY_DIR = Path.home() / ".soma"
+
 
 class MemoryStore:
     def project_dir(self, project_root: str | None) -> Path:

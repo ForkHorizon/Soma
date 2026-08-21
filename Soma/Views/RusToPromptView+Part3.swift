@@ -14,7 +14,6 @@ extension RusToPromptView {
         }
     }
 
-
     var phaseIcon: String {
         switch viewModel.phase {
         case .idle: return ollama.isOllamaRunning ? "checkmark.circle" : "exclamationmark.triangle.fill"
@@ -27,7 +26,6 @@ extension RusToPromptView {
         }
     }
 
-
     var phaseTone: SomaStatusTone {
         if selectedModelsNeedOllama && !ollama.isOllamaRunning && !viewModel.isBusy { return .warning }
         switch viewModel.phase {
@@ -39,7 +37,6 @@ extension RusToPromptView {
         }
     }
 
-
     var busyButtonTitle: String {
         switch viewModel.phase {
         case .translating: return "Translating"
@@ -48,7 +45,6 @@ extension RusToPromptView {
         default: return "Working"
         }
     }
-
 
     var confidenceOutputText: String {
         guard let result = viewModel.confidenceResult else {
@@ -92,11 +88,9 @@ extension RusToPromptView {
         return lines.joined(separator: "\n")
     }
 
-
     func isInstalled(_ model: String) -> Bool {
         ollama.installedModels.contains { $0.name.lowercased() == model.lowercased() }
     }
-
 
     func qualityTone(_ quality: String) -> SomaStatusTone {
         switch quality {
@@ -106,7 +100,6 @@ extension RusToPromptView {
         }
     }
 
-
     func speedTone(_ speed: String) -> SomaStatusTone {
         switch speed {
         case "Fast", "Fastest": return .good
@@ -115,14 +108,12 @@ extension RusToPromptView {
         }
     }
 
-
     func confidenceTone(_ confidence: Double) -> SomaStatusTone {
         if confidence >= 0.90 { return .good }
         if confidence >= 0.75 { return .info }
         if confidence >= 0.50 { return .warning }
         return .danger
     }
-
 
     func shortModelName(_ model: String) -> String {
         if model.count <= 30 { return model }

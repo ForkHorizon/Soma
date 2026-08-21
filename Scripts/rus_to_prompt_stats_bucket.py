@@ -47,11 +47,22 @@ class RoleBucket:
         related_model: str | None = None,
     ) -> None:
         self.attempts += 1
-        self._record_time_and_quality(finished_at, confidence, confidence_failed_value, degraded, pipeline_failed, seconds)
+        self._record_time_and_quality(
+            finished_at, confidence, confidence_failed_value, degraded, pipeline_failed, seconds
+        )
         self._record_warnings(warnings)
         self._record_run(run_dir, finished_at, confidence, confidence_failed_value, pipeline_failed)
         self._record_worst_case(
-            run_dir, case_id, category, confidence, confidence_failed_value, status, degraded, pipeline_failed, warnings, related_model
+            run_dir,
+            case_id,
+            category,
+            confidence,
+            confidence_failed_value,
+            status,
+            degraded,
+            pipeline_failed,
+            warnings,
+            related_model,
         )
 
     def _record_time_and_quality(
@@ -154,7 +165,9 @@ class RoleBucket:
             "avg_seconds": mean_or_none(self.seconds_values),
             "last_tested_at": self.last_tested_at,
             "worst_cases": self._sorted_worst_cases(),
-            "top_warnings": [{"warning": warning, "count": count} for warning, count in self.warning_counts.most_common(8)],
+            "top_warnings": [
+                {"warning": warning, "count": count} for warning, count in self.warning_counts.most_common(8)
+            ],
             "recent_runs": sorted_recent_runs(self.recent_runs),
         }
 

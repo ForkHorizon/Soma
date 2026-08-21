@@ -19,23 +19,27 @@ from scout_pipeline import (
 from soma_logger import log_tool_call
 """
 
+
 def clean_file(path, extra=""):
     with open(path, "r") as fh:
         lines = fh.readlines()
-        
+
     start_idx = 0
     for i, line in enumerate(lines):
         if line.startswith("@log_tool_call") or line.startswith("async def"):
             start_idx = i
             break
-            
+
     content = clean_imports + extra + "".join(lines[start_idx:])
     with open(path, "w") as fh:
         fh.write(content)
 
+
 clean_file("/Users/daliys/Daliys/Swift/Soma/Soma/mcp/tools/context.py")
 clean_file("/Users/daliys/Daliys/Swift/Soma/Soma/mcp/tools/nexus.py")
-clean_file("/Users/daliys/Daliys/Swift/Soma/Soma/mcp/tools/query.py", "from mcp.tools.context import soma_prepare_context\n")
+clean_file(
+    "/Users/daliys/Daliys/Swift/Soma/Soma/mcp/tools/query.py", "from mcp.tools.context import soma_prepare_context\n"
+)
 clean_file("/Users/daliys/Daliys/Swift/Soma/Soma/mcp/tools/memory.py")
 
 print("Cleaned tools imports.")

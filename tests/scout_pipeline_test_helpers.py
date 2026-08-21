@@ -119,9 +119,7 @@ def write_wrapper_project_files(root, *, include_noise=False):
     (root / "ProjectSettings" / "ProjectSettings.asset").write_text(
         "PlayerSettings:\n  applicationIdentifier:\n    Android: com.UnityTechnologies.wrapper\n"
     )
-    (root / "package.json").write_text(
-        '{"name":"com.wrapper.host","displayName":"Nexus Unity Wrapper Host"}\n'
-    )
+    (root / "package.json").write_text('{"name":"com.wrapper.host","displayName":"Nexus Unity Wrapper Host"}\n')
     (root / "README.md").write_text("# Wrapper Host\n\nThis project only exists to test the package.\n")
     if include_noise:
         write_wrapper_noise_files(root)
@@ -224,7 +222,7 @@ class ScoutPipelineTestCase(unittest.TestCase):
     def run_gather(self, prompt, project_root, *extra_args):
         defaults = ("balanced", False, "deterministic", "standard", "off")
         if len(extra_args) < len(defaults):
-            extra_args = tuple(extra_args) + defaults[len(extra_args):]
+            extra_args = tuple(extra_args) + defaults[len(extra_args) :]
         stdout = io.StringIO()
         with contextlib.redirect_stdout(stdout):
             asyncio.run(
@@ -242,7 +240,9 @@ class ScoutPipelineTestCase(unittest.TestCase):
         root = Path(tmp.name)
         (root / "Soma").mkdir()
         (root / "Soma" / "relay.py").write_text("MODEL = 'gemma4:e4b'\n\ndef relay():\n    return 'ok'\n")
-        (root / "Soma" / "ContentView.swift").write_text("import SwiftUI\n\nstruct ContentView: View {\n    var body: some View { Text(\"Soma\") }\n}\n")
+        (root / "Soma" / "ContentView.swift").write_text(
+            'import SwiftUI\n\nstruct ContentView: View {\n    var body: some View { Text("Soma") }\n}\n'
+        )
         (root / "Package.swift").write_text("// swift-tools-version: 5.9\n")
         (root / "ollama_logs.txt").write_text("INFO server started\n")
         (root / "README.md").write_text("old readme\n")

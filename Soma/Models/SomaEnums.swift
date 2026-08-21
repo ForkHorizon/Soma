@@ -38,118 +38,96 @@ struct SomaError: LocalizedError {
 }
 
 enum AppRoute: String, Hashable, CaseIterable {
-    case relay = "Prepare Packet"
     case rusToPrompt = "Rus to Prompt"
+    case voiceToText = "Voice to Text"
+    case queue = "Queue"
+    case modelStats = "Model Stats"
     case tests = "Tests"
-    case projectSetup = "Project Setup"
-    case packets = "Packets"
-    case diagnostics = "Diagnostics"
-    case projects = "Projects"
     case promptCompiler = "Prompt Builder"
     case localAI = "Local AI"
-    case projectHealth = "Project Health"
     case logs = "Activity"
-    case externalTools = "Utilities"
     case tokenCalculator = "Token Calculator"
     case systemStatus = "System Status"
-    #if DEBUG
-    case redesignMock = "UI Mock"
-    #endif
+    case extensions = "Extensions"
+    case projectOverview = "Project"
 
     var title: String { rawValue }
 
     static var visibleRoutes: [AppRoute] {
-        [.relay, .rusToPrompt, .tests, .projectSetup, .packets, .diagnostics]
+        [
+            .rusToPrompt, .voiceToText, .queue, .modelStats, .tests,
+            .promptCompiler, .localAI, .tokenCalculator, .logs, .systemStatus, .extensions,
+        ]
     }
 
     var section: String {
         switch self {
-        case .relay, .rusToPrompt, .tests:
+        case .rusToPrompt, .voiceToText, .queue, .modelStats, .tests:
             return "Main"
-        case .projectSetup, .projects, .projectHealth:
-            return "Project"
-        case .packets, .logs:
+        case .logs:
             return "History"
-        case .diagnostics, .promptCompiler, .localAI, .externalTools, .tokenCalculator, .systemStatus:
+        case .promptCompiler, .localAI, .tokenCalculator, .systemStatus, .extensions:
             return "Advanced"
-        #if DEBUG
-        case .redesignMock:
-            return "Advanced"
-        #endif
+        case .projectOverview:
+            return "Main"
         }
     }
 
     var description: String {
         switch self {
-        case .relay:
-            return "Prepare compact evidence for a coding model."
         case .rusToPrompt:
             return "Translate Russian prompts to English and polish them without project context."
+        case .voiceToText:
+            return "Record speech and transcribe it locally (Whisper / GigaAM)."
+        case .queue:
+            return "Real prompt queue: enqueue, monitor, and run benchmark jobs."
+        case .modelStats:
+            return "Model performance stats across translation and improver runs."
         case .tests:
-            return "Run and review Soma test workflows."
-        case .projectSetup:
-            return "Simple project readiness without runtime noise."
-        case .packets:
-            return "Real packet runs and usefulness feedback."
-        case .diagnostics:
-            return "Advanced runtime, MCP, graph, logs, and utility screens."
-        case .projects:
-            return "Open or switch the active workspace."
+            return "Run prompt cases across local and cloud models and compare."
         case .promptCompiler:
-            return "Improve a rough prompt before packet work."
+            return "Improve a rough prompt before sending it to a model."
         case .localAI:
             return "Set global local model roles."
-        case .projectHealth:
-            return "Review project readiness and graph state."
         case .logs:
-            return "Review activity, audit traces, and logs."
-        case .externalTools:
-            return "Optional Scout, Token Calculator, diagnostics, and future-roadmap shelf."
+            return "Review activity and logs."
         case .tokenCalculator:
-            return "Estimate prompt and packet size inside Soma."
+            return "Estimate prompt size and token cost."
         case .systemStatus:
-            return "Expert runtime and MCP diagnostics."
-        #if DEBUG
-        case .redesignMock:
-            return "Preview the redesigned core screens."
-        #endif
+            return "Runtime and model diagnostics."
+        case .extensions:
+            return "Check and update globally-installed tools (Graphify, Ponytail, projectmem)."
+        case .projectOverview:
+            return "Monitor the selected project's Git, memory, graph, and client setup."
         }
     }
 
     var systemImage: String {
         switch self {
-        case .relay:
-            return "doc.text.magnifyingglass"
         case .rusToPrompt:
             return "character.bubble"
+        case .voiceToText:
+            return "waveform"
+        case .queue:
+            return "tray.full"
+        case .modelStats:
+            return "chart.bar.xaxis"
         case .tests:
             return "testtube.2"
-        case .projectSetup:
-            return "checklist"
-        case .packets:
-            return "tray.full"
-        case .diagnostics:
-            return "stethoscope"
-        case .projects:
-            return "folder.fill"
         case .promptCompiler:
             return "wand.and.stars"
         case .localAI:
             return "cpu"
-        case .projectHealth:
-            return "waveform.path.ecg"
         case .logs:
             return "waveform.path"
-        case .externalTools:
-            return "wrench.and.screwdriver"
         case .tokenCalculator:
             return "number.square"
         case .systemStatus:
             return "stethoscope"
-        #if DEBUG
-        case .redesignMock:
-            return "sparkles.rectangle.stack"
-        #endif
+        case .extensions:
+            return "puzzlepiece.extension"
+        case .projectOverview:
+            return "folder.badge.gearshape"
         }
     }
 }
