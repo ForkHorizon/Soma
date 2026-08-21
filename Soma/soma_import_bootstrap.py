@@ -1,4 +1,5 @@
 """Import bootstrap for Soma's bundled namespace-style Python modules."""
+
 from __future__ import annotations
 
 import importlib

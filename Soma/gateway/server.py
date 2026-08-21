@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Soma MCP server CLI and stdio entrypoint."""
+
 from __future__ import annotations
 
 import json

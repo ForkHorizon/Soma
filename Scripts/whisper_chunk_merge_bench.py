@@ -18,6 +18,7 @@ decode each piece, then ask two questions.
 Usage (must run inside the engine venv):
     ~/…/venv-whisper/bin/python Scripts/whisper_chunk_merge_bench.py --limit 25
 """
+
 from __future__ import annotations
 
 import argparse
@@ -35,8 +36,8 @@ from voice_chunk_simulator import capture_chunks  # noqa: E402
 DEFAULT_RECORDINGS = Path.home() / "Library/Application Support/Soma/VoiceRecordings"
 WHISPER_REPO = "mlx-community/whisper-large-v3-mlx"
 SAMPLE_RATE = 16000
-FORCED_CHUNK_SECONDS = 10.0     # VoicePauseDetector forces a boundary here
-REPLAY_SECONDS = 0.75           # VoiceChunkCapture replays this into the next chunk
+FORCED_CHUNK_SECONDS = 10.0  # VoicePauseDetector forces a boundary here
+REPLAY_SECONDS = 0.75  # VoiceChunkCapture replays this into the next chunk
 
 
 def word_error_rate(reference: list[str], hypothesis: list[str]) -> float:
@@ -72,7 +73,9 @@ def load_audio(path: Path):
         data = data.mean(axis=1)
     if rate != SAMPLE_RATE:
         count = int(round(len(data) * SAMPLE_RATE / rate))
-        data = np.interp(np.linspace(0, len(data), count, endpoint=False), np.arange(len(data)), data).astype(np.float32)
+        data = np.interp(np.linspace(0, len(data), count, endpoint=False), np.arange(len(data)), data).astype(
+            np.float32
+        )
     return np.ascontiguousarray(data)
 
 
@@ -121,17 +124,22 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--recordings", type=Path, default=DEFAULT_RECORDINGS)
     parser.add_argument("--limit", type=int, default=25)
-    parser.add_argument("--min-seconds", type=float, default=12.0, help="long enough that a forced boundary is possible")
+    parser.add_argument(
+        "--min-seconds", type=float, default=12.0, help="long enough that a forced boundary is possible"
+    )
     parser.add_argument("--json-out", type=Path, default=None)
     args = parser.parse_args(argv)
 
-    files = [p for p in sorted(args.recordings.glob("*.wav"), key=lambda p: p.stat().st_mtime)
-             if p.stat().st_size >= args.min_seconds * SAMPLE_RATE * 2]
+    files = [
+        p
+        for p in sorted(args.recordings.glob("*.wav"), key=lambda p: p.stat().st_mtime)
+        if p.stat().st_size >= args.min_seconds * SAMPLE_RATE * 2
+    ]
     if not files:
         print(f"no recordings over {args.min_seconds}s under {args.recordings}", file=sys.stderr)
         return 2
     stride = max(1, len(files) // args.limit)
-    paths = files[::stride][:args.limit]
+    paths = files[::stride][: args.limit]
     print(f"simulating forced chunking on {len(paths)} recordings\n", flush=True)
 
     decode(load_audio(paths[0])[:SAMPLE_RATE])  # warm the model
@@ -143,11 +151,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{index:3}/{len(paths)}  no speech detected, skipping", flush=True)
             continue
         rows.append(row)
-        print(f"{index:3}/{len(paths)}  {row['audio_seconds']:6.1f}s  {row['chunks']} chunks  "
-              f"{row['failed_joins']}/{row['boundaries']} joins failed  "
-              f"exact {'safe' if row['merge_safe'] else 'UNSAFE'}/wer {row['merged_vs_whole_wer']:.3f}  "
-              f"fuzzy {row['fuzzy_failed_joins']}/{row['boundaries']} failed "
-              f"{'safe' if row['fuzzy_merge_safe'] else 'UNSAFE'}/wer {row['fuzzy_vs_whole_wer']:.3f}", flush=True)
+        print(
+            f"{index:3}/{len(paths)}  {row['audio_seconds']:6.1f}s  {row['chunks']} chunks  "
+            f"{row['failed_joins']}/{row['boundaries']} joins failed  "
+            f"exact {'safe' if row['merge_safe'] else 'UNSAFE'}/wer {row['merged_vs_whole_wer']:.3f}  "
+            f"fuzzy {row['fuzzy_failed_joins']}/{row['boundaries']} failed "
+            f"{'safe' if row['fuzzy_merge_safe'] else 'UNSAFE'}/wer {row['fuzzy_vs_whole_wer']:.3f}",
+            flush=True,
+        )
 
     report(rows)
     if args.json_out:
@@ -164,7 +175,7 @@ def measure(audio, path: Path) -> dict | None:
         return None
     chunk_texts, chunk_seconds = [], 0.0
     for span in spans:
-        text, seconds = decode(audio[span["start"]:span["end"]])
+        text, seconds = decode(audio[span["start"] : span["end"]])
         chunk_texts.append({"text": text, "overlap_ms": span["overlap_ms"], "reason": span["reason"]})
         chunk_seconds += seconds
     merged, safe, failed = merge_chunks(chunk_texts)
@@ -201,17 +212,24 @@ def report(rows: list[dict]) -> None:
     print("\n" + "=" * 78)
     print(f"recordings                    {len(rows)}")
     print(f"forced boundaries             {boundaries}")
-    print(f"joins that failed to match    {failed}/{boundaries} "
-          f"({100 * failed / boundaries:.0f}%)" if boundaries else "")
-    print(f"recordings flagged unsafe     {len(unsafe)}/{len(rows)} "
-          f"({100 * len(unsafe) / len(rows):.0f}%)  <- these re-transcribe in full today")
+    print(
+        f"joins that failed to match    {failed}/{boundaries} ({100 * failed / boundaries:.0f}%)" if boundaries else ""
+    )
+    print(
+        f"recordings flagged unsafe     {len(unsafe)}/{len(rows)} "
+        f"({100 * len(unsafe) / len(rows):.0f}%)  <- these re-transcribe in full today"
+    )
     if unsafe:
         wasted = sum(r["cliff_seconds"] for r in unsafe)
         already = sum(r["chunk_decode_seconds"] for r in unsafe)
-        print(f"  extra decode spent on them  {wasted:.1f}s on top of {already:.1f}s already decoded "
-              f"({1 + wasted / already:.2f}x)")
-        print(f"  WER if we just accepted it  {statistics.mean(r['merged_vs_whole_wer'] for r in unsafe):.4f} "
-              f"(merged text vs the whole-file transcript)")
+        print(
+            f"  extra decode spent on them  {wasted:.1f}s on top of {already:.1f}s already decoded "
+            f"({1 + wasted / already:.2f}x)"
+        )
+        print(
+            f"  WER if we just accepted it  {statistics.mean(r['merged_vs_whole_wer'] for r in unsafe):.4f} "
+            f"(merged text vs the whole-file transcript)"
+        )
         print("\n  worst accepted-merge divergence:")
         for row in sorted(unsafe, key=lambda r: -r["merged_vs_whole_wer"])[:3]:
             print(f"    {row['file']}  {row['audio_seconds']}s  WER {row['merged_vs_whole_wer']:.3f}")
@@ -220,12 +238,16 @@ def report(rows: list[dict]) -> None:
     fuzzy_failed = sum(r["fuzzy_failed_joins"] for r in rows)
     fuzzy_unsafe = [r for r in rows if not r["fuzzy_merge_safe"]]
     print("\n  --- candidate: tolerant overlap join ---")
-    print(f"  joins that failed to match  {fuzzy_failed}/{boundaries} "
-          f"({100 * fuzzy_failed / boundaries:.0f}%)" if boundaries else "")
-    print(f"  recordings flagged unsafe   {len(fuzzy_unsafe)}/{len(rows)} "
-          f"({100 * len(fuzzy_unsafe) / len(rows):.0f}%)")
-    print(f"  WER vs whole file           {statistics.mean(r['fuzzy_vs_whole_wer'] for r in rows):.4f} "
-          f"(exact join: {statistics.mean(r['merged_vs_whole_wer'] for r in rows):.4f})")
+    print(
+        f"  joins that failed to match  {fuzzy_failed}/{boundaries} ({100 * fuzzy_failed / boundaries:.0f}%)"
+        if boundaries
+        else ""
+    )
+    print(f"  recordings flagged unsafe   {len(fuzzy_unsafe)}/{len(rows)} ({100 * len(fuzzy_unsafe) / len(rows):.0f}%)")
+    print(
+        f"  WER vs whole file           {statistics.mean(r['fuzzy_vs_whole_wer'] for r in rows):.4f} "
+        f"(exact join: {statistics.mean(r['merged_vs_whole_wer'] for r in rows):.4f})"
+    )
 
     safe = [r for r in rows if r["merge_safe"]]
     if safe:

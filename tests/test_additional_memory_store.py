@@ -9,6 +9,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "Soma"))
 from soma_test_bootstrap import install_soma_imports
+
 install_soma_imports()
 
 from gateway.core import (
@@ -18,17 +19,17 @@ from gateway.core import (
     _ok_response,
     _parse_ports,
     NexusClient,
-    NexusState
+    NexusState,
 )
 
 from gateway.graphify_adapter import GraphifyAdapter
 from gateway.memory_store import MemoryStore
 
-class TestMemoryStore(unittest.TestCase):
 
+class TestMemoryStore(unittest.TestCase):
     def test_memory_store_project_dir_default(self):
         with tempfile.TemporaryDirectory() as tmp:
-            with patch('gateway.memory_store.SOMA_MEMORY_DIR', Path(tmp)):
+            with patch("gateway.memory_store.SOMA_MEMORY_DIR", Path(tmp)):
                 store = MemoryStore()
                 p_dir = store.project_dir(None)
                 self.assertEqual(p_dir, Path(tmp) / "default")
@@ -86,5 +87,6 @@ class TestMemoryStore(unittest.TestCase):
             self.assertEqual(len(mem["known_issues"]), 1)
             self.assertEqual(mem["known_issues"][0]["text"], "dict issue")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

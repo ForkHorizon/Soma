@@ -47,11 +47,16 @@ class RusToPromptStagedFlowTests(unittest.TestCase):
                 "warnings": [],
             }, 2.0
 
-        with tempfile.TemporaryDirectory() as temp_dir, patch.object(runner_modes, "_translate", side_effect=fake_translate), patch.object(
-            runner_modes,
-            "_improve",
-            side_effect=fake_improve,
-        ), patch.object(runner_confidence, "score_confidence_batch_with_provider", side_effect=fake_confidence):
+        with (
+            tempfile.TemporaryDirectory() as temp_dir,
+            patch.object(runner_modes, "_translate", side_effect=fake_translate),
+            patch.object(
+                runner_modes,
+                "_improve",
+                side_effect=fake_improve,
+            ),
+            patch.object(runner_confidence, "score_confidence_batch_with_provider", side_effect=fake_confidence),
+        ):
             results_path = Path(temp_dir) / "results.jsonl"
             results = runner_modes.run_cases(
                 [case],
@@ -128,11 +133,18 @@ class RusToPromptStagedFlowTests(unittest.TestCase):
                 }
             return by_id
 
-        with tempfile.TemporaryDirectory() as temp_dir, patch.object(runner_modes, "_translate", side_effect=fake_translate), patch.object(
-            runner_modes,
-            "_improve",
-            side_effect=fake_improve,
-        ), patch.object(runner_confidence, "score_confidence_batch_with_provider", side_effect=fake_high_rewrite_confidence):
+        with (
+            tempfile.TemporaryDirectory() as temp_dir,
+            patch.object(runner_modes, "_translate", side_effect=fake_translate),
+            patch.object(
+                runner_modes,
+                "_improve",
+                side_effect=fake_improve,
+            ),
+            patch.object(
+                runner_confidence, "score_confidence_batch_with_provider", side_effect=fake_high_rewrite_confidence
+            ),
+        ):
             results_path = Path(temp_dir) / "results.jsonl"
             results = runner_modes.run_cases(
                 [case],
@@ -145,14 +157,25 @@ class RusToPromptStagedFlowTests(unittest.TestCase):
             written = [json.loads(line) for line in results_path.read_text(encoding="utf-8").splitlines()]
 
         self.assertEqual(improve_calls, [("Determine additional AI features for the editor.", "improver-a")])
-        self.assertEqual({result.translator_model for result in results if result.analyzer_model == "improver-a"}, {"translator-a"})
-        rewrite_row = next(row for row in written if row["translator_model"] == "translator-b" and row["analyzer_model"] == "translation-only")
+        self.assertEqual(
+            {result.translator_model for result in results if result.analyzer_model == "improver-a"}, {"translator-a"}
+        )
+        rewrite_row = next(
+            row
+            for row in written
+            if row["translator_model"] == "translator-b" and row["analyzer_model"] == "translation-only"
+        )
         self.assertIsNone(rewrite_row["translation_confidence"]["confidence"])
         self.assertEqual(rewrite_row["translation_confidence"]["raw_confidence"], 0.99)
         self.assertEqual(rewrite_row["translation_confidence"]["effective_score"], 0.0)
         self.assertEqual(rewrite_row["translation_confidence"]["status"], "failed")
         self.assertEqual(rewrite_row["translation_confidence"]["verdict"], "fail")
-        self.assertTrue(any("prompt rewrite" in reason for reason in rewrite_row["translation_confidence"]["deterministic_confidence_cap_reasons"]))
+        self.assertTrue(
+            any(
+                "prompt rewrite" in reason
+                for reason in rewrite_row["translation_confidence"]["deterministic_confidence_cap_reasons"]
+            )
+        )
 
     def test_best_translation_tiebreak_prefers_cleaner_shorter_translation(self):
         case = rus_to_prompt_stress.PromptCase("staged-tiebreak", "unit", "Сделай блок компактнее.")
@@ -170,8 +193,12 @@ class RusToPromptStagedFlowTests(unittest.TestCase):
             "source_language": "ru",
             "warnings": [],
         }
-        verbose = rus_to_prompt_stress.build_translation_only_result(case, "translator-a", "translation-only", "local", "none", verbose_payload, 1.0)
-        clean = rus_to_prompt_stress.build_translation_only_result(case, "translator-b", "translation-only", "local", "none", clean_payload, 2.0)
+        verbose = rus_to_prompt_stress.build_translation_only_result(
+            case, "translator-a", "translation-only", "local", "none", verbose_payload, 1.0
+        )
+        clean = rus_to_prompt_stress.build_translation_only_result(
+            case, "translator-b", "translation-only", "local", "none", clean_payload, 2.0
+        )
         for result in [verbose, clean]:
             result.benchmark_mode = "staged"
             result.translation_confidence = {"status": "ok", "confidence": 0.935, "verdict": "pass", "warnings": []}
@@ -186,18 +213,39 @@ class RusToPromptStagedFlowTests(unittest.TestCase):
 
     def test_local_judge_statuses_are_normalized_but_raw_status_is_kept(self):
         normalized = runner_confidence.normalize_local_judge_confidence(
-            {"provider": "local", "model": "judge-a", "stage": "translation", "status": "translation_only", "confidence": 0.92, "verdict": "pass"}
+            {
+                "provider": "local",
+                "model": "judge-a",
+                "stage": "translation",
+                "status": "translation_only",
+                "confidence": 0.92,
+                "verdict": "pass",
+            }
         )
         self.assertEqual(normalized["status"], "ok")
         self.assertEqual(normalized["raw_status"], "translation_only")
 
         review = runner_confidence.normalize_local_judge_confidence(
-            {"provider": "local", "model": "judge-a", "stage": "translation", "status": "completed", "confidence": 0.60, "verdict": "pass"}
+            {
+                "provider": "local",
+                "model": "judge-a",
+                "stage": "translation",
+                "status": "completed",
+                "confidence": 0.60,
+                "verdict": "pass",
+            }
         )
         self.assertEqual(review["status"], "review")
 
         failed = runner_confidence.normalize_local_judge_confidence(
-            {"provider": "local", "model": "judge-a", "stage": "translation", "status": "approved", "confidence": 0.95, "verdict": "fail"}
+            {
+                "provider": "local",
+                "model": "judge-a",
+                "stage": "translation",
+                "status": "approved",
+                "confidence": 0.95,
+                "verdict": "fail",
+            }
         )
         self.assertEqual(failed["status"], "failed")
 
@@ -228,19 +276,26 @@ class RusToPromptStagedFlowTests(unittest.TestCase):
             }, 2.0
 
         def fake_batch_confidence(items, **kwargs):
-            events.append((
-                "confidence",
-                kwargs["stage"],
-                [item[2].translator_model for item in items],
-                [item[2].analyzer_model for item in items],
-            ))
+            events.append(
+                (
+                    "confidence",
+                    kwargs["stage"],
+                    [item[2].translator_model for item in items],
+                    [item[2].analyzer_model for item in items],
+                )
+            )
             return fake_confidence(items, **kwargs)
 
-        with tempfile.TemporaryDirectory() as temp_dir, patch.object(runner_modes, "_translate", side_effect=fake_translate), patch.object(
-            runner_modes,
-            "_improve",
-            side_effect=fake_improve,
-        ), patch.object(runner_confidence, "score_confidence_batch_with_provider", side_effect=fake_batch_confidence):
+        with (
+            tempfile.TemporaryDirectory() as temp_dir,
+            patch.object(runner_modes, "_translate", side_effect=fake_translate),
+            patch.object(
+                runner_modes,
+                "_improve",
+                side_effect=fake_improve,
+            ),
+            patch.object(runner_confidence, "score_confidence_batch_with_provider", side_effect=fake_batch_confidence),
+        ):
             runner_modes.run_cases(
                 [case],
                 ["translator-a", "translator-b"],
@@ -294,7 +349,15 @@ class RusToPromptStagedFlowTests(unittest.TestCase):
             results_path = Path(temp_dir) / "results.jsonl"
 
             def fake_model_major_confidence(items, **kwargs):
-                calls.append((kwargs["provider"], kwargs["model"], kwargs["stage"], [item[2].translator_model for item in items], [item[2].analyzer_model for item in items]))
+                calls.append(
+                    (
+                        kwargs["provider"],
+                        kwargs["model"],
+                        kwargs["stage"],
+                        [item[2].translator_model for item in items],
+                        [item[2].analyzer_model for item in items],
+                    )
+                )
                 by_id = {}
                 for item_id, _case, result in items:
                     value = 0.92 if result.translator_model == "translator-b" else 0.82
@@ -311,16 +374,28 @@ class RusToPromptStagedFlowTests(unittest.TestCase):
                     }
                 return by_id
 
-            with patch.object(runner_modes, "_translate", side_effect=fake_translate), patch.object(
-                runner_modes,
-                "_improve",
-                side_effect=fake_improve,
-            ), patch.object(runner_confidence, "score_confidence_batch_with_provider", side_effect=fake_model_major_confidence):
+            with (
+                patch.object(runner_modes, "_translate", side_effect=fake_translate),
+                patch.object(
+                    runner_modes,
+                    "_improve",
+                    side_effect=fake_improve,
+                ),
+                patch.object(
+                    runner_confidence, "score_confidence_batch_with_provider", side_effect=fake_model_major_confidence
+                ),
+            ):
                 runner_modes.run_cases(
                     [case],
                     ["translator-a", "translator-b"],
                     ["improver-a", "improver-b"],
-                    staged_args(batch_size=1, confidence_referee="hybrid", local_confidence_models=["judge-a", "judge-b"], hybrid_fallback="off", out_dir=temp_dir),
+                    staged_args(
+                        batch_size=1,
+                        confidence_referee="hybrid",
+                        local_confidence_models=["judge-a", "judge-b"],
+                        hybrid_fallback="off",
+                        out_dir=temp_dir,
+                    ),
                     results_path,
                     total_operations=4,
                 )
@@ -380,11 +455,17 @@ class RusToPromptStagedFlowTests(unittest.TestCase):
                     self.assertIsNone(rows[0].get("translation_confidence"))
                 return fake_confidence(items, **kwargs)
 
-            with patch.object(runner_modes, "_translate", side_effect=fake_translate), patch.object(
-                runner_modes,
-                "_improve",
-                side_effect=fake_improve,
-            ), patch.object(runner_confidence, "score_confidence_batch_with_provider", side_effect=fake_checkpoint_confidence):
+            with (
+                patch.object(runner_modes, "_translate", side_effect=fake_translate),
+                patch.object(
+                    runner_modes,
+                    "_improve",
+                    side_effect=fake_improve,
+                ),
+                patch.object(
+                    runner_confidence, "score_confidence_batch_with_provider", side_effect=fake_checkpoint_confidence
+                ),
+            ):
                 runner_modes.run_cases(
                     [case],
                     ["translator-b"],
@@ -503,11 +584,15 @@ class RusToPromptStagedFlowTests(unittest.TestCase):
             results_path = Path(temp_dir) / "results.jsonl"
             results_path.write_text(json.dumps(asdict(checkpoint), ensure_ascii=False) + "\n", encoding="utf-8")
             existing = runner_resume.load_resume_results(results_path, "staged")
-            with patch.object(runner_modes, "_translate", side_effect=fake_translate), patch.object(
-                runner_modes,
-                "_improve",
-                side_effect=fake_improve,
-            ), patch.object(runner_confidence, "score_confidence_batch_with_provider", side_effect=fake_confidence):
+            with (
+                patch.object(runner_modes, "_translate", side_effect=fake_translate),
+                patch.object(
+                    runner_modes,
+                    "_improve",
+                    side_effect=fake_improve,
+                ),
+                patch.object(runner_confidence, "score_confidence_batch_with_provider", side_effect=fake_confidence),
+            ):
                 results = runner_modes.run_cases(
                     [case],
                     ["translator-b"],
@@ -591,12 +676,20 @@ class RusToPromptStagedFlowTests(unittest.TestCase):
                     for item_id, _case, _result in items
                 }
 
-            with patch.object(runner_confidence, "score_confidence_batch_with_provider", side_effect=fake_resume_confidence):
+            with patch.object(
+                runner_confidence, "score_confidence_batch_with_provider", side_effect=fake_resume_confidence
+            ):
                 runner_confidence.score_and_attach_confidence_batch(
                     case,
                     [(1, result)],
                     "translation",
-                    staged_args(batch_size=1, confidence_referee="hybrid", local_confidence_models=["judge-a", "judge-b"], hybrid_fallback="off", out_dir=temp_dir),
+                    staged_args(
+                        batch_size=1,
+                        confidence_referee="hybrid",
+                        local_confidence_models=["judge-a", "judge-b"],
+                        hybrid_fallback="off",
+                        out_dir=temp_dir,
+                    ),
                     total_operations=1,
                 )
 
@@ -633,11 +726,15 @@ class RusToPromptStagedFlowTests(unittest.TestCase):
                 "warnings": [],
             }, 2.0
 
-        with patch.object(runner_modes, "_translate", side_effect=fake_translate), patch.object(
-            runner_modes,
-            "_improve",
-            side_effect=fake_improve,
-        ), patch.object(runner_confidence, "score_confidence_batch_with_provider", side_effect=fake_confidence):
+        with (
+            patch.object(runner_modes, "_translate", side_effect=fake_translate),
+            patch.object(
+                runner_modes,
+                "_improve",
+                side_effect=fake_improve,
+            ),
+            patch.object(runner_confidence, "score_confidence_batch_with_provider", side_effect=fake_confidence),
+        ):
             return runner_modes.run_cases(
                 [case],
                 translators,
@@ -649,7 +746,9 @@ class RusToPromptStagedFlowTests(unittest.TestCase):
             )
 
 
-def staged_args(batch_size=10, confidence_referee="local", local_confidence_models=None, hybrid_fallback="gemini", out_dir="."):
+def staged_args(
+    batch_size=10, confidence_referee="local", local_confidence_models=None, hybrid_fallback="gemini", out_dir="."
+):
     return SimpleNamespace(
         benchmark_mode="staged",
         translator_provider="local",

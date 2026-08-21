@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Small extension/tool updater used by the Soma UI and CLI."""
+
 from __future__ import annotations
 
 import asyncio
@@ -54,7 +55,7 @@ MANAGED_TOOLS = {
         "kind": "MCP",
         "detail": "Persistent Tree-sitter code graph for coding agents.",
         "latest": "https://api.github.com/repos/DeusData/codebase-memory-mcp/releases/latest",
-        "command": 'if command -v codebase-memory-mcp >/dev/null 2>&1; then codebase-memory-mcp update; else curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash; fi',
+        "command": "if command -v codebase-memory-mcp >/dev/null 2>&1; then codebase-memory-mcp update; else curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash; fi",
     },
     "graphify": {
         "name": "Graphify",
@@ -86,9 +87,16 @@ def tool_status(tool_id: str | None = None, *, home: Path | None = None, latest:
     return {"status": "ok", "tools": tools}
 
 
-def update_tool(tool_id: str, project_root: str | None = None, recent_roots: list[str] | None = None, *, home: Path | None = None) -> dict[str, Any]:
+def update_tool(
+    tool_id: str, project_root: str | None = None, recent_roots: list[str] | None = None, *, home: Path | None = None
+) -> dict[str, Any]:
     if tool_id not in MANAGED_TOOLS:
-        return {"status": "error", "summary": f"Unknown tool: {tool_id}", "tool_id": tool_id, "issues": ["unknown_tool"]}
+        return {
+            "status": "error",
+            "summary": f"Unknown tool: {tool_id}",
+            "tool_id": tool_id,
+            "issues": ["unknown_tool"],
+        }
     before = _tool_status_one(tool_id, home=home)
     result = _run_shell(MANAGED_TOOLS[tool_id]["command"], home=home)
     after = _tool_status_one(tool_id, home=home)
@@ -103,7 +111,9 @@ def update_tool(tool_id: str, project_root: str | None = None, recent_roots: lis
             sync["issues"] = sorted(set(sync.get("issues", []) + memory_sync.get("issues", [])))
             sync["restart_needed"] = sorted(set(sync.get("restart_needed", []) + memory_sync.get("restart_needed", [])))
         smoke = _smoke_project(project_root)
-    issues = ([] if result.returncode == 0 else ["update_command_failed"]) + ([] if updated else ["installed_version_not_latest"])
+    issues = ([] if result.returncode == 0 else ["update_command_failed"]) + (
+        [] if updated else ["installed_version_not_latest"]
+    )
     issues += sync.get("issues", [])
     if smoke.get("status") not in {None, "ok", "skipped"}:
         issues.append("smoke_failed")
@@ -131,12 +141,25 @@ def setup_memory_tools(project_root: str, *, home: Path | None = None) -> dict[s
     clients: dict[str, Any] = {"clients": [], "restart_needed": [], "issues": []}
 
     if not root_path.exists():
-        return {"status": "error", "summary": "Project root does not exist.", "project_root": root, "issues": ["missing_project_root"], "steps": steps}
+        return {
+            "status": "error",
+            "summary": "Project root does not exist.",
+            "project_root": root,
+            "issues": ["missing_project_root"],
+            "steps": steps,
+        }
 
     for tool_id in ("codebase-memory", "projectmem"):
         if not _installed_version(tool_id, home):
             install = update_tool(tool_id, root, [], home=home)
-            steps.append({"tool": tool_id, "action": "install", "status": install.get("status"), "issues": install.get("issues", [])})
+            steps.append(
+                {
+                    "tool": tool_id,
+                    "action": "install",
+                    "status": install.get("status"),
+                    "issues": install.get("issues", []),
+                }
+            )
             issues.extend(install.get("issues", []))
 
     cbm = _setup_codebase_memory(root, home)
@@ -147,13 +170,22 @@ def setup_memory_tools(project_root: str, *, home: Path | None = None) -> dict[s
         issues.extend(item.get("issues", []) or [])
 
     clients = _sync_projectmem_clients(root, home)
-    steps.append({"tool": "projectmem", "action": "sync_mcp_clients", "status": clients.get("status"), "issues": clients.get("issues", [])})
+    steps.append(
+        {
+            "tool": "projectmem",
+            "action": "sync_mcp_clients",
+            "status": clients.get("status"),
+            "issues": clients.get("issues", []),
+        }
+    )
     issues.extend(clients.get("issues", []))
 
     status = "ok" if not issues else "degraded"
     return {
         "status": status,
-        "summary": "Memory tools are installed for the selected project." if status == "ok" else "Memory tools setup finished with issues.",
+        "summary": "Memory tools are installed for the selected project."
+        if status == "ok"
+        else "Memory tools setup finished with issues.",
         "project_root": root,
         "tools": tool_status("all", home=home, latest=True)["tools"],
         "clients": clients.get("clients", []),
@@ -172,13 +204,29 @@ def setup_project_tool(tool_id: str, project_root: str, *, home: Path | None = N
     clients: dict[str, Any] = {"clients": [], "restart_needed": [], "issues": []}
 
     if not root_path.exists():
-        return {"status": "error", "summary": "Project root does not exist.", "tool_id": tool_id, "project_root": root, "issues": ["missing_project_root"], "steps": steps}
+        return {
+            "status": "error",
+            "summary": "Project root does not exist.",
+            "tool_id": tool_id,
+            "project_root": root,
+            "issues": ["missing_project_root"],
+            "steps": steps,
+        }
     if tool_id not in {"codebase-memory", "projectmem"}:
-        return {"status": "error", "summary": f"{tool_id} is not project-installable.", "tool_id": tool_id, "project_root": root, "issues": ["unsupported_project_tool"], "steps": steps}
+        return {
+            "status": "error",
+            "summary": f"{tool_id} is not project-installable.",
+            "tool_id": tool_id,
+            "project_root": root,
+            "issues": ["unsupported_project_tool"],
+            "steps": steps,
+        }
 
     if not _installed_version(tool_id, home):
         install = update_tool(tool_id, root, [], home=home)
-        steps.append({"tool": tool_id, "action": "install", "status": install.get("status"), "issues": install.get("issues", [])})
+        steps.append(
+            {"tool": tool_id, "action": "install", "status": install.get("status"), "issues": install.get("issues", [])}
+        )
         issues.extend(install.get("issues", []))
 
     if tool_id == "codebase-memory":
@@ -187,7 +235,19 @@ def setup_project_tool(tool_id: str, project_root: str, *, home: Path | None = N
         pjm = _setup_projectmem(root, home)
         docs = _write_memory_tools_doc(root_path, {tool_id})
         clients = _sync_projectmem_clients(root, home)
-        steps.extend([pjm, docs, {"tool": "projectmem", "action": "sync_mcp_clients", "status": clients.get("status"), "issues": clients.get("issues", []), "restart_needed": clients.get("restart_needed", [])}])
+        steps.extend(
+            [
+                pjm,
+                docs,
+                {
+                    "tool": "projectmem",
+                    "action": "sync_mcp_clients",
+                    "status": clients.get("status"),
+                    "issues": clients.get("issues", []),
+                    "restart_needed": clients.get("restart_needed", []),
+                },
+            ]
+        )
 
     for item in steps:
         issues.extend(item.get("issues", []) or [])
@@ -195,7 +255,9 @@ def setup_project_tool(tool_id: str, project_root: str, *, home: Path | None = N
     status = "ok" if not issues else "degraded"
     return {
         "status": status,
-        "summary": f"{MANAGED_TOOLS[tool_id]['name']} is installed for the selected project." if status == "ok" else f"{MANAGED_TOOLS[tool_id]['name']} setup finished with issues.",
+        "summary": f"{MANAGED_TOOLS[tool_id]['name']} is installed for the selected project."
+        if status == "ok"
+        else f"{MANAGED_TOOLS[tool_id]['name']} setup finished with issues.",
         "tool_id": tool_id,
         "name": MANAGED_TOOLS[tool_id]["name"],
         "project_root": root,
@@ -206,7 +268,13 @@ def setup_project_tool(tool_id: str, project_root: str, *, home: Path | None = N
     }
 
 
-def project_overview(project_root: str | None, recent_roots: list[str] | None = None, *, home: Path | None = None, graph_status: dict[str, Any] | None = None) -> dict[str, Any]:
+def project_overview(
+    project_root: str | None,
+    recent_roots: list[str] | None = None,
+    *,
+    home: Path | None = None,
+    graph_status: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     home = home or Path.home()
     root = normalize_path(project_root) if project_root else ""
     root_path = Path(root) if root else None
@@ -233,7 +301,12 @@ def verify_project_clients(project_root: str, *, home: Path | None = None) -> di
     root = Path(normalize_path(project_root))
     clients = [_verify_config(config) for config in _project_configs([root])]
     issues = sorted({issue for item in clients for issue in item.get("issues", [])})
-    return {"status": "ok" if not issues else "degraded", "project_root": str(root), "clients": clients, "issues": issues}
+    return {
+        "status": "ok" if not issues else "degraded",
+        "project_root": str(root),
+        "clients": clients,
+        "issues": issues,
+    }
 
 
 def sync_project_clients(project_root: str, *, home: Path | None = None) -> dict[str, Any]:
@@ -251,18 +324,25 @@ def sync_project_clients(project_root: str, *, home: Path | None = None) -> dict
     }
 
 
-def scan_ai_clients(project_root: str | None = None, recent_roots: list[str] | None = None, *, home: Path | None = None) -> dict[str, Any]:
+def scan_ai_clients(
+    project_root: str | None = None, recent_roots: list[str] | None = None, *, home: Path | None = None
+) -> dict[str, Any]:
     home = home or Path.home()
     projects = _project_roots(project_root, recent_roots or [], home)
     configs = _global_configs(home) + _project_configs(projects)
     return {
         "status": "ok",
         "projects": [{"project_root": str(path)} for path in projects],
-        "configs": [{"client": c["client"], "config_path": str(c["path"]), "project_root": c.get("project_root")} for c in configs],
+        "configs": [
+            {"client": c["client"], "config_path": str(c["path"]), "project_root": c.get("project_root")}
+            for c in configs
+        ],
     }
 
 
-def verify_ai_clients(project_root: str | None = None, recent_roots: list[str] | None = None, *, home: Path | None = None) -> dict[str, Any]:
+def verify_ai_clients(
+    project_root: str | None = None, recent_roots: list[str] | None = None, *, home: Path | None = None
+) -> dict[str, Any]:
     home = home or Path.home()
     projects = _project_roots(project_root, recent_roots or [], home)
     configs = _global_configs(home) + _project_configs(projects)
@@ -277,7 +357,9 @@ def verify_ai_clients(project_root: str | None = None, recent_roots: list[str] |
     }
 
 
-def sync_ai_clients(project_root: str | None = None, recent_roots: list[str] | None = None, *, home: Path | None = None) -> dict[str, Any]:
+def sync_ai_clients(
+    project_root: str | None = None, recent_roots: list[str] | None = None, *, home: Path | None = None
+) -> dict[str, Any]:
     home = home or Path.home()
     projects = _project_roots(project_root, recent_roots or [], home)
     configs = _global_configs(home) + _project_configs(projects)
@@ -346,14 +428,20 @@ def _parse_git_branch(line: str) -> tuple[str | None, int | None, int | None]:
     return branch or None, ahead, behind
 
 
-def _memory_overview(project_root: str, tools: list[dict[str, Any]], graph_status: dict[str, Any], home: Path, root_exists: bool) -> dict[str, Any]:
+def _memory_overview(
+    project_root: str, tools: list[dict[str, Any]], graph_status: dict[str, Any], home: Path, root_exists: bool
+) -> dict[str, Any]:
     tool_map = {item["tool_id"]: item for item in tools}
     root = Path(project_root) if project_root else Path()
     summary_path = root / ".projectmem/summary.md"
     agents_path = root / "AGENTS.md"
     codebase_binary = bool(tool_map.get("codebase-memory", {}).get("installed_version"))
     indexed = _codebase_memory_indexed(project_root, home) if root_exists and codebase_binary else None
-    agents_block = root_exists and agents_path.exists() and MEMORY_BLOCK_START in agents_path.read_text(encoding="utf-8", errors="replace")
+    agents_block = (
+        root_exists
+        and agents_path.exists()
+        and MEMORY_BLOCK_START in agents_path.read_text(encoding="utf-8", errors="replace")
+    )
     projectmem_initialized = root_exists and (root / ".projectmem").exists()
     codebase_project_installed = bool(root_exists and codebase_binary and (agents_block or indexed is True))
     graph_available = bool(graph_status.get("project_graph_available") or graph_status.get("available"))
@@ -367,11 +455,17 @@ def _memory_overview(project_root: str, tools: list[dict[str, Any]], graph_statu
     if projectmem_initialized and not agents_block:
         issues.append("agents_memory_block_missing")
     if codebase_project_installed:
-        installed_tools.append({"id": "codebase-memory", "name": "Codebase-Memory", "status": "Indexed" if indexed else "Needs index"})
+        installed_tools.append(
+            {"id": "codebase-memory", "name": "Codebase-Memory", "status": "Indexed" if indexed else "Needs index"}
+        )
     if projectmem_initialized:
-        installed_tools.append({"id": "projectmem", "name": "projectmem", "status": "Setup mode" if setup_mode else "Initialized"})
+        installed_tools.append(
+            {"id": "projectmem", "name": "projectmem", "status": "Setup mode" if setup_mode else "Initialized"}
+        )
     if graph_available:
-        installed_tools.append({"id": "graphify", "name": "Graphify", "status": "Stale" if graph_status.get("stale") else "Fresh"})
+        installed_tools.append(
+            {"id": "graphify", "name": "Graphify", "status": "Stale" if graph_status.get("stale") else "Fresh"}
+        )
     return {
         "status": "degraded" if issues else ("ok" if installed_tools else "none"),
         "installed_tools": installed_tools,
@@ -398,7 +492,7 @@ def _codebase_memory_indexed(project_root: str, home: Path) -> bool | None:
     if result.returncode != 0 or start < 0 or end < start:
         return None
     try:
-        payload = json.loads(text[start:end + 1])
+        payload = json.loads(text[start : end + 1])
     except Exception:
         return None
     for item in payload.get("projects", []):
@@ -525,23 +619,42 @@ def _write_memory_tools_doc(root: Path, tool_ids: set[str] | None = None) -> dic
         "",
     ]
     lines.extend(MEMORY_TOOL_DOC_LINES[tool_id] for tool_id in MEMORY_TOOL_DOC_ORDER if tool_id in enabled)
-    lines.extend([
-        "- Keep generated memory/tool state local unless the project explicitly decides to commit it.",
-        MEMORY_BLOCK_END,
-        "",
-    ])
+    lines.extend(
+        [
+            "- Keep generated memory/tool state local unless the project explicitly decides to commit it.",
+            MEMORY_BLOCK_END,
+            "",
+        ]
+    )
     block = "\n".join(lines)
     if MEMORY_BLOCK_START in old and MEMORY_BLOCK_END in old:
-        updated = re.sub(rf"{re.escape(MEMORY_BLOCK_START)}.*?{re.escape(MEMORY_BLOCK_END)}", block.strip(), old, flags=re.DOTALL)
+        updated = re.sub(
+            rf"{re.escape(MEMORY_BLOCK_START)}.*?{re.escape(MEMORY_BLOCK_END)}", block.strip(), old, flags=re.DOTALL
+        )
     else:
         updated = old.rstrip() + "\n\n" + block
     if updated == old:
-        return {"tool": "memory-tools", "action": "write_docs", "status": "ok", "issues": [], "path": str(path), "changed": False}
+        return {
+            "tool": "memory-tools",
+            "action": "write_docs",
+            "status": "ok",
+            "issues": [],
+            "path": str(path),
+            "changed": False,
+        }
     backup = _backup(path) if path.exists() else None
     if backup:
         backup.write_text(old, encoding="utf-8")
     path.write_text(updated, encoding="utf-8")
-    return {"tool": "memory-tools", "action": "write_docs", "status": "ok", "issues": [], "path": str(path), "backup_path": str(backup) if backup else None, "changed": True}
+    return {
+        "tool": "memory-tools",
+        "action": "write_docs",
+        "status": "ok",
+        "issues": [],
+        "path": str(path),
+        "backup_path": str(backup) if backup else None,
+        "changed": True,
+    }
 
 
 def _memory_doc_tool_ids(text: str) -> set[str]:
@@ -593,7 +706,13 @@ def _install_projectmem_codex_config(path: Path, project_root: str) -> dict[str,
     updated = f"{cleaned.strip()}\n\n{block}\n" if cleaned.strip() else f"{block}\n"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(updated, encoding="utf-8")
-    return {"status": "ok", "summary": "Installed projectmem MCP config.", "config_path": str(path), "backup_path": str(backup) if backup else None, "issues": []}
+    return {
+        "status": "ok",
+        "summary": "Installed projectmem MCP config.",
+        "config_path": str(path),
+        "backup_path": str(backup) if backup else None,
+        "issues": [],
+    }
 
 
 def _install_projectmem_json_config(path: Path, project_root: str) -> dict[str, Any]:
@@ -606,16 +725,32 @@ def _install_projectmem_json_config(path: Path, project_root: str) -> dict[str, 
         if not isinstance(settings, dict):
             settings = {}
     except Exception:
-        return {"status": "error", "summary": "JSON config is invalid.", "config_path": str(path), "backup_path": str(backup) if backup else None, "issues": ["invalid_json"]}
+        return {
+            "status": "error",
+            "summary": "JSON config is invalid.",
+            "config_path": str(path),
+            "backup_path": str(backup) if backup else None,
+            "issues": ["invalid_json"],
+        }
     servers = settings.get("mcpServers")
     if not isinstance(servers, dict):
         servers = {}
         settings["mcpServers"] = servers
     root = normalize_path(project_root)
-    servers["projectmem"] = {"command": sys.executable, "args": ["-m", "projectmem.mcp_server", "--root", root], "cwd": root}
+    servers["projectmem"] = {
+        "command": sys.executable,
+        "args": ["-m", "projectmem.mcp_server", "--root", root],
+        "cwd": root,
+    }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(settings, indent=2, sort_keys=False) + "\n", encoding="utf-8")
-    return {"status": "ok", "summary": "Installed projectmem MCP config.", "config_path": str(path), "backup_path": str(backup) if backup else None, "issues": []}
+    return {
+        "status": "ok",
+        "summary": "Installed projectmem MCP config.",
+        "config_path": str(path),
+        "backup_path": str(backup) if backup else None,
+        "issues": [],
+    }
 
 
 def _remove_projectmem_toml_block(text: str) -> tuple[str, int]:
@@ -641,10 +776,20 @@ def _global_configs(home: Path) -> list[dict[str, Any]]:
         {"client": "codex", "kind": "codex", "path": home / ".codex/config.toml"},
         {"client": "gemini", "kind": "json", "path": home / ".gemini/settings.json", "json_client": "gemini"},
         {"client": "gemini", "kind": "json", "path": home / ".gemini/config/mcp_config.json", "json_client": "gemini"},
-        {"client": "antigravity", "kind": "json", "path": home / ".gemini/antigravity-ide/mcp_config.json", "json_client": "gemini"},
+        {
+            "client": "antigravity",
+            "kind": "json",
+            "path": home / ".gemini/antigravity-ide/mcp_config.json",
+            "json_client": "gemini",
+        },
         {"client": "antigravity", "kind": "antigravity_tools", "path": home / ".gemini/antigravity/mcp"},
         {"client": "claude", "kind": "json", "path": home / ".claude.json", "json_client": "claude"},
-        {"client": "claude", "kind": "json", "path": home / "Library/Application Support/Claude/claude_desktop_config.json", "json_client": "claude"},
+        {
+            "client": "claude",
+            "kind": "json",
+            "path": home / "Library/Application Support/Claude/claude_desktop_config.json",
+            "json_client": "claude",
+        },
         {"client": "hermes", "kind": "hermes", "path": home / ".hermes/config.yaml"},
     ]
 
@@ -654,9 +799,29 @@ def _project_configs(projects: list[Path]) -> list[dict[str, Any]]:
     for root in projects:
         configs.extend(
             [
-                {"client": "codex", "kind": "codex", "path": root / ".codex/config.toml", "project_root": str(root), "only_existing": True},
-                {"client": "gemini", "kind": "json", "path": root / ".gemini/settings.json", "project_root": str(root), "json_client": "gemini", "only_existing": True},
-                {"client": "claude", "kind": "json", "path": root / ".mcp.json", "project_root": str(root), "json_client": "claude", "only_existing": True},
+                {
+                    "client": "codex",
+                    "kind": "codex",
+                    "path": root / ".codex/config.toml",
+                    "project_root": str(root),
+                    "only_existing": True,
+                },
+                {
+                    "client": "gemini",
+                    "kind": "json",
+                    "path": root / ".gemini/settings.json",
+                    "project_root": str(root),
+                    "json_client": "gemini",
+                    "only_existing": True,
+                },
+                {
+                    "client": "claude",
+                    "kind": "json",
+                    "path": root / ".mcp.json",
+                    "project_root": str(root),
+                    "json_client": "claude",
+                    "only_existing": True,
+                },
             ]
         )
     return [item for item in configs if not item.get("only_existing") or item["path"].exists()]
@@ -732,7 +897,13 @@ def _install_json_config(path: Path, project_root: str | None, client: str) -> d
         if not isinstance(settings, dict):
             settings = {}
     except Exception:
-        return {"status": "error", "summary": "JSON config is invalid.", "config_path": str(path), "backup_path": str(backup) if backup else None, "issues": ["invalid_json"]}
+        return {
+            "status": "error",
+            "summary": "JSON config is invalid.",
+            "config_path": str(path),
+            "backup_path": str(backup) if backup else None,
+            "issues": ["invalid_json"],
+        }
     servers = settings.get("mcpServers")
     if not isinstance(servers, dict):
         servers = {}
@@ -747,7 +918,13 @@ def _install_json_config(path: Path, project_root: str | None, client: str) -> d
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(settings, indent=2, sort_keys=False) + "\n", encoding="utf-8")
     result = _verify_json_config(path, project_root)
-    result.update({"summary": "Installed Soma MCP config.", "backup_path": str(backup) if backup else None, "direct_nexus_removed": removed > 0})
+    result.update(
+        {
+            "summary": "Installed Soma MCP config.",
+            "backup_path": str(backup) if backup else None,
+            "direct_nexus_removed": removed > 0,
+        }
+    )
     return result
 
 
@@ -757,7 +934,12 @@ def _verify_antigravity_tools(path: Path) -> dict[str, Any]:
         issues.append("direct_tool_dir_exposed")
     if not (path / "soma").exists():
         issues.append("soma_tool_dir_missing")
-    return {"status": "ok" if not issues else "degraded", "summary": "Antigravity tool dirs checked.", "config_path": str(path), "issues": issues}
+    return {
+        "status": "ok" if not issues else "degraded",
+        "summary": "Antigravity tool dirs checked.",
+        "config_path": str(path),
+        "issues": issues,
+    }
 
 
 def _sync_antigravity_tools(path: Path) -> dict[str, Any]:
@@ -771,7 +953,9 @@ def _sync_antigravity_tools(path: Path) -> dict[str, Any]:
     return result
 
 
-def _json_result(path: Path, expected: str | None, issues: list[str], actual: str | None, soma: dict[str, Any], clean: bool) -> dict[str, Any]:
+def _json_result(
+    path: Path, expected: str | None, issues: list[str], actual: str | None, soma: dict[str, Any], clean: bool
+) -> dict[str, Any]:
     root_ok = "project_root_missing" not in issues and "project_root_mismatch" not in issues
     status_ok = bool(soma) and clean and "soma_script_missing" not in issues and root_ok
     return {
@@ -788,7 +972,9 @@ def _json_result(path: Path, expected: str | None, issues: list[str], actual: st
     }
 
 
-def _client_result(client: str, result: dict[str, Any], path: Path, project_root: str | None, restart: bool = False) -> dict[str, Any]:
+def _client_result(
+    client: str, result: dict[str, Any], path: Path, project_root: str | None, restart: bool = False
+) -> dict[str, Any]:
     return {
         **result,
         "client": client,
@@ -815,13 +1001,22 @@ def _scan_projects(base: Path, roots: list[Path], max_depth: int = 4) -> None:
         path = Path(current)
         depth = len(path.relative_to(base).parts)
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".") and depth < max_depth]
-        if any(marker in files or (path / marker).exists() for marker in PROJECT_MARKERS) or (path / ".codex/config.toml").exists() or (path / ".gemini/settings.json").exists():
+        if (
+            any(marker in files or (path / marker).exists() for marker in PROJECT_MARKERS)
+            or (path / ".codex/config.toml").exists()
+            or (path / ".gemini/settings.json").exists()
+        ):
             _append_root(roots, path)
 
 
 def _roots_from_existing_configs(home: Path) -> list[str]:
     roots: list[str] = []
-    for path in [home / ".codex/config.toml", home / ".gemini/settings.json", home / ".gemini/config/mcp_config.json", home / ".gemini/antigravity-ide/mcp_config.json"]:
+    for path in [
+        home / ".codex/config.toml",
+        home / ".gemini/settings.json",
+        home / ".gemini/config/mcp_config.json",
+        home / ".gemini/antigravity-ide/mcp_config.json",
+    ]:
         if path.exists():
             text = path.read_text(errors="replace")
             roots.extend(re.findall(r'"--project-root"\s*,\s*"([^"]+)"', text))
@@ -844,7 +1039,18 @@ def _smoke_project(project_root: str | None) -> dict[str, Any]:
     try:
         from gateway.tool_registry import call_tool
 
-        raw = asyncio.run(call_tool("soma_prepare_context", {"goal": "Soma extension update verification smoke.", "budget": "micro", "depth": "deterministic", "client": "swift", "workflow": "extension_update"}))
+        raw = asyncio.run(
+            call_tool(
+                "soma_prepare_context",
+                {
+                    "goal": "Soma extension update verification smoke.",
+                    "budget": "micro",
+                    "depth": "deterministic",
+                    "client": "swift",
+                    "workflow": "extension_update",
+                },
+            )
+        )
         payload = json.loads(raw)
         return {"status": payload.get("status", "ok"), "summary": "soma_prepare_context smoke completed."}
     except Exception as exc:
@@ -852,7 +1058,14 @@ def _smoke_project(project_root: str | None) -> dict[str, Any]:
 
 
 def _visible_clients() -> list[str]:
-    out = _run(["/bin/zsh", "-lc", "osascript -e 'tell application \"System Events\" to get name of every application process whose background only is false' 2>/dev/null"], timeout=5)
+    out = _run(
+        [
+            "/bin/zsh",
+            "-lc",
+            "osascript -e 'tell application \"System Events\" to get name of every application process whose background only is false' 2>/dev/null",
+        ],
+        timeout=5,
+    )
     names = out.stdout.lower()
     return [name for name in ["codex", "antigravity", "claude"] if name in names]
 
@@ -893,7 +1106,12 @@ def _run(cmd: list[str], timeout: int = 10, cwd: str | None = None) -> subproces
 
 
 def _codebase_memory_bin(home: Path) -> str | None:
-    for value in [shutil.which("codebase-memory-mcp"), str(home / ".local/bin/codebase-memory-mcp"), "/opt/homebrew/bin/codebase-memory-mcp", "/usr/local/bin/codebase-memory-mcp"]:
+    for value in [
+        shutil.which("codebase-memory-mcp"),
+        str(home / ".local/bin/codebase-memory-mcp"),
+        "/opt/homebrew/bin/codebase-memory-mcp",
+        "/usr/local/bin/codebase-memory-mcp",
+    ]:
         if value and Path(value).exists():
             return value
     return None

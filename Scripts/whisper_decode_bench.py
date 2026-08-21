@@ -13,6 +13,7 @@ the model changes.
 Usage (must run inside the engine venv):
     ~/…/venv-whisper/bin/python Scripts/whisper_decode_bench.py --limit 40
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,7 +32,7 @@ BASELINE: dict = {}
 # The two proposed changes, measured separately — together they confound each
 # other, and they turn out to have very different cost/benefit.
 VARIANTS: dict[str, dict] = {
-    "greedy": {"temperature": 0.0},                       # drop the 6-temperature fallback
+    "greedy": {"temperature": 0.0},  # drop the 6-temperature fallback
     "unconditioned": {"condition_on_previous_text": False},  # drop cross-window text priming
     "both": {"temperature": 0.0, "condition_on_previous_text": False},
 }
@@ -49,11 +50,13 @@ def word_error_rate(reference: list[str], hypothesis: list[str]) -> float:
     for i, ref_word in enumerate(reference, start=1):
         current = [i]
         for j, hyp_word in enumerate(hypothesis, start=1):
-            current.append(min(
-                previous[j] + 1,
-                current[j - 1] + 1,
-                previous[j - 1] + (ref_word != hyp_word),
-            ))
+            current.append(
+                min(
+                    previous[j] + 1,
+                    current[j - 1] + 1,
+                    previous[j - 1] + (ref_word != hyp_word),
+                )
+            )
         previous = current
     return previous[-1] / len(reference)
 
@@ -91,7 +94,8 @@ def pick(recordings: Path, limit: int, min_seconds: float) -> list[Path]:
     the decoder fallback only fires on awkward audio, so a recency-biased
     sample under-reports it."""
     files = [
-        path for path in sorted(recordings.glob("*.wav"), key=lambda p: p.stat().st_mtime)
+        path
+        for path in sorted(recordings.glob("*.wav"), key=lambda p: p.stat().st_mtime)
         if path.stat().st_size >= min_seconds * 16000 * 2
     ]
     if len(files) <= limit:
@@ -140,8 +144,11 @@ def main(argv: list[str] | None = None) -> int:
                 "text": text,
             }
         rows.append(row)
-        print(f"{index:3}/{len(paths)}  {duration:6.1f}s  base {base_seconds:6.2f}s  "
-              f"{'FALLBACK' if row['fallback_fired'] else '        '}  {_line(row)}", flush=True)
+        print(
+            f"{index:3}/{len(paths)}  {duration:6.1f}s  base {base_seconds:6.2f}s  "
+            f"{'FALLBACK' if row['fallback_fired'] else '        '}  {_line(row)}",
+            flush=True,
+        )
 
     report(rows)
     if args.json_out:
@@ -168,11 +175,9 @@ def report(rows: list[dict]) -> None:
     total_base = sum(r["baseline_seconds"] for r in rows)
 
     print("\n" + "=" * 78)
-    print(f"recordings                {len(rows)}   "
-          f"({sum(1 for r in rows if r['single_window'])} fit one 30s window)")
+    print(f"recordings                {len(rows)}   ({sum(1 for r in rows if r['single_window'])} fit one 30s window)")
     print(f"baseline total decode     {total_base:.1f}s")
-    print(f"temperature fallback      fired on {len(fallbacks)}/{len(rows)} "
-          f"({100 * len(fallbacks) / len(rows):.0f}%)")
+    print(f"temperature fallback      fired on {len(fallbacks)}/{len(rows)} ({100 * len(fallbacks) / len(rows):.0f}%)")
     print()
     print(f"{'variant':<16}{'total':>9}{'speedup':>9}{'median':>9}{'identical':>12}{'mean WER*':>11}")
     for name in VARIANTS:
@@ -181,18 +186,22 @@ def report(rows: list[dict]) -> None:
         identical = [x for x in results if x["identical"]]
         changed = [x for x in results if not x["identical"]]
         mean_wer = statistics.mean(x["wer"] for x in changed) if changed else 0.0
-        print(f"{name:<16}{total:>8.1f}s{total_base / total:>8.2f}x"
-              f"{statistics.median(x['speedup'] for x in results):>8.2f}x"
-              f"{len(identical):>7}/{len(results):<4}{mean_wer:>11.4f}")
+        print(
+            f"{name:<16}{total:>8.1f}s{total_base / total:>8.2f}x"
+            f"{statistics.median(x['speedup'] for x in results):>8.2f}x"
+            f"{len(identical):>7}/{len(results):<4}{mean_wer:>11.4f}"
+        )
     print("* mean WER is over the recordings that changed, versus the baseline transcript")
 
     if fallbacks:
         print(f"\nwhere the fallback actually fired ({len(fallbacks)} recording(s)):")
         for row in fallbacks:
             greedy = row["variants"]["greedy"]
-            print(f"  {row['file']}  {row['audio_seconds']}s  "
-                  f"baseline {row['baseline_seconds']}s -> greedy {greedy['seconds']}s "
-                  f"(x{greedy['speedup']:.2f}), {_verdict(greedy)}")
+            print(
+                f"  {row['file']}  {row['audio_seconds']}s  "
+                f"baseline {row['baseline_seconds']}s -> greedy {greedy['seconds']}s "
+                f"(x{greedy['speedup']:.2f}), {_verdict(greedy)}"
+            )
 
     for name in VARIANTS:
         changed = [r for r in rows if not r["variants"][name]["identical"]]

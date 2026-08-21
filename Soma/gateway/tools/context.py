@@ -159,7 +159,12 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
             )
             estimated_context_reduction = token_savings.get("estimated_context_reduction")
             operation_savings = token_savings.get("operation_savings")
-            missing_evidence = {"status": "ok", "reason": intent["reason"], "unresolved_references": [], "found_not_selected": []}
+            missing_evidence = {
+                "status": "ok",
+                "reason": intent["reason"],
+                "unresolved_references": [],
+                "found_not_selected": [],
+            }
             audit_report = write_prepare_audit(
                 build_prepare_audit(
                     context=audit_context,
@@ -198,11 +203,15 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
         git_diff_summary = get_git_diff_summary(project_root, terms)
         discovered = iter_project_files(project_root)
         repo_index = build_repo_index(project_root, discovered)
-        preflight = build_preflight(selection_goal, project_root, project_type, discovered, repo_index, git_status, git_diff_summary)
+        preflight = build_preflight(
+            selection_goal, project_root, project_type, discovered, repo_index, git_status, git_diff_summary
+        )
 
         explicit_items = gather_external_evidence(selection_goal, project_root, terms, discovered, repo_index)
         selection_limit = MAX_EVIDENCE_ITEMS * 3 if depth in {"ranked", "analyst"} else MAX_EVIDENCE_ITEMS
-        evidence_items = explicit_items + select_evidence(project_root, selection_goal, project_type, repo_index, preflight, max_items=selection_limit)
+        evidence_items = explicit_items + select_evidence(
+            project_root, selection_goal, project_type, repo_index, preflight, max_items=selection_limit
+        )
         seen: set[str] = set()
         deduped: list[dict[str, Any]] = []
         for item in evidence_items:
@@ -225,7 +234,9 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
 
         stages = [{"stage": "preflight", "status": "ok"}, {"stage": "deterministic", "status": "ok"}]
         if depth in {"ranked", "analyst"}:
-            evidence_items, filter_stage = await filter_candidates_with_model(normalized_goal, preflight, evidence_items, MAX_EVIDENCE_ITEMS)
+            evidence_items, filter_stage = await filter_candidates_with_model(
+                normalized_goal, preflight, evidence_items, MAX_EVIDENCE_ITEMS
+            )
             stages.append(filter_stage)
             evidence_items, rank_stage = await rank_evidence_with_model(normalized_goal, preflight, evidence_items)
             evidence_items = evidence_items[:MAX_EVIDENCE_ITEMS]
@@ -233,27 +244,41 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
 
         model_analysis = None
         if depth == "analyst":
-            model_analysis, analyst_stage = await analyze_packet_with_model(normalized_goal, preflight, evidence_items, error_lines)
+            model_analysis, analyst_stage = await analyze_packet_with_model(
+                normalized_goal, preflight, evidence_items, error_lines
+            )
             stages.append(analyst_stage)
 
         graph_result = graphify.query(normalized_goal, project_root, budget=1200, project_only=True)
         graph_suggestions = _graph_suggestion_lines(graph_result)
-        summary = fallback_summary(normalized_goal, project_root, project_type, evidence_items, error_lines, preflight["packet_mode"])
+        summary = fallback_summary(
+            normalized_goal, project_root, project_type, evidence_items, error_lines, preflight["packet_mode"]
+        )
         evidence_quality = assess_evidence_quality(selection_goal, evidence_items, preflight)
         policy_summary = evidence_policy_summary(evidence_items, project_root, project_type)
         if policy_summary["warnings"]:
-            evidence_quality["warnings"] = dedupe_strings((evidence_quality.get("warnings") or []) + policy_summary["warnings"])[:10]
-        if depth in {"ranked", "analyst"} and not any(stage.get("stage") == "ranker" and stage.get("status") == "failed" for stage in stages if isinstance(stage, dict)):
-            evidence_quality, referee_stage = await referee_evidence_with_model(normalized_goal, preflight, evidence_items, evidence_quality)
+            evidence_quality["warnings"] = dedupe_strings(
+                (evidence_quality.get("warnings") or []) + policy_summary["warnings"]
+            )[:10]
+        if depth in {"ranked", "analyst"} and not any(
+            stage.get("stage") == "ranker" and stage.get("status") == "failed"
+            for stage in stages
+            if isinstance(stage, dict)
+        ):
+            evidence_quality, referee_stage = await referee_evidence_with_model(
+                normalized_goal, preflight, evidence_items, evidence_quality
+            )
             stages.append(referee_stage)
         local_ai_metrics = summarize_local_ai_stages(stages)
 
         open_questions = dedupe_strings(summary.get("open_questions", []))[:3]
         if evidence_quality.get("status") != "ok":
-            open_questions = dedupe_strings([
-                "Evidence is degraded; ask for 1-3 exact files or commands before treating this packet as complete.",
-                *open_questions,
-            ])[:3]
+            open_questions = dedupe_strings(
+                [
+                    "Evidence is degraded; ask for 1-3 exact files or commands before treating this packet as complete.",
+                    *open_questions,
+                ]
+            )[:3]
 
         bundle = {
             "mode": "gather",
@@ -268,7 +293,9 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
             "analysis_depth": depth,
             "analysis_stages": stages,
             "local_ai_metrics": local_ai_metrics,
-            "preflight": {k: v for k, v in preflight.items() if k not in {"changed_paths", "error_paths", "candidate_paths"}},
+            "preflight": {
+                k: v for k, v in preflight.items() if k not in {"changed_paths", "error_paths", "candidate_paths"}
+            },
             "model_analysis": model_analysis,
             "gather_reason": intent["reason"],
             "confidence": summary.get("confidence", 0.55),
@@ -381,7 +408,9 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
         audit_report = write_prepare_audit(
             build_prepare_audit(
                 context=audit_context,
-                status="ok" if evidence_quality["status"] == "ok" and missing_evidence["status"] == "ok" else "degraded",
+                status="ok"
+                if evidence_quality["status"] == "ok" and missing_evidence["status"] == "ok"
+                else "degraded",
                 project_root=project_root,
                 project_type=project_type,
                 original_prompt=goal,
@@ -447,7 +476,9 @@ async def soma_prepare_context(goal: str, budget: str = "balanced", depth: str =
             token_savings=token_savings,
             estimated_context_reduction=token_savings.get("estimated_context_reduction"),
             operation_savings=token_savings.get("operation_savings"),
-            next_calls=codex_next_calls("Fix the reported Soma error, then rerun soma_prepare_context for the same task."),
+            next_calls=codex_next_calls(
+                "Fix the reported Soma error, then rerun soma_prepare_context for the same task."
+            ),
         )
 
 
@@ -455,12 +486,17 @@ async def soma_get_map() -> str:
     """Return a compact living project map from git, Graphify, Nexus, and memory."""
     project_root = get_active_project_root()
     if not project_root:
-        return _error_response("No project root configured.", next_calls=codex_next_calls("Set SOMA_PROJECT_ROOT or select a project in Soma."))
+        return _error_response(
+            "No project root configured.",
+            next_calls=codex_next_calls("Set SOMA_PROJECT_ROOT or select a project in Soma."),
+        )
 
     project_type, type_reason = detect_project_type(project_root)
     state = nexus.discover()
     git_status = get_git_status(project_root)
-    changed_count = len([line for line in git_status.splitlines() if line and not line.startswith("##")]) if git_status else 0
+    changed_count = (
+        len([line for line in git_status.splitlines() if line and not line.startswith("##")]) if git_status else 0
+    )
     graph_nodes = graphify.god_nodes_from_report(project_root)
     graph_status = graphify.status(project_root)
     memory = memory_store.load(project_root)
@@ -488,15 +524,25 @@ async def soma_get_map() -> str:
             errors = [
                 item
                 for item in log_items
-                if isinstance(item, dict) and str(item.get("Type") or item.get("type") or "").lower() in {"error", "exception"}
+                if isinstance(item, dict)
+                and str(item.get("Type") or item.get("type") or "").lower() in {"error", "exception"}
             ][:5]
-            health = {"available": True, "error_count": len(errors), "errors": [_safe_text(e.get("Message") or e.get("message"), 160) for e in errors]}
+            health = {
+                "available": True,
+                "error_count": len(errors),
+                "errors": [_safe_text(e.get("Message") or e.get("message"), 160) for e in errors],
+            }
             omitted["logs_returned"] = len(log_items)
         else:
             health = {"available": False, "error": err}
 
     map_data = {
-        "project": {"name": Path(project_root).name, "path": project_root, "type": project_type, "type_reason": type_reason},
+        "project": {
+            "name": Path(project_root).name,
+            "path": project_root,
+            "type": project_type,
+            "type_reason": type_reason,
+        },
         "nexus": state.as_dict(),
         "git": {"status": git_status.splitlines()[:20] if git_status else [], "changed_count": changed_count},
         "graph": {"god_nodes": graph_nodes[:8], **graph_status},
@@ -515,7 +561,9 @@ async def soma_get_map() -> str:
         f"Living map for {Path(project_root).name}.",
         map=serializable_map,
         omitted=omitted,
-        next_calls=codex_next_calls("Call soma_prepare_context with the concrete task.", "Call soma_code_context for a focused subsystem."),
+        next_calls=codex_next_calls(
+            "Call soma_prepare_context with the concrete task.", "Call soma_code_context for a focused subsystem."
+        ),
     )
 
 
@@ -523,7 +571,10 @@ async def soma_code_context(query: str) -> str:
     """Return Graphify context plus deterministic source snippets for a focused query."""
     project_root = get_active_project_root()
     if not project_root:
-        return _error_response("No project root configured.", next_calls=codex_next_calls("Set SOMA_PROJECT_ROOT or select a project in Soma."))
+        return _error_response(
+            "No project root configured.",
+            next_calls=codex_next_calls("Set SOMA_PROJECT_ROOT or select a project in Soma."),
+        )
 
     terms = prompt_terms(query)
     discovered = iter_project_files(project_root)
@@ -568,5 +619,7 @@ async def soma_code_context(query: str) -> str:
             "graphs_consulted": graph_result["graphs"][:3],
             "graph_warnings": graph_result["warnings"][:2],
         },
-        next_calls=codex_next_calls("Use these snippets first.", "Call soma_prepare_context if this becomes an implementation task."),
+        next_calls=codex_next_calls(
+            "Use these snippets first.", "Call soma_prepare_context if this becomes an implementation task."
+        ),
     )

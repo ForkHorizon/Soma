@@ -8,6 +8,7 @@ from typing import Any
 
 from gateway.graph_storage import GRAPHIFY_BASE_DIR, GraphStorageManager
 
+
 class GraphifyAdapter:
     def __init__(self, graph_dir: Path = GRAPHIFY_BASE_DIR):
         self.storage = GraphStorageManager(graph_dir)
@@ -41,7 +42,9 @@ class GraphifyAdapter:
     def migrate_graph(self, project_root: str | None) -> dict[str, Any]:
         return self.storage.migrate_graph(project_root)
 
-    def query(self, question: str, project_root: str | None, budget: int = 1500, project_only: bool | None = None) -> dict[str, Any]:
+    def query(
+        self, question: str, project_root: str | None, budget: int = 1500, project_only: bool | None = None
+    ) -> dict[str, Any]:
         graphs = self.find_graphs(project_root, project_only=project_only)
         graph_status = self.status(project_root)
         if graphs and graph_status.get("stale"):
@@ -51,7 +54,11 @@ class GraphifyAdapter:
                 "graphify skipped: graph is stale; refresh the managed graph before using graph hints",
             )
         if graphs and (graph_status.get("graph_degraded") or graph_status.get("graphDegraded")):
-            reason = graph_status.get("graph_degraded_reason") or graph_status.get("graphDegradedReason") or "diagnostics marked graph degraded"
+            reason = (
+                graph_status.get("graph_degraded_reason")
+                or graph_status.get("graphDegradedReason")
+                or "diagnostics marked graph degraded"
+            )
             return self._skipped_result(project_only, graph_status, f"graphify skipped: {reason}")
         answers: list[dict[str, str]] = []
         warnings: list[str] = []
@@ -156,7 +163,16 @@ def _affected_terms(question: str) -> list[str]:
     for pattern in (r"`([^`]{3,80})`", r"\b([A-Za-z_][A-Za-z0-9_]{2,}(?:\.[A-Za-z0-9_]+)?)\b"):
         for match in re.findall(pattern, question or ""):
             cleaned = str(match).strip().strip(".,:;()[]{}")
-            if not cleaned or cleaned.lower() in {"review", "update", "graphify", "version", "current", "feature", "features", "project"}:
+            if not cleaned or cleaned.lower() in {
+                "review",
+                "update",
+                "graphify",
+                "version",
+                "current",
+                "feature",
+                "features",
+                "project",
+            }:
                 continue
             if any(ch.isupper() for ch in cleaned) or "_" in cleaned or "." in cleaned:
                 if cleaned not in terms:

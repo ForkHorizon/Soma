@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Token savings model shared by runtime packet responses and benchmarks."""
+
 from __future__ import annotations
 
 import json
@@ -335,7 +336,9 @@ def build_operation_savings(
         "source": "git_status_git_diff_selected_evidence_outputs",
         "characters": baseline_chars,
         "tokens": baseline_tokens,
-        "included_file_count": sum(1 for op in operations if op.get("source") in {"selected_evidence_file", "evidence_preview"}),
+        "included_file_count": sum(
+            1 for op in operations if op.get("source") in {"selected_evidence_file", "evidence_preview"}
+        ),
         "operation_count": len(operations),
         "saved_tokens": saved,
         "savings_pct": _round_pct(100 * saved / max(baseline_tokens, 1)),
@@ -359,7 +362,9 @@ def build_operation_savings(
     return result
 
 
-def finalize_operation_savings_response_tokens(operation_savings: dict[str, Any] | None, soma_response_tokens: int) -> dict[str, Any] | None:
+def finalize_operation_savings_response_tokens(
+    operation_savings: dict[str, Any] | None, soma_response_tokens: int
+) -> dict[str, Any] | None:
     """Recompute operation savings against the full Soma tool response.
 
     Runtime callers build operation metadata before rendering the final JSON
@@ -449,7 +454,9 @@ def build_token_savings(
         "budget_tokens": budget_tokens,
         "budget_used_pct": (primary_metric or {}).get("budget_used_pct"),
         "baseline_type": (primary_metric or {}).get("baseline_type"),
-        "baselines": estimated_context_reduction.get("baselines") if isinstance(estimated_context_reduction, dict) else {
+        "baselines": estimated_context_reduction.get("baselines")
+        if isinstance(estimated_context_reduction, dict)
+        else {
             "task_candidates": task_candidate_baseline,
             "raw_repo_plus_diff": raw_repo_plus_diff_baseline,
         },

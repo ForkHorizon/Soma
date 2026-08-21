@@ -4,6 +4,7 @@
 Network-facing broker for M1 ASR. It accepts lossless audio chunks, queues requests, and
 forwards one job at a time to a warm per-engine backend process.
 """
+
 from __future__ import annotations
 
 import queue
@@ -121,9 +122,12 @@ class VoiceServerState:
         # upload as form data. Keep that compatibility while app clients always
         # send an explicit audio MIME type.
         return {
-            "": ".wav", "application/x-www-form-urlencoded": ".wav",
-            "audio/wav": ".wav", "audio/x-wav": ".wav",
-            "audio/flac": ".flac", "audio/x-flac": ".flac",
+            "": ".wav",
+            "application/x-www-form-urlencoded": ".wav",
+            "audio/wav": ".wav",
+            "audio/x-wav": ".wav",
+            "audio/flac": ".flac",
+            "audio/x-flac": ".flac",
         }.get(content_type)
 
     def _queue_error_locked(self, work_class: str) -> tuple[int, dict[str, Any]] | None:
@@ -133,9 +137,16 @@ class VoiceServerState:
         # everything until the timed sweep. Only walk it when a limit is set;
         # zero means unlimited, which is the default.
         if work_class == "background" and self.max_background_queue:
-            waiting_background = sum(1 for job in self.jobs.values() if job.status == "queued" and job.work_class == "background")
+            waiting_background = sum(
+                1 for job in self.jobs.values() if job.status == "queued" and job.work_class == "background"
+            )
             if waiting_background >= self.max_background_queue:
-                return self.error(429, "background_queue_full", "Background media queue is full; live dictation is reserved.", retryable=True)
+                return self.error(
+                    429,
+                    "background_queue_full",
+                    "Background media queue is full; live dictation is reserved.",
+                    retryable=True,
+                )
         return None
 
     def _enqueue_locked(self, job: Job) -> None:
@@ -161,7 +172,9 @@ class VoiceServerState:
     def create_session(self, headers: dict[str, str]) -> tuple[int, dict[str, Any]]:
         return voice_sessions.create(self, headers)
 
-    def submit_session_chunk(self, session_id: str, index: int, headers: dict[str, str], body: bytes) -> tuple[int, dict[str, Any]]:
+    def submit_session_chunk(
+        self, session_id: str, index: int, headers: dict[str, str], body: bytes
+    ) -> tuple[int, dict[str, Any]]:
         return voice_sessions.submit_chunk(self, session_id, index, headers, body)
 
     def finalize_session(self, session_id: str, headers: dict[str, str]) -> tuple[int, dict[str, Any]]:
@@ -199,7 +212,9 @@ class VoiceServerState:
             if not session:
                 return self.error(404, "session_not_found", "Voice session was not found or expired.", retryable=False)
             if session.client_id != client_id:
-                return self.error(403, "session_client_mismatch", "Voice session belongs to another client.", retryable=False)
+                return self.error(
+                    403, "session_client_mismatch", "Voice session belongs to another client.", retryable=False
+                )
             deadline = time.monotonic() + wait_seconds
             while wait_seconds > 0 and session.status in {"recording", "finalizing"}:
                 if since_completed is not None and voice_session_view.completed_locked(self, session) > since_completed:
@@ -275,12 +290,25 @@ class VoiceServerState:
     def _prune(self) -> None:
         voice_jobs.prune(self)
 
-    def _new_job(self, client_id: str, request_id: str, engine: str, language: str, idle_seconds: int, audio_path: str, work_class: str, client_managed_recovery: bool = False) -> Job:
-        return voice_jobs.new_job(self, client_id, request_id, engine, language, idle_seconds, audio_path, work_class, client_managed_recovery)
+    def _new_job(
+        self,
+        client_id: str,
+        request_id: str,
+        engine: str,
+        language: str,
+        idle_seconds: int,
+        audio_path: str,
+        work_class: str,
+        client_managed_recovery: bool = False,
+    ) -> Job:
+        return voice_jobs.new_job(
+            self, client_id, request_id, engine, language, idle_seconds, audio_path, work_class, client_managed_recovery
+        )
 
     @staticmethod
     def error(code: int, error_code: str, message: str, retryable: bool) -> tuple[int, dict[str, Any]]:
         return code, {"error": {"code": error_code, "message": message, "retryable": retryable}}
+
 
 if __name__ == "__main__":
     main()

@@ -22,6 +22,7 @@ At best it buys 0.42s while tripling the chunk count and doubling total decode
 and now shows up as duplicated words. Cutting more often multiplies the one
 defect the seam policy just made visible.
 """
+
 from __future__ import annotations
 
 SAMPLE_RATE = 16000
@@ -118,16 +119,18 @@ def capture_chunks(audio, block_frames: int = 1024, forced_seconds: float = 10.0
         if open_start is None or position <= open_start:
             open_start = None
             return
-        chunks.append({
-            "start": open_start,
-            "end": position,
-            "reason": seal_reason if reason == "pause" else reason,
-            "overlap_ms": overlap_ms,
-        })
+        chunks.append(
+            {
+                "start": open_start,
+                "end": position,
+                "reason": seal_reason if reason == "pause" else reason,
+                "overlap_ms": overlap_ms,
+            }
+        )
         open_start = None
 
     for offset in range(0, len(audio), block_frames):
-        block = audio[offset:offset + block_frames]
+        block = audio[offset : offset + block_frames]
         event = detector.observe(level_dbfs(block), len(block))
         position = offset + len(block)
         if event == "speech_started":

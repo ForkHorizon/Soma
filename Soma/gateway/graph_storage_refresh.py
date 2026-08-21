@@ -31,7 +31,9 @@ class GraphStorageRefreshMixin:
             "graph": self.status(root),
         }
 
-    def refresh_managed_graph(self, project_root: str | Path | None, *, full: bool = False, force: bool = False) -> dict[str, Any]:
+    def refresh_managed_graph(
+        self, project_root: str | Path | None, *, full: bool = False, force: bool = False
+    ) -> dict[str, Any]:
         root = self.normalize_project_root(project_root)
         if root is None:
             return {"status": "error", "summary": "project_root is required", "graph": self.status(root)}
@@ -49,7 +51,9 @@ class GraphStorageRefreshMixin:
         completed, before_project_graph, before_source_graph = result
         if completed.returncode != 0:
             return self._refresh_failed_payload(root, source_root, command["mode"], completed)
-        return self._refresh_ok_payload(root, source_root, command["mode"], completed, before_project_graph, before_source_graph, full)
+        return self._refresh_ok_payload(
+            root, source_root, command["mode"], completed, before_project_graph, before_source_graph, full
+        )
 
     def refresh_all_managed_graphs(self, *, full: bool = False) -> dict[str, Any]:
         results = []
@@ -62,7 +66,9 @@ class GraphStorageRefreshMixin:
             if skip_reason:
                 results.append({"status": "skipped", "projectRoot": str(normalized), "summary": skip_reason})
             elif not self.graph_json(normalized).exists() and not full:
-                results.append({"status": "skipped", "projectRoot": str(normalized), "summary": "No managed graph to refresh."})
+                results.append(
+                    {"status": "skipped", "projectRoot": str(normalized), "summary": "No managed graph to refresh."}
+                )
             else:
                 results.append(self.refresh_managed_graph(normalized, full=full))
         return self._refresh_all_summary(results)
@@ -87,7 +93,12 @@ class GraphStorageRefreshMixin:
 
     def _source_root_error(self, root: Path, source_root: Path | None) -> dict[str, Any] | None:
         if source_root is None:
-            return {"status": "error", "summary": "Graph source root is unavailable.", "projectRoot": str(root), "graph": self.status(root)}
+            return {
+                "status": "error",
+                "summary": "Graph source root is unavailable.",
+                "projectRoot": str(root),
+                "graph": self.status(root),
+            }
         if source_root.exists() and source_root.is_dir():
             return None
         return {
@@ -101,13 +112,19 @@ class GraphStorageRefreshMixin:
     def _refresh_command(self, root: Path, source_root: Path, full: bool, force: bool) -> dict[str, Any]:
         graphify_bin = shutil.which("graphify") or str(Path.home() / ".local" / "bin" / "graphify")
         if full:
-            return {"cmd": [graphify_bin, "extract", str(source_root), "--out", str(self.project_dir(root))], "timeout": 60 * 60, "mode": "full_rebuild"}
+            return {
+                "cmd": [graphify_bin, "extract", str(source_root), "--out", str(self.project_dir(root))],
+                "timeout": 60 * 60,
+                "mode": "full_rebuild",
+            }
         cmd = [graphify_bin, "update"]
         if force or self.graph_scope(root) == "unity_assets":
             cmd.append("--force")
         return {"cmd": cmd + [str(source_root)], "timeout": 10 * 60, "mode": "ast_update"}
 
-    def _run_refresh_command(self, root: Path, command: dict[str, Any]) -> tuple[subprocess.CompletedProcess, bool, bool] | dict[str, Any]:
+    def _run_refresh_command(
+        self, root: Path, command: dict[str, Any]
+    ) -> tuple[subprocess.CompletedProcess, bool, bool] | dict[str, Any]:
         source_root = self.graph_source_root(root)
         self.graph_dir(root).mkdir(parents=True, exist_ok=True)
         env = os.environ.copy()
@@ -116,12 +133,28 @@ class GraphStorageRefreshMixin:
         before_project_graph = (root / "graphify-out").exists()
         before_source_graph = (source_root / "graphify-out").exists() if source_root else False
         try:
-            completed = subprocess.run(command["cmd"], cwd=str(root), env=env, capture_output=True, text=True, timeout=command["timeout"], check=False)
+            completed = subprocess.run(
+                command["cmd"],
+                cwd=str(root),
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=command["timeout"],
+                check=False,
+            )
         except Exception as exc:
-            return {"status": "error", "summary": str(exc), "mode": command["mode"], "projectRoot": str(root), "graph": self.status(root)}
+            return {
+                "status": "error",
+                "summary": str(exc),
+                "mode": command["mode"],
+                "projectRoot": str(root),
+                "graph": self.status(root),
+            }
         return completed, before_project_graph, before_source_graph
 
-    def _refresh_failed_payload(self, root: Path, source_root: Path, mode: str, result: subprocess.CompletedProcess) -> dict[str, Any]:
+    def _refresh_failed_payload(
+        self, root: Path, source_root: Path, mode: str, result: subprocess.CompletedProcess
+    ) -> dict[str, Any]:
         return {
             "status": "error",
             "summary": (result.stderr or result.stdout or "Graphify refresh failed.").strip()[:1000],
@@ -133,7 +166,16 @@ class GraphStorageRefreshMixin:
             "graph": self.status(root),
         }
 
-    def _refresh_ok_payload(self, root: Path, source_root: Path, mode: str, result: subprocess.CompletedProcess, before_project_graph: bool, before_source_graph: bool, full: bool) -> dict[str, Any]:
+    def _refresh_ok_payload(
+        self,
+        root: Path,
+        source_root: Path,
+        mode: str,
+        result: subprocess.CompletedProcess,
+        before_project_graph: bool,
+        before_source_graph: bool,
+        full: bool,
+    ) -> dict[str, Any]:
         diagnostics = self.diagnose_graph(root)
         graph_status = self.status(root)
         self.update_index(root, graph_status, graphify_version=self.graphify_version())
@@ -147,15 +189,28 @@ class GraphStorageRefreshMixin:
             "stdout": (result.stdout or "").strip()[:2000],
             "stderr": (result.stderr or "").strip()[:2000],
             "diagnostics": diagnostics,
-            "warnings": self._refresh_warnings(root, source_root, before_project_graph, before_source_graph, diagnostics),
+            "warnings": self._refresh_warnings(
+                root, source_root, before_project_graph, before_source_graph, diagnostics
+            ),
             "graph": self.status(root),
         }
 
-    def _refresh_warnings(self, root: Path, source_root: Path, before_project_graph: bool, before_source_graph: bool, diagnostics: dict[str, Any]) -> list[str]:
+    def _refresh_warnings(
+        self,
+        root: Path,
+        source_root: Path,
+        before_project_graph: bool,
+        before_source_graph: bool,
+        diagnostics: dict[str, Any],
+    ) -> list[str]:
         warnings = []
         if not before_project_graph and (root / "graphify-out").exists():
             warnings.append("A project-root graphify-out appeared during refresh.")
-        if not before_source_graph and (source_root / "graphify-out").exists() and source_root.resolve(strict=False) != root.resolve(strict=False):
+        if (
+            not before_source_graph
+            and (source_root / "graphify-out").exists()
+            and source_root.resolve(strict=False) != root.resolve(strict=False)
+        ):
             warnings.append("A graphify-out appeared under the graph source root during refresh.")
         if diagnostics.get("degraded"):
             warnings.append(diagnostics.get("reason") or "Graph diagnostics marked this graph degraded.")

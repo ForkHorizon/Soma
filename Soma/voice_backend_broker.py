@@ -5,6 +5,7 @@ The network server never imports Whisper/GigaAM. It hands local audio paths to
 the backend through this broker, which starts the right engine venv on demand
 and reports backend health without ever blocking a request thread.
 """
+
 from __future__ import annotations
 
 import json
@@ -254,4 +255,3 @@ class BackendBroker:
         self.engine = None
         self.port = None
         self._health_wake.set()
-

@@ -26,7 +26,9 @@ def run_deepseek_json(
     model = (model or DEFAULT_DEEPSEEK_MODEL).strip() or DEFAULT_DEEPSEEK_MODEL
     key = deepseek_api_key()
     if not key:
-        return None, _failed_meta("DeepSeek API key missing. Set SOMA_DEEPSEEK_API_KEY or DEEPSEEK_API_KEY.", model, started)
+        return None, _failed_meta(
+            "DeepSeek API key missing. Set SOMA_DEEPSEEK_API_KEY or DEEPSEEK_API_KEY.", model, started
+        )
 
     body = _deepseek_payload(prompt, schema, model)
     request = urllib.request.Request(
@@ -72,7 +74,11 @@ def _chat_completions_url() -> str:
 
 
 def _deepseek_payload(prompt: str, schema: dict[str, Any], model: str) -> dict[str, Any]:
-    full_prompt = prompt + "\n\nReturn only one valid JSON object matching this JSON Schema. Do not wrap it in markdown.\n" + json.dumps(schema)
+    full_prompt = (
+        prompt
+        + "\n\nReturn only one valid JSON object matching this JSON Schema. Do not wrap it in markdown.\n"
+        + json.dumps(schema)
+    )
     payload: dict[str, Any] = {
         "model": model,
         "messages": [
@@ -130,7 +136,13 @@ def _http_error_message(exc: urllib.error.HTTPError) -> str:
 
 
 def _failed_meta(error: str, model: str, started: float, status_code: int | None = None) -> dict[str, Any]:
-    meta = {"provider": "deepseek", "model": model, "status": "failed", "error": _clip_text(error or "", 2000), "seconds": time.monotonic() - started}
+    meta = {
+        "provider": "deepseek",
+        "model": model,
+        "status": "failed",
+        "error": _clip_text(error or "", 2000),
+        "seconds": time.monotonic() - started,
+    }
     if status_code is not None:
         meta["status_code"] = status_code
     return meta

@@ -77,7 +77,12 @@ class VerifySomaLiveWorkflowTests(unittest.TestCase):
                     "omitted": {},
                 },
                 "soma_prepare_context": {"status": "ok", "summary": "packet", "evidence": [{}], "omitted": {}},
-                "soma_scene": {"status": "ok", "summary": "scene", "scene": {"roots": [{"name": "Main", "instance_id": 123}]}, "omitted": {}},
+                "soma_scene": {
+                    "status": "ok",
+                    "summary": "scene",
+                    "scene": {"roots": [{"name": "Main", "instance_id": 123}]},
+                    "omitted": {},
+                },
                 "soma_inspect": {"status": "ok", "summary": "inspect", "omitted": {}},
                 "soma_delta": {"status": "ok", "summary": "delta", "omitted": {}},
                 "soma_apply": {"status": "ok", "summary": "apply", "omitted": {}},
@@ -93,7 +98,10 @@ class VerifySomaLiveWorkflowTests(unittest.TestCase):
         self.assertEqual(report["calls"]["cleanup_apply"]["status"], "ok")
         self.assertIn(("soma_inspect", {"instance_id": 123}), session.calls)
         self.assertIn(
-            ("soma_execute", {"requests": [{"method": "delete_asset", "params": {"path": verifier.DEFAULT_APPLY_PATH}}]}),
+            (
+                "soma_execute",
+                {"requests": [{"method": "delete_asset", "params": {"path": verifier.DEFAULT_APPLY_PATH}}]},
+            ),
             session.calls,
         )
 
@@ -134,7 +142,9 @@ class VerifySomaLiveWorkflowTests(unittest.TestCase):
             tools=verifier.EXPECTED_TOOLS + ["unity_get_editor_state"],
         )
 
-        report = asyncio.run(verifier.verify_session(session, args(live_unity=False, run_apply=False, cleanup_apply=False)))
+        report = asyncio.run(
+            verifier.verify_session(session, args(live_unity=False, run_apply=False, cleanup_apply=False))
+        )
 
         self.assertEqual(report["status"], "degraded")
         self.assertIn("unity_tools_exposed", report["issues"])
@@ -153,7 +163,12 @@ class VerifySomaLiveWorkflowTests(unittest.TestCase):
                     "omitted": {},
                 },
                 "soma_prepare_context": {"status": "ok", "summary": "packet", "omitted": {}},
-                "soma_scene": {"status": "ok", "summary": "scene", "scene": {"roots": [{"instance_id": 321}]}, "omitted": {}},
+                "soma_scene": {
+                    "status": "ok",
+                    "summary": "scene",
+                    "scene": {"roots": [{"instance_id": 321}]},
+                    "omitted": {},
+                },
                 "soma_inspect": {"status": "ok", "summary": "inspect", "omitted": {}},
                 "soma_delta": {"status": "ok", "summary": "delta", "omitted": {}},
             }

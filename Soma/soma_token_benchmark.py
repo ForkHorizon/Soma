@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Benchmark Soma packet size against raw project context baselines."""
+
 from __future__ import annotations
 
 import argparse
@@ -49,7 +50,9 @@ def _read_raw_repo(
 
 def _git_dump_chars(root: Path) -> int:
     status = subprocess.run(["git", "status", "--short"], cwd=root, capture_output=True, text=True, check=False).stdout
-    diff = subprocess.run(["git", "diff", "--no-ext-diff", "--no-color"], cwd=root, capture_output=True, text=True, check=False).stdout
+    diff = subprocess.run(
+        ["git", "diff", "--no-ext-diff", "--no-color"], cwd=root, capture_output=True, text=True, check=False
+    ).stdout
     return len(f"Git status:\n{status}\n\nGit diff:\n{diff}")
 
 
@@ -107,7 +110,9 @@ def _benchmark_project(
     raw_repo = {"characters": 0, "included_file_count": 0, "truncated": False}
     raw_git_chars = 0
     if baseline in {"both", "raw-repo-plus-diff"}:
-        raw_repo = _read_raw_repo(root, max_files=max_files, max_chars_per_file=max_chars_per_file, max_total_chars=max_total_chars)
+        raw_repo = _read_raw_repo(
+            root, max_files=max_files, max_chars_per_file=max_chars_per_file, max_total_chars=max_total_chars
+        )
         raw_git_chars = _git_dump_chars(root)
         raw_repo_tokens = estimate_tokens_for_chars(raw_repo["characters"], model_profile)
         raw_git_tokens = estimate_tokens_for_chars(raw_git_chars, model_profile)
@@ -160,7 +165,9 @@ def _benchmark_project(
     }
 
 
-def _benchmark_fixture(template: Path, model_profile: str, python: str, budget: str, baseline: str, caps: dict[str, int]) -> dict[str, Any]:
+def _benchmark_fixture(
+    template: Path, model_profile: str, python: str, budget: str, baseline: str, caps: dict[str, int]
+) -> dict[str, Any]:
     tmp, root = prepare_fixture_repo(template)
     with tmp:
         return _benchmark_project(
@@ -187,7 +194,9 @@ def _build_summary(results: list[dict[str, Any]], mode: str) -> dict[str, Any]:
         "failed_result_count": len(failed_results),
         "fixture_count": len([item for item in results if item.get("fixture")]),
         "failed_fixture_count": len([item for item in failed_results if item.get("fixture")]),
-        "avg_savings_pct": round(sum(item["savings_pct"] for item in ok_results) / max(len(ok_results), 1), 1) if ok_results else None,
+        "avg_savings_pct": round(sum(item["savings_pct"] for item in ok_results) / max(len(ok_results), 1), 1)
+        if ok_results
+        else None,
         "total_baseline_tokens": sum(item.get("baseline_tokens") or 0 for item in ok_results),
         "total_soma_packet_tokens": sum(item.get("soma_packet_tokens") or 0 for item in ok_results),
         "total_saved_tokens": sum(item.get("saved_tokens") or 0 for item in ok_results),

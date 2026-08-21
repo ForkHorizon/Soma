@@ -4,6 +4,7 @@
 Imports of voice_server are deliberately deferred into main(): voice_server
 re-exports these entry points, and a module-level import would cycle.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -15,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 SERVER_SCRIPT = Path(__file__).with_name("voice_server.py")
+
 
 def install_launch_agent(args: argparse.Namespace) -> Path:
     plist = Path.home() / "Library/LaunchAgents/com.daliys.soma.voice-server.plist"
@@ -63,14 +65,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--host", default=os.environ.get("SOMA_VOICE_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("SOMA_VOICE_PORT", "8765")))
     parser.add_argument("--token", default=os.environ.get("SOMA_VOICE_TOKEN", ""))
-    parser.add_argument("--asr-root", type=Path, default=Path(os.environ.get("SOMA_VOICE_ASR_ROOT", "~/soma-asr-bench")).expanduser())
+    parser.add_argument(
+        "--asr-root", type=Path, default=Path(os.environ.get("SOMA_VOICE_ASR_ROOT", "~/soma-asr-bench")).expanduser()
+    )
     parser.add_argument("--models-root", type=Path, default=None)
     parser.add_argument("--idle-seconds", type=int, default=int(os.environ.get("SOMA_VOICE_IDLE_SECONDS", "3600")))
     parser.add_argument("--max-queue", type=int, default=int(os.environ.get("SOMA_VOICE_MAX_QUEUE", "0")))
-    parser.add_argument("--max-background-queue", type=int, default=int(os.environ.get("SOMA_VOICE_MAX_BACKGROUND_QUEUE", "0")))
-    parser.add_argument("--abandoned-session-ttl", type=int, default=int(os.environ.get("SOMA_VOICE_ABANDONED_SESSION_TTL", "86400")))
+    parser.add_argument(
+        "--max-background-queue", type=int, default=int(os.environ.get("SOMA_VOICE_MAX_BACKGROUND_QUEUE", "0"))
+    )
+    parser.add_argument(
+        "--abandoned-session-ttl", type=int, default=int(os.environ.get("SOMA_VOICE_ABANDONED_SESSION_TTL", "86400"))
+    )
     parser.add_argument("--install-launch-agent", action="store_true")
-    parser.add_argument("--allow-unauthenticated-local", action="store_true", help="Allow local-only requests without a bearer token")
+    parser.add_argument(
+        "--allow-unauthenticated-local", action="store_true", help="Allow local-only requests without a bearer token"
+    )
     return parser.parse_args(argv)
 
 
@@ -112,5 +122,3 @@ def main(argv: list[str] | None = None) -> None:
     signal.signal(signal.SIGINT, stop)
     print(f"[soma-voice-server] listening on {args.host}:{args.port} asr_root={args.asr_root}", flush=True)
     server.serve_forever()
-
-

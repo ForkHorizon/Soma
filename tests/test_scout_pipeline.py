@@ -60,9 +60,7 @@ class ScoutPipelineBasicTests(ScoutPipelineTestCase):
             game_dir = root / "Game"
             game_dir.mkdir()
             (game_dir / "JumpController.swift").write_text(
-                "final class JumpController {\n"
-                "    func jump() { fatalError(\"jump force missing\") }\n"
-                "}\n"
+                'final class JumpController {\n    func jump() { fatalError("jump force missing") }\n}\n'
             )
             (root / "runtime.log").write_text(
                 "INFO boot\n"
@@ -207,5 +205,5 @@ class ScoutPipelineBasicTests(ScoutPipelineTestCase):
         self.assertNotIn("Graph context (from Graphify):", bundle["codex_packet"])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

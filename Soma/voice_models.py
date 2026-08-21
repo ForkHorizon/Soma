@@ -4,6 +4,7 @@
 A `Job` is one unit of ASR work. A `VoiceSession` groups the ordered chunks of
 one recording, each chunk backed by its own job. No behaviour lives here.
 """
+
 from __future__ import annotations
 
 import json
@@ -12,7 +13,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-CAPABILITIES = ("warmup", "chunk_sessions", "long_poll", "flac", "priority_queue", "final_chunk_finalize", "partial_text")
+CAPABILITIES = (
+    "warmup",
+    "chunk_sessions",
+    "long_poll",
+    "flac",
+    "priority_queue",
+    "final_chunk_finalize",
+    "partial_text",
+)
+
 
 def default_settings_path() -> Path:
     return Path.home() / "Library/Application Support/Soma/VoiceServer/settings.json"

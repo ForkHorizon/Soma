@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Verify Soma core evidence workflow across non-Unity project fixtures."""
+
 from __future__ import annotations
 
 import argparse
@@ -77,8 +78,8 @@ def _ollama_health() -> dict[str, Any]:
         "model": ranker,
         "think": False,
         "messages": [
-            {"role": "system", "content": "Return JSON only: {\"ordered_ids\":[0]}"},
-            {"role": "user", "content": "{\"candidates\":[{\"id\":0,\"path\":\"main.py\"}]}"},
+            {"role": "system", "content": 'Return JSON only: {"ordered_ids":[0]}'},
+            {"role": "user", "content": '{"candidates":[{"id":0,"path":"main.py"}]}'},
         ],
         "stream": False,
         "format": "json",
@@ -113,7 +114,12 @@ def _verify_fixture(template: Path, budget: str, python: str) -> dict[str, Any]:
         project_type = ((get_map.get("map") or {}).get("project") or {}).get("type")
         result["project_type"] = project_type
 
-        prepare = _call_tool("soma_prepare_context", {"goal": _fixture_goal(template.name), "budget": budget, "depth": "deterministic"}, root, python)
+        prepare = _call_tool(
+            "soma_prepare_context",
+            {"goal": _fixture_goal(template.name), "budget": budget, "depth": "deterministic"},
+            root,
+            python,
+        )
         result["calls"]["soma_prepare_context"] = _compact_call(prepare)
         result["estimated_tokens"] = prepare.get("estimated_tokens")
         result["budget"] = budget
@@ -165,7 +171,12 @@ def _verify_depths(templates: list[Path], budget: str, python: str, local_ai_sta
     tmp, root = prepare_fixture_repo(template)
     with tmp:
         for depth in ("ranked", "analyst"):
-            payload = _call_tool("soma_prepare_context", {"goal": _fixture_goal(template.name), "budget": budget, "depth": depth}, root, python)
+            payload = _call_tool(
+                "soma_prepare_context",
+                {"goal": _fixture_goal(template.name), "budget": budget, "depth": depth},
+                root,
+                python,
+            )
             stages = payload.get("analysis_stages") or []
             checks[depth] = {
                 "status": payload.get("status") if payload.get("status") in {"ok", "degraded"} else "degraded",
@@ -173,9 +184,7 @@ def _verify_depths(templates: list[Path], budget: str, python: str, local_ai_sta
                 "estimated_tokens": payload.get("estimated_tokens"),
                 "evidence_count": len(payload.get("evidence") or []),
                 "analysis_stage_statuses": {
-                    stage.get("stage"): stage.get("status")
-                    for stage in stages
-                    if isinstance(stage, dict)
+                    stage.get("stage"): stage.get("status") for stage in stages if isinstance(stage, dict)
                 },
             }
     return checks
@@ -204,8 +213,12 @@ def main() -> int:
     local_ai_status = _ollama_health()
     depth_checks = _verify_depths(templates, args.budget, args.python, local_ai_status)
     report = {
-        "status": "ok" if all(item["status"] == "ok" for item in results) and depth_checks["deterministic"]["status"] == "ok" else "degraded",
-        "core_status": "ok" if all(item["calls"].get("soma_prepare_context", {}).get("status") == "ok" for item in results) else "degraded",
+        "status": "ok"
+        if all(item["status"] == "ok" for item in results) and depth_checks["deterministic"]["status"] == "ok"
+        else "degraded",
+        "core_status": "ok"
+        if all(item["calls"].get("soma_prepare_context", {}).get("status") == "ok" for item in results)
+        else "degraded",
         "plugin_status": {"unity_nexus": "skipped"},
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "fixtures_dir": str(Path(args.fixtures).resolve()),

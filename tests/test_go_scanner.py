@@ -7,6 +7,7 @@ import shutil
 
 from Soma.scout_pipeline_module import iter_project_files
 
+
 class TestGoScanner(unittest.TestCase):
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
@@ -51,12 +52,13 @@ class TestGoScanner(unittest.TestCase):
         # Check that noise was ignored
         self.assertNotIn(".noise.pyc", names)
         self.assertNotIn(".DS_Store", names)
-        self.assertNotIn("config", names) # Inside .git
+        self.assertNotIn("config", names)  # Inside .git
 
         # Check categories
         self.assertEqual(categories["main.cpp"], "source")
         self.assertEqual(categories["script.sh"], "script")
         self.assertEqual(categories["package.json"], "manifest")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

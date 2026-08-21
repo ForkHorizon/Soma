@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Aggregate Rus to Prompt model quality across saved stress-test logs."""
+
 from __future__ import annotations
 
 import argparse

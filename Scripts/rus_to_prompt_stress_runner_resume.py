@@ -47,7 +47,9 @@ def write_existing_results(file, results: list[CaseResult]) -> None:
     file.flush()
 
 
-def find_existing_translation(results: list[CaseResult], case_id: str, translator: str, benchmark_mode: str) -> CaseResult | None:
+def find_existing_translation(
+    results: list[CaseResult], case_id: str, translator: str, benchmark_mode: str
+) -> CaseResult | None:
     return find_existing_result(results, case_id, translator, TRANSLATION_ONLY_ANALYZER_MODEL, benchmark_mode)
 
 

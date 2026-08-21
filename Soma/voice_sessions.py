@@ -6,6 +6,7 @@ into a single transcript when finalized. These are free functions taking the
 `VoiceServerState` so the state object stays the single owner of the lock; the
 `_locked` suffix means the caller already holds `state.changed`.
 """
+
 from __future__ import annotations
 
 import time
@@ -46,7 +47,9 @@ def create(state, headers: dict[str, str]) -> tuple[int, dict[str, Any]]:
         return 201, voice_session_view.public_locked(state, session)
 
 
-def _parse_chunk_request(state, index: int, headers: dict[str, str]) -> tuple[dict[str, Any] | None, tuple[int, dict[str, Any]] | None]:
+def _parse_chunk_request(
+    state, index: int, headers: dict[str, str]
+) -> tuple[dict[str, Any] | None, tuple[int, dict[str, Any]] | None]:
     """Validate the chunk headers. Returns (request, None) or (None, error)."""
     if index < 0:
         return None, state.error(400, "bad_chunk_index", "Chunk index must be non-negative.", retryable=False)
@@ -55,13 +58,17 @@ def _parse_chunk_request(state, index: int, headers: dict[str, str]) -> tuple[di
         return None, state.error(400, "missing_request_id", "Chunk uploads require X-Soma-Request-ID.", retryable=False)
     work_class = state._work_class(headers)
     if work_class is None:
-        return None, state.error(400, "bad_work_class", "Work class must be interactive or background.", retryable=False)
+        return None, state.error(
+            400, "bad_work_class", "Work class must be interactive or background.", retryable=False
+        )
     suffix = state._audio_suffix(headers)
     if suffix is None:
         return None, state.error(415, "unsupported_audio", "Only WAV and FLAC audio are accepted.", retryable=False)
     reason = headers.get("x-soma-chunk-reason", "pause").strip().lower()
     if reason not in {"pause", "forced", "final"}:
-        return None, state.error(400, "bad_chunk_reason", "Chunk reason must be pause, forced, or final.", retryable=False)
+        return None, state.error(
+            400, "bad_chunk_reason", "Chunk reason must be pause, forced, or final.", retryable=False
+        )
     finalize_with_chunk = headers.get("x-soma-finalize-session", "").strip() == "1"
     if finalize_with_chunk and reason != "final":
         return None, state.error(400, "bad_finalization", "Only a final chunk can finalize a session.", retryable=False)
@@ -71,14 +78,20 @@ def _parse_chunk_request(state, index: int, headers: dict[str, str]) -> tuple[di
         try:
             context_chunk_index = int(context_value)
         except ValueError:
-            return None, state.error(400, "bad_context_chunk", "Context chunk index must be an integer.", retryable=False)
+            return None, state.error(
+                400, "bad_context_chunk", "Context chunk index must be an integer.", retryable=False
+            )
         if context_chunk_index != index - 1:
-            return None, state.error(400, "bad_context_chunk", "Context must be the immediately preceding chunk.", retryable=False)
+            return None, state.error(
+                400, "bad_context_chunk", "Context must be the immediately preceding chunk.", retryable=False
+            )
     try:
         overlap = max(0, int(headers.get("x-soma-overlap-milliseconds", "0")))
         duration = max(0, int(headers.get("x-soma-chunk-duration-milliseconds", "0")))
     except ValueError:
-        return None, state.error(400, "bad_chunk_metadata", "Chunk overlap and duration must be integers.", retryable=False)
+        return None, state.error(
+            400, "bad_chunk_metadata", "Chunk overlap and duration must be integers.", retryable=False
+        )
     return {
         "client_id": headers.get("x-soma-client-id", "unknown").strip() or "unknown",
         "request_id": request_id,
@@ -109,7 +122,9 @@ def _existing_chunk_reply(state, session, index: int, request: dict[str, Any]):
     return None
 
 
-def _store_chunk_locked(state, session, index: int, request: dict[str, Any], audio_path: str) -> tuple[int, dict[str, Any]]:
+def _store_chunk_locked(
+    state, session, index: int, request: dict[str, Any], audio_path: str
+) -> tuple[int, dict[str, Any]]:
     job = state._new_job(
         session.client_id,
         request["request_id"],
@@ -126,8 +141,13 @@ def _store_chunk_locked(state, session, index: int, request: dict[str, Any], aud
     state.idempotency[(session.client_id, request["request_id"])] = job.id
     first_time = index not in session.chunks
     session.chunks[index] = SessionChunk(
-        index, job.id, request["request_id"], request["reason"],
-        request["overlap"], request["duration"], request["context_chunk_index"],
+        index,
+        job.id,
+        request["request_id"],
+        request["reason"],
+        request["overlap"],
+        request["duration"],
+        request["context_chunk_index"],
     )
     if first_time:
         session.next_chunk_index += 1
@@ -140,7 +160,9 @@ def _store_chunk_locked(state, session, index: int, request: dict[str, Any], aud
     return 202, job.public()
 
 
-def submit_chunk(state, session_id: str, index: int, headers: dict[str, str], body: bytes) -> tuple[int, dict[str, Any]]:
+def submit_chunk(
+    state, session_id: str, index: int, headers: dict[str, str], body: bytes
+) -> tuple[int, dict[str, Any]]:
     if len(body) > state.max_audio_bytes:
         return state.error(413, "audio_too_large", "Audio file is too large.", retryable=False)
     request, error = _parse_chunk_request(state, index, headers)
@@ -157,12 +179,16 @@ def submit_chunk(state, session_id: str, index: int, headers: dict[str, str], bo
             if not session:
                 return state.error(404, "session_not_found", "Voice session was not found or expired.", retryable=False)
             if session.client_id != request["client_id"]:
-                return state.error(403, "session_client_mismatch", "Voice session belongs to another client.", retryable=False)
+                return state.error(
+                    403, "session_client_mismatch", "Voice session belongs to another client.", retryable=False
+                )
             if session.canceled:
                 return state.error(409, "session_canceled", "Voice session was canceled.", retryable=False)
             existing = session.chunks.get(index)
             if session.finalized and not existing:
-                return state.error(409, "session_finalized", "Voice session has already been finalized.", retryable=False)
+                return state.error(
+                    409, "session_finalized", "Voice session has already been finalized.", retryable=False
+                )
             if replay := _existing_chunk_reply(state, session, index, request):
                 return replay
             if not existing and index != session.next_chunk_index:
@@ -191,7 +217,9 @@ def finalize(state, session_id: str, headers: dict[str, str]) -> tuple[int, dict
         if not session:
             return state.error(404, "session_not_found", "Voice session was not found or expired.", retryable=False)
         if session.client_id != client_id:
-            return state.error(403, "session_client_mismatch", "Voice session belongs to another client.", retryable=False)
+            return state.error(
+                403, "session_client_mismatch", "Voice session belongs to another client.", retryable=False
+            )
         if session.canceled:
             return state.error(409, "session_canceled", "Voice session was canceled.", retryable=False)
         session.finalized = True
@@ -208,7 +236,9 @@ def cancel(state, session_id: str, headers: dict[str, str]) -> tuple[int, dict[s
         if not session:
             return state.error(404, "session_not_found", "Voice session was not found or expired.", retryable=False)
         if session.client_id != client_id:
-            return state.error(403, "session_client_mismatch", "Voice session belongs to another client.", retryable=False)
+            return state.error(
+                403, "session_client_mismatch", "Voice session belongs to another client.", retryable=False
+            )
         session.canceled = True
         session.status = "canceled"
         session.updated_at = time.time()
@@ -219,5 +249,3 @@ def cancel(state, session_id: str, headers: dict[str, str]) -> tuple[int, dict[s
                 job.error = {"code": "session_canceled", "message": "Voice session was canceled.", "retryable": False}
         state.changed.notify_all()
         return 200, voice_session_view.public_locked(state, session)
-
-

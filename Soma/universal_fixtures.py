@@ -32,7 +32,21 @@ def fixture_templates(fixtures_dir: str | Path) -> list[Path]:
 
 
 def _choose_change_file(root: Path) -> Path:
-    preferred_suffixes = [".swift", ".py", ".ts", ".go", ".rs", ".cpp", ".java", ".kt", ".php", ".rb", ".sh", ".sql", ".md"]
+    preferred_suffixes = [
+        ".swift",
+        ".py",
+        ".ts",
+        ".go",
+        ".rs",
+        ".cpp",
+        ".java",
+        ".kt",
+        ".php",
+        ".rb",
+        ".sh",
+        ".sql",
+        ".md",
+    ]
     for suffix in preferred_suffixes:
         matches = sorted(path for path in root.rglob(f"*{suffix}") if ".git" not in path.parts)
         if matches:

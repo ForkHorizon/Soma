@@ -184,17 +184,23 @@ class SomaVoiceServerTests(unittest.TestCase):
         status, payload = self.request("GET", f"{base}/v1/health")
         self.assertEqual(status, 200)
         self.assertEqual(payload["version"], 2)
-        self.assertTrue({"warmup", "chunk_sessions", "long_poll", "flac", "priority_queue", "final_chunk_finalize"}.issubset(payload["capabilities"]))
+        self.assertTrue(
+            {"warmup", "chunk_sessions", "long_poll", "flac", "priority_queue", "final_chunk_finalize"}.issubset(
+                payload["capabilities"]
+            )
+        )
 
     def test_flac_final_chunk_finalizes_a_session_without_an_extra_request(self):
         base, broker = self.start_server()
         _status, session = self.request(
-            "POST", f"{base}/v1/sessions",
+            "POST",
+            f"{base}/v1/sessions",
             headers={"X-Soma-Client-ID": "client-a", "X-Soma-Request-ID": "session-flac"},
         )
         session_id = session["session_id"]
         status, _payload = self.request(
-            "PUT", f"{base}/v1/sessions/{session_id}/chunks/0",
+            "PUT",
+            f"{base}/v1/sessions/{session_id}/chunks/0",
             body=b"lossless-audio",
             headers={
                 "Content-Type": "audio/flac",
@@ -205,21 +211,26 @@ class SomaVoiceServerTests(unittest.TestCase):
             },
         )
         self.assertEqual(status, 202)
-        status, done = self.request("GET", f"{base}/v1/sessions/{session_id}?wait=2", headers={"X-Soma-Client-ID": "client-a"})
+        status, done = self.request(
+            "GET", f"{base}/v1/sessions/{session_id}?wait=2", headers={"X-Soma-Client-ID": "client-a"}
+        )
         self.assertEqual(status, 200)
         self.assertEqual(done["status"], "done")
         self.assertEqual(done["text"], "lossless-audio")
         self.assertEqual(broker.calls[0][1], b"lossless-audio")
 
     def test_media_session_retries_bad_chunk_then_strips_previous_audio_context(self):
-        base, broker = self.start_server(broker_scripted_texts=[
-            "previous context",
-            "again " * 12,
-            "again " * 12,
-            "previous context repaired current transcript",
-        ])
+        base, broker = self.start_server(
+            broker_scripted_texts=[
+                "previous context",
+                "again " * 12,
+                "again " * 12,
+                "previous context repaired current transcript",
+            ]
+        )
         _status, session = self.request(
-            "POST", f"{base}/v1/sessions",
+            "POST",
+            f"{base}/v1/sessions",
             headers={
                 "X-Soma-Client-ID": "client-a",
                 "X-Soma-Request-ID": "session-auto",
@@ -228,7 +239,8 @@ class SomaVoiceServerTests(unittest.TestCase):
         )
         session_id = session["session_id"]
         status, _payload = self.request(
-            "PUT", f"{base}/v1/sessions/{session_id}/chunks/0",
+            "PUT",
+            f"{base}/v1/sessions/{session_id}/chunks/0",
             body=b"previous-audio",
             headers={
                 "Content-Type": "audio/flac",
@@ -251,21 +263,38 @@ class SomaVoiceServerTests(unittest.TestCase):
             "X-Soma-Finalize-Session": "1",
         }
         _status, first_attempt = self.request(
-            "PUT", f"{base}/v1/sessions/{session_id}/chunks/1", body=b"current-audio",
+            "PUT",
+            f"{base}/v1/sessions/{session_id}/chunks/1",
+            body=b"current-audio",
             headers={**headers, "X-Soma-Request-ID": f"{session_id}-1-0"},
         )
-        self.assertEqual(self.wait_terminal_job(base, first_attempt["job_id"])["error"]["code"], "pathological_repetition")
+        self.assertEqual(
+            self.wait_terminal_job(base, first_attempt["job_id"])["error"]["code"], "pathological_repetition"
+        )
         _status, second_attempt = self.request(
-            "PUT", f"{base}/v1/sessions/{session_id}/chunks/1", body=b"current-audio",
+            "PUT",
+            f"{base}/v1/sessions/{session_id}/chunks/1",
+            body=b"current-audio",
             headers={**headers, "X-Soma-Request-ID": f"{session_id}-1-1", "X-Soma-Retry-Failed-Chunk": "1"},
         )
-        self.assertEqual(self.wait_terminal_job(base, second_attempt["job_id"])["error"]["code"], "pathological_repetition")
+        self.assertEqual(
+            self.wait_terminal_job(base, second_attempt["job_id"])["error"]["code"], "pathological_repetition"
+        )
         _status, third_attempt = self.request(
-            "PUT", f"{base}/v1/sessions/{session_id}/chunks/1", body=b"previous-plus-current",
-            headers={**headers, "X-Soma-Request-ID": f"{session_id}-1-2", "X-Soma-Retry-Failed-Chunk": "1", "X-Soma-Context-Chunk-Index": "0"},
+            "PUT",
+            f"{base}/v1/sessions/{session_id}/chunks/1",
+            body=b"previous-plus-current",
+            headers={
+                **headers,
+                "X-Soma-Request-ID": f"{session_id}-1-2",
+                "X-Soma-Retry-Failed-Chunk": "1",
+                "X-Soma-Context-Chunk-Index": "0",
+            },
         )
         self.assertEqual(self.wait_terminal_job(base, third_attempt["job_id"])["status"], "done")
-        _status, done = self.request("GET", f"{base}/v1/sessions/{session_id}?wait=2", headers={"X-Soma-Client-ID": "client-a"})
+        _status, done = self.request(
+            "GET", f"{base}/v1/sessions/{session_id}?wait=2", headers={"X-Soma-Client-ID": "client-a"}
+        )
         self.assertEqual(done["status"], "done")
         self.assertEqual(done["text"], "previous context repaired current transcript")
         self.assertEqual([call[4] for call in broker.calls], ["auto"] * 4)
@@ -294,13 +323,19 @@ class SomaVoiceServerTests(unittest.TestCase):
                 "X-Soma-Overlap-Milliseconds": "750" if index == 1 else "0",
                 "X-Soma-Chunk-Duration-Milliseconds": "3000",
             }
-            status, payload = self.request("PUT", f"{base}/v1/sessions/{session_id}/chunks/{index}", body=body, headers=headers)
+            status, payload = self.request(
+                "PUT", f"{base}/v1/sessions/{session_id}/chunks/{index}", body=body, headers=headers
+            )
             self.assertEqual(status, 202)
             self.assertEqual(payload["status"], "queued")
 
-        status, _payload = self.request("POST", f"{base}/v1/sessions/{session_id}/finalize", headers={"X-Soma-Client-ID": "client-a"})
+        status, _payload = self.request(
+            "POST", f"{base}/v1/sessions/{session_id}/finalize", headers={"X-Soma-Client-ID": "client-a"}
+        )
         self.assertEqual(status, 200)
-        status, done = self.request("GET", f"{base}/v1/sessions/{session_id}?wait=2", headers={"X-Soma-Client-ID": "client-a"})
+        status, done = self.request(
+            "GET", f"{base}/v1/sessions/{session_id}?wait=2", headers={"X-Soma-Client-ID": "client-a"}
+        )
         self.assertEqual(status, 200)
         self.assertEqual(done["status"], "done")
         self.assertEqual(done["text"], "first second")
@@ -310,7 +345,11 @@ class SomaVoiceServerTests(unittest.TestCase):
 
     def test_pause_chunks_do_not_echo_prior_whisper_transcript(self):
         base, broker = self.start_server(broker_echo_initial_prompt=True)
-        session_headers = {"X-Soma-Client-ID": "client-a", "X-Soma-Request-ID": "session-pause", "X-Soma-Engine": "whisper"}
+        session_headers = {
+            "X-Soma-Client-ID": "client-a",
+            "X-Soma-Request-ID": "session-pause",
+            "X-Soma-Engine": "whisper",
+        }
         status, session = self.request("POST", f"{base}/v1/sessions", headers=session_headers)
         self.assertEqual(status, 201)
         session_id = session["session_id"]
@@ -323,12 +362,18 @@ class SomaVoiceServerTests(unittest.TestCase):
                 "X-Soma-Chunk-Reason": "pause",
                 "X-Soma-Chunk-Duration-Milliseconds": "3000",
             }
-            status, _payload = self.request("PUT", f"{base}/v1/sessions/{session_id}/chunks/{index}", body=body, headers=headers)
+            status, _payload = self.request(
+                "PUT", f"{base}/v1/sessions/{session_id}/chunks/{index}", body=body, headers=headers
+            )
             self.assertEqual(status, 202)
 
-        status, _payload = self.request("POST", f"{base}/v1/sessions/{session_id}/finalize", headers={"X-Soma-Client-ID": "client-a"})
+        status, _payload = self.request(
+            "POST", f"{base}/v1/sessions/{session_id}/finalize", headers={"X-Soma-Client-ID": "client-a"}
+        )
         self.assertEqual(status, 200)
-        status, done = self.request("GET", f"{base}/v1/sessions/{session_id}?wait=2", headers={"X-Soma-Client-ID": "client-a"})
+        status, done = self.request(
+            "GET", f"{base}/v1/sessions/{session_id}?wait=2", headers={"X-Soma-Client-ID": "client-a"}
+        )
         self.assertEqual(status, 200)
         self.assertEqual(done["text"], "first second")
         self.assertIsNone(broker.calls[1][3])
@@ -336,7 +381,8 @@ class SomaVoiceServerTests(unittest.TestCase):
     def test_chunk_session_rejects_future_chunk_and_accepts_idempotent_retry(self):
         base, _broker = self.start_server()
         status, session = self.request(
-            "POST", f"{base}/v1/sessions",
+            "POST",
+            f"{base}/v1/sessions",
             headers={"X-Soma-Client-ID": "client-a", "X-Soma-Request-ID": "session-order"},
         )
         self.assertEqual(status, 201)
@@ -350,11 +396,17 @@ class SomaVoiceServerTests(unittest.TestCase):
         self.assertEqual(payload["expected_chunk_index"], 0)
 
         headers["X-Soma-Request-ID"] = f"{session_id}-0"
-        _status, first = self.request("PUT", f"{base}/v1/sessions/{session_id}/chunks/0", body=b"first", headers=headers)
-        _status, retry = self.request("PUT", f"{base}/v1/sessions/{session_id}/chunks/0", body=b"first", headers=headers)
+        _status, first = self.request(
+            "PUT", f"{base}/v1/sessions/{session_id}/chunks/0", body=b"first", headers=headers
+        )
+        _status, retry = self.request(
+            "PUT", f"{base}/v1/sessions/{session_id}/chunks/0", body=b"first", headers=headers
+        )
         self.assertEqual(first["job_id"], retry["job_id"])
         headers["X-Soma-Request-ID"] = f"{session_id}-0-after-relaunch"
-        _status, resumed = self.request("PUT", f"{base}/v1/sessions/{session_id}/chunks/0", body=b"first", headers=headers)
+        _status, resumed = self.request(
+            "PUT", f"{base}/v1/sessions/{session_id}/chunks/0", body=b"first", headers=headers
+        )
         self.assertEqual(first["job_id"], resumed["job_id"])
 
     def test_backend_auto_language_omits_the_forced_language(self):
@@ -366,22 +418,28 @@ class SomaVoiceServerTests(unittest.TestCase):
     def test_cancel_session_discards_queued_chunk_result(self):
         base, broker = self.start_server(broker_delay=0.2)
         status, session = self.request(
-            "POST", f"{base}/v1/sessions",
+            "POST",
+            f"{base}/v1/sessions",
             headers={"X-Soma-Client-ID": "client-a", "X-Soma-Request-ID": "session-cancel"},
         )
         self.assertEqual(status, 201)
         session_id = session["session_id"]
         status, _payload = self.request(
-            "PUT", f"{base}/v1/sessions/{session_id}/chunks/0",
+            "PUT",
+            f"{base}/v1/sessions/{session_id}/chunks/0",
             body=b"audio",
             headers={"X-Soma-Client-ID": "client-a", "X-Soma-Request-ID": f"{session_id}-0"},
         )
         self.assertEqual(status, 202)
-        status, canceled = self.request("DELETE", f"{base}/v1/sessions/{session_id}", headers={"X-Soma-Client-ID": "client-a"})
+        status, canceled = self.request(
+            "DELETE", f"{base}/v1/sessions/{session_id}", headers={"X-Soma-Client-ID": "client-a"}
+        )
         self.assertEqual(status, 200)
         self.assertEqual(canceled["status"], "canceled")
         time.sleep(0.25)
-        status, state = self.request("GET", f"{base}/v1/sessions/{session_id}", headers={"X-Soma-Client-ID": "client-a"})
+        status, state = self.request(
+            "GET", f"{base}/v1/sessions/{session_id}", headers={"X-Soma-Client-ID": "client-a"}
+        )
         self.assertEqual(status, 200)
         self.assertEqual(state["status"], "canceled")
         self.assertLessEqual(len(broker.calls), 1)
@@ -494,13 +552,19 @@ class SomaVoiceServerTests(unittest.TestCase):
         self.assertEqual(payload["idle_seconds"], 0)
 
     def test_launch_agent_keeps_models_root_and_queue_config(self):
-        args = voice_server.parse_args([
-            "--token", "secret",
-            "--asr-root", "/tmp/asr",
-            "--models-root", "/tmp/models",
-            "--max-queue", "7",
-            "--allow-unauthenticated-local",
-        ])
+        args = voice_server.parse_args(
+            [
+                "--token",
+                "secret",
+                "--asr-root",
+                "/tmp/asr",
+                "--models-root",
+                "/tmp/models",
+                "--max-queue",
+                "7",
+                "--allow-unauthenticated-local",
+            ]
+        )
         with tempfile.TemporaryDirectory() as home:
             with mock.patch.object(voice_server.Path, "home", return_value=Path(home)):
                 plist = voice_server.install_launch_agent(args)
@@ -568,9 +632,11 @@ class SomaVoiceServerTests(unittest.TestCase):
         original_loaded = voice_asr_backend._loaded
         try:
             calls = []
+
             def fake_load():
                 calls.append(True)
                 voice_asr_backend._loaded = True
+
             voice_asr_backend._loaded = False
             voice_asr_backend._load = fake_load
             server = ThreadingHTTPServer(("127.0.0.1", 0), voice_asr_backend.Handler)
@@ -578,7 +644,9 @@ class SomaVoiceServerTests(unittest.TestCase):
             thread.start()
             self.addCleanup(lambda: (server.shutdown(), server.server_close()))
             base = f"http://127.0.0.1:{server.server_address[1]}"
-            status, payload = self.request("POST", f"{base}/warmup", body=b"{}", token=None, headers={"Content-Type": "application/json"})
+            status, payload = self.request(
+                "POST", f"{base}/warmup", body=b"{}", token=None, headers={"Content-Type": "application/json"}
+            )
             self.assertEqual(status, 200)
             self.assertTrue(payload["loaded"])
             self.assertFalse(payload["already_loaded"])
@@ -619,12 +687,15 @@ class SomaVoiceServerTests(unittest.TestCase):
             voice_asr_backend.ENGINE = "whisper"
             voice_asr_backend._model = None
             voice_asr_backend._loaded = False
-            with mock.patch.dict(sys.modules, {
-                "mlx": fake_mlx,
-                "mlx.core": fake_core,
-                "mlx_whisper": fake_whisper,
-                "mlx_whisper.transcribe": fake_transcribe,
-            }):
+            with mock.patch.dict(
+                sys.modules,
+                {
+                    "mlx": fake_mlx,
+                    "mlx.core": fake_core,
+                    "mlx_whisper": fake_whisper,
+                    "mlx_whisper.transcribe": fake_transcribe,
+                },
+            ):
                 voice_asr_backend._load()
                 self.assertEqual(FakeModelHolder.calls, [(voice_asr_backend.WHISPER_REPO, "fp16")])
                 self.assertTrue(voice_asr_backend._loaded)
@@ -639,6 +710,7 @@ class SomaVoiceServerTests(unittest.TestCase):
             voice_asr_backend.ENGINE = original_engine
             voice_asr_backend._model = original_model
             voice_asr_backend._loaded = original_loaded
+
 
 if __name__ == "__main__":
     unittest.main()

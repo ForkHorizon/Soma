@@ -5,6 +5,7 @@ Pure functions: the caller owns the loaded model and passes it in. Heavy imports
 stay inside the functions so the module can be imported outside an engine venv.
 Everything here runs on the backend's single model thread.
 """
+
 from __future__ import annotations
 
 import tempfile
