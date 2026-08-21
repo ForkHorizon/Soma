@@ -32,13 +32,6 @@ type GitDiffSummary struct {
 	RawDiffCharsOmitted int           `json:"raw_diff_chars_omitted"`
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func summarizeDiffHunks(diffText string) []Hunk {
 	var hunks []Hunk
 	lines := strings.Split(diffText, "\n")
@@ -298,7 +291,7 @@ func gitDiff(projectRoot string, terms []string) (string, error) {
 		limit = len(changedFiles)
 	}
 
-	var changedFilesTrim []ChangedFile = changedFiles[:limit]
+	changedFilesTrim := changedFiles[:limit]
 	if changedFilesTrim == nil {
 		changedFilesTrim = []ChangedFile{}
 	}
