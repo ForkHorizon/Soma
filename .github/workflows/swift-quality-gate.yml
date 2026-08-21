@@ -30,7 +30,6 @@ jobs:
     with:
       mode: ${{ inputs.mode || 'auto' }}
       config: .swift-quality-gate.json
-      format-config: .ci-scope-swift-format.json
       run-build: false
       gates-ref: main
       runs-on: '["self-hosted", "macOS", "ARM64", "ci-scope", "ci-scope-v2"]'
