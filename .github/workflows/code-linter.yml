@@ -1,4 +1,4 @@
-name: Swift Quality Gate
+name: Code Linter
 
 on:
   pull_request:
@@ -21,16 +21,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: swift-quality-gate-${{ github.workflow }}-${{ github.ref }}
+  group: ci-scope-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  swift-quality-gate:
-    uses: ForkHorizon/ci-gates/.github/workflows/swift-quality.yml@main
+  code-linter:
+    uses: ForkHorizon/ci-gates/.github/workflows/code-linter.yml@main
     with:
       mode: ${{ inputs.mode || 'auto' }}
-      config: .swift-quality-gate.json
-      format-config: .ci-scope-swift-format.json
-      run-build: false
+      config: .code-linter.json
       gates-ref: main
       runs-on: '["self-hosted", "macOS", "ARM64", "ci-scope", "ci-scope-v2"]'
