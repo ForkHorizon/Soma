@@ -62,7 +62,7 @@ extension RusToPromptView {
             }
         }
         .padding(14)
-        .frame(width: 1180)
+        .frame(minWidth: 840, idealWidth: 1040, maxWidth: 1120)
     }
 
 

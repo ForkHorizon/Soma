@@ -27,5 +27,5 @@ class ScoutPipelinePromptCompilerStressTests(ScoutPipelineTestCase):
         self.assertNotIn("ProjectSettings.asset", packet)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

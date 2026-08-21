@@ -10,6 +10,8 @@ struct LocalAISettingsView: View {
     @State private var showRuntimeDetails = false
     @State private var deepSeekAPIKeyInput = ""
     @State private var deepSeekCredentialMessage = ""
+    @State private var geminiAPIKeyInput = ""
+    @State private var geminiCredentialMessage = ""
 
     var body: some View {
         SomaPage {
@@ -38,6 +40,7 @@ struct LocalAISettingsView: View {
             ollama.checkStatus()
             viewModel.loadStructuredLogs()
             refreshDeepSeekCredentialStatus()
+            refreshGeminiCredentialStatus()
         }
     }
 
@@ -166,40 +169,69 @@ struct LocalAISettingsView: View {
     private var apiProvidersPanel: some View {
         SomaPanel(title: "API Providers", subtitle: "Paid provider keys used by online Rus to Prompt models.", icon: "key", tone: .warning) {
             VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Text("DeepSeek")
-                        .font(.subheadline.bold())
-                    StatusChip(text: deepSeekCredentialStatusText, tone: deepSeekCredentialTone)
-                    Spacer()
-                }
-                SecureField(deepSeekSecureFieldPlaceholder, text: $deepSeekAPIKeyInput)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(.caption, design: .monospaced))
-                HStack(spacing: 8) {
-                    Button {
-                        saveDeepSeekAPIKey()
-                    } label: {
-                        Label("Save Key", systemImage: "key.fill")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .disabled(deepSeekAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                apiKeySection(title: "DeepSeek", placeholder: "DeepSeek API key", input: $deepSeekAPIKeyInput, message: deepSeekCredentialMessage, hasEnv: DeepSeekCredentialStore.hasEnvironmentAPIKey(), hasSaved: DeepSeekCredentialStore.hasKeychainAPIKey(), save: saveDeepSeekAPIKey, clear: clearDeepSeekAPIKey)
 
-                    Button {
-                        clearDeepSeekAPIKey()
-                    } label: {
-                        Label("Clear", systemImage: "trash")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(!DeepSeekCredentialStore.hasKeychainAPIKey())
-                }
-                if !deepSeekCredentialMessage.isEmpty {
-                    Text(deepSeekCredentialMessage)
-                        .font(.caption)
-                        .foregroundColor(deepSeekCredentialMessage.hasPrefix("Could not") ? .red : .secondary)
-                }
+                Divider().padding(.vertical, 2)
+
+                apiKeySection(title: "Gemini", note: "AI Studio API key (aistudio.google.com) — not the AI Pro / gemini-cli login.", placeholder: "Gemini API key", input: $geminiAPIKeyInput, message: geminiCredentialMessage, hasEnv: GeminiCredentialStore.hasEnvironmentAPIKey(), hasSaved: GeminiCredentialStore.hasKeychainAPIKey(), save: saveGeminiAPIKey, clear: clearGeminiAPIKey)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func apiKeySection(title: String, note: String? = nil, placeholder: String, input: Binding<String>, message: String, hasEnv: Bool, hasSaved: Bool, save: @escaping () -> Void, clear: @escaping () -> Void) -> some View {
+        HStack(spacing: 8) {
+            Text(title).font(.subheadline.bold())
+            StatusChip(text: hasEnv ? "Env active" : (hasSaved ? "Key saved" : "Not set"), tone: (hasEnv || hasSaved) ? .good : .warning)
+            Spacer()
+        }
+        if let note {
+            Text(note).font(.caption2).foregroundColor(.secondary)
+        }
+        SecureField(hasSaved ? "Saved locally" : placeholder, text: input)
+            .textFieldStyle(.roundedBorder)
+            .font(.system(.caption, design: .monospaced))
+        HStack(spacing: 8) {
+            Button(action: save) { Label("Save Key", systemImage: "key.fill") }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(input.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Button(action: clear) { Label("Clear", systemImage: "trash") }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(!hasSaved)
+        }
+        if !message.isEmpty {
+            Text(message).font(.caption).foregroundColor(message.hasPrefix("Could not") ? .red : .secondary)
+        }
+    }
+
+    private func refreshGeminiCredentialStatus() {
+        if GeminiCredentialStore.hasEnvironmentAPIKey() {
+            geminiCredentialMessage = "Environment key will be used before the saved key."
+        } else if GeminiCredentialStore.hasKeychainAPIKey() {
+            geminiCredentialMessage = "Gemini key is saved locally."
+        } else {
+            geminiCredentialMessage = "Gemini online judge/translation needs an AI Studio API key."
+        }
+    }
+
+    private func saveGeminiAPIKey() {
+        do {
+            try GeminiCredentialStore.saveAPIKey(geminiAPIKeyInput)
+            geminiAPIKeyInput = ""
+            geminiCredentialMessage = "Gemini key saved."
+        } catch {
+            geminiCredentialMessage = "Could not save Gemini key: \(error.localizedDescription)"
+        }
+    }
+
+    private func clearGeminiAPIKey() {
+        do {
+            try GeminiCredentialStore.clearAPIKey()
+            geminiCredentialMessage = "Gemini key removed."
+        } catch {
+            geminiCredentialMessage = "Could not clear Gemini key: \(error.localizedDescription)"
         }
     }
 
@@ -254,26 +286,11 @@ struct LocalAISettingsView: View {
         )
     }
 
-    private var deepSeekCredentialStatusText: String {
-        if DeepSeekCredentialStore.hasEnvironmentAPIKey() { return "Env active" }
-        if DeepSeekCredentialStore.hasKeychainAPIKey() { return "Key saved" }
-        return "Missing key"
-    }
-
-    private var deepSeekCredentialTone: SomaStatusTone {
-        if DeepSeekCredentialStore.hasEnvironmentAPIKey() || DeepSeekCredentialStore.hasKeychainAPIKey() { return .good }
-        return .warning
-    }
-
-    private var deepSeekSecureFieldPlaceholder: String {
-        DeepSeekCredentialStore.hasKeychainAPIKey() ? "Saved in Keychain" : "DeepSeek API key"
-    }
-
     private func refreshDeepSeekCredentialStatus() {
         if DeepSeekCredentialStore.hasEnvironmentAPIKey() {
-            deepSeekCredentialMessage = "Environment key will be used before Keychain."
+            deepSeekCredentialMessage = "Environment key will be used before the saved key."
         } else if DeepSeekCredentialStore.hasKeychainAPIKey() {
-            deepSeekCredentialMessage = "DeepSeek key is saved in Keychain."
+            deepSeekCredentialMessage = "DeepSeek key is saved locally."
         } else {
             deepSeekCredentialMessage = "DeepSeek models need an API key before paid requests can run."
         }
@@ -283,7 +300,7 @@ struct LocalAISettingsView: View {
         do {
             try DeepSeekCredentialStore.saveAPIKey(deepSeekAPIKeyInput)
             deepSeekAPIKeyInput = ""
-            deepSeekCredentialMessage = "DeepSeek key saved in Keychain."
+            deepSeekCredentialMessage = "DeepSeek key saved."
         } catch {
             deepSeekCredentialMessage = "Could not save DeepSeek key: \(error.localizedDescription)"
         }
@@ -293,7 +310,7 @@ struct LocalAISettingsView: View {
         do {
             try DeepSeekCredentialStore.clearAPIKey()
             deepSeekAPIKeyInput = ""
-            deepSeekCredentialMessage = "DeepSeek key removed from Keychain."
+            deepSeekCredentialMessage = "DeepSeek key removed."
         } catch {
             deepSeekCredentialMessage = "Could not clear DeepSeek key: \(error.localizedDescription)"
         }

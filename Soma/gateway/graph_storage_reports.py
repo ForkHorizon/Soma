@@ -26,7 +26,14 @@ class GraphStorageReportsMixin:
             return result
         output = "\n".join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
         pending = bool(re.search(r"\b(needs?_update|pending|semantic)\b", output, re.IGNORECASE))
-        return {"status": "ok" if result.returncode == 0 else "error", "summary": output[:1000] if output else "No semantic refresh pending.", "pending": pending, "returncode": result.returncode, "graphSourceRoot": str(source_root), "graph_source_root": str(source_root)}
+        return {
+            "status": "ok" if result.returncode == 0 else "error",
+            "summary": output[:1000] if output else "No semantic refresh pending.",
+            "pending": pending,
+            "returncode": result.returncode,
+            "graphSourceRoot": str(source_root),
+            "graph_source_root": str(source_root),
+        }
 
     def diagnose_graph(self, project_root: str | Path | None) -> dict[str, Any]:
         root = self.normalize_project_root(project_root)
@@ -39,12 +46,19 @@ class GraphStorageReportsMixin:
         try:
             payload = json.loads(result.stdout)
         except Exception as exc:
-            return {"status": "error", "summary": f"Diagnostics JSON unreadable: {exc}", "degraded": True, "reason": str(exc)}
+            return {
+                "status": "error",
+                "summary": f"Diagnostics JSON unreadable: {exc}",
+                "degraded": True,
+                "reason": str(exc),
+            }
         summary = payload.get("summary") if isinstance(payload, dict) else {}
         degraded, reason = diagnostic_degraded_reason(summary if isinstance(summary, dict) else {})
         diagnostics_path = graph_path.parent / "GRAPH_DIAGNOSE.json"
         self._write_diagnostics(diagnostics_path, payload)
-        return self._diagnostics_payload(summary if isinstance(summary, dict) else {}, diagnostics_path, degraded, reason)
+        return self._diagnostics_payload(
+            summary if isinstance(summary, dict) else {}, diagnostics_path, degraded, reason
+        )
 
     def generate_tree_report(self, project_root: str | Path | None) -> dict[str, Any]:
         root, graph_path = self._report_root_and_graph(project_root)
@@ -52,7 +66,18 @@ class GraphStorageReportsMixin:
             return {"status": "error", "summary": "No project graph found."}
         source_root = self.graph_source_root(root)
         output = graph_path.parent / "GRAPH_TREE.html"
-        cmd = [self._graphify_bin(), "tree", "--graph", str(graph_path), "--output", str(output), "--root", str(source_root or root), "--label", root.name if root else "Project"]
+        cmd = [
+            self._graphify_bin(),
+            "tree",
+            "--graph",
+            str(graph_path),
+            "--output",
+            str(output),
+            "--root",
+            str(source_root or root),
+            "--label",
+            root.name if root else "Project",
+        ]
         return self._run_graph_report_command(cmd, output, root)
 
     def generate_callflow_report(self, project_root: str | Path | None) -> dict[str, Any]:
@@ -67,21 +92,30 @@ class GraphStorageReportsMixin:
     def update_index(self, project_root: Path, status: dict[str, Any], graphify_version: str | None = None) -> None:
         data = self.read_index()
         existing = data["projects"].get(self.project_id(project_root), {})
-        data["projects"][self.project_id(project_root)] = self._index_payload(project_root, status, existing, graphify_version)
+        data["projects"][self.project_id(project_root)] = self._index_payload(
+            project_root, status, existing, graphify_version
+        )
         try:
             self.write_index(data)
         except Exception:
             pass
 
-    def _index_payload(self, project_root: Path, status: dict[str, Any], existing: dict[str, Any], graphify_version: str | None) -> dict[str, Any]:
+    def _index_payload(
+        self, project_root: Path, status: dict[str, Any], existing: dict[str, Any], graphify_version: str | None
+    ) -> dict[str, Any]:
         selected_path = status.get("storagePath") or status.get("storage_path")
         last_updated = self._graph_last_updated(selected_path, existing)
         return {
             "projectRoot": str(project_root),
             "displayName": project_root.name,
-            "graphSourceRoot": status.get("graphSourceRoot") or status.get("graph_source_root") or existing.get("graphSourceRoot"),
+            "graphSourceRoot": status.get("graphSourceRoot")
+            or status.get("graph_source_root")
+            or existing.get("graphSourceRoot"),
             "graphScope": status.get("graphScope") or status.get("graph_scope") or self.graph_scope(project_root),
-            "graphifyVersion": graphify_version or status.get("graphifyVersion") or status.get("graphify_version") or existing.get("graphifyVersion"),
+            "graphifyVersion": graphify_version
+            or status.get("graphifyVersion")
+            or status.get("graphify_version")
+            or existing.get("graphifyVersion"),
             "lastUpdated": last_updated or int(time.time()),
             "nodeCount": status.get("nodeCount") or status.get("node_count"),
             "edgeCount": status.get("edgeCount") or status.get("edge_count"),
@@ -100,13 +134,32 @@ class GraphStorageReportsMixin:
             stat = graph_path.stat()
             node_count, edge_count = self.count_graph(graph_path)
         except OSError as exc:
-            return {"path": str(graph_path), "storageKind": storage_kind, "exists": False, "error": str(exc), "stale": True}
+            return {
+                "path": str(graph_path),
+                "storageKind": storage_kind,
+                "exists": False,
+                "error": str(exc),
+                "stale": True,
+            }
         age_seconds = max(0, int(time.time() - stat.st_mtime))
-        return {"path": str(graph_path), "storageKind": storage_kind, "storage_kind": storage_kind, "project_id": self.project_id(project_root), "exists": True, "age_seconds": age_seconds, "stale": age_seconds > GRAPH_STALE_SECONDS, "node_count": node_count, "edge_count": edge_count, "report_exists": (graph_path.parent / "GRAPH_REPORT.md").exists()}
+        return {
+            "path": str(graph_path),
+            "storageKind": storage_kind,
+            "storage_kind": storage_kind,
+            "project_id": self.project_id(project_root),
+            "exists": True,
+            "age_seconds": age_seconds,
+            "stale": age_seconds > GRAPH_STALE_SECONDS,
+            "node_count": node_count,
+            "edge_count": edge_count,
+            "report_exists": (graph_path.parent / "GRAPH_REPORT.md").exists(),
+        }
 
     def _selected_graph_path(self, project_root: Path | None) -> Path | None:
         managed = [path for path in self.managed_graph_candidates(project_root) if path.exists()]
-        legacy = [path / "graph.json" for path in self.legacy_graph_dirs(project_root) if (path / "graph.json").exists()]
+        legacy = [
+            path / "graph.json" for path in self.legacy_graph_dirs(project_root) if (path / "graph.json").exists()
+        ]
         graphs = dedupe_paths(managed + legacy)
         return graphs[0] if graphs else None
 
@@ -134,15 +187,30 @@ class GraphStorageReportsMixin:
 
     def _run_graph_report_command(self, cmd: list[str], output: Path, root: Path | None) -> dict[str, Any]:
         try:
-            result = subprocess.run(cmd, cwd=str(root) if root else None, capture_output=True, text=True, timeout=90, check=False)
+            result = subprocess.run(
+                cmd, cwd=str(root) if root else None, capture_output=True, text=True, timeout=90, check=False
+            )
         except Exception as exc:
             return {"status": "error", "summary": str(exc), "outputPath": str(output), "output_path": str(output)}
         if result.returncode != 0:
             summary = (result.stderr or result.stdout or "Graphify report command failed.").strip()[:1000]
             return {"status": "error", "summary": summary, "outputPath": str(output), "output_path": str(output)}
-        return {"status": "ok", "summary": (result.stdout or "Graphify report generated.").strip()[:1000], "outputPath": str(output), "output_path": str(output)}
+        return {
+            "status": "ok",
+            "summary": (result.stdout or "Graphify report generated.").strip()[:1000],
+            "outputPath": str(output),
+            "output_path": str(output),
+        }
 
-    def _recommended_action(self, storage_kind: str, stale: bool, *, degraded: bool = False, graph_version: str | None = None, tool_version: str | None = None) -> str | None:
+    def _recommended_action(
+        self,
+        storage_kind: str,
+        stale: bool,
+        *,
+        degraded: bool = False,
+        graph_version: str | None = None,
+        tool_version: str | None = None,
+    ) -> str | None:
         if not tool_version:
             return "Install Graphify tool."
         if degraded:
@@ -160,13 +228,27 @@ class GraphStorageReportsMixin:
     def _run_semantic_check(self, root: Path, source_root: Path) -> subprocess.CompletedProcess | dict[str, Any]:
         env = {"GRAPHIFY_OUT": str(self.graph_dir(root)), **__import__("os").environ.copy()}
         try:
-            return subprocess.run([self._graphify_bin(), "check-update", str(source_root)], cwd=str(root), env=env, capture_output=True, text=True, timeout=30, check=False)
+            return subprocess.run(
+                [self._graphify_bin(), "check-update", str(source_root)],
+                cwd=str(root),
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
         except Exception as exc:
             return {"status": "error", "summary": str(exc), "pending": None}
 
     def _run_diagnostics(self, graph_path: Path) -> subprocess.CompletedProcess | dict[str, Any]:
         try:
-            result = subprocess.run([self._graphify_bin(), "diagnose", "multigraph", "--json", "--graph", str(graph_path)], capture_output=True, text=True, timeout=60, check=False)
+            result = subprocess.run(
+                [self._graphify_bin(), "diagnose", "multigraph", "--json", "--graph", str(graph_path)],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
         except Exception as exc:
             return {"status": "error", "summary": str(exc), "degraded": True, "reason": str(exc)}
         if result.returncode != 0:
@@ -174,9 +256,26 @@ class GraphStorageReportsMixin:
             return {"status": "error", "summary": reason, "degraded": True, "reason": reason}
         return result
 
-    def _diagnostics_payload(self, summary: dict[str, Any], diagnostics_path: Path, degraded: bool, reason: str | None) -> dict[str, Any]:
-        same_endpoint = max(int(summary.get("directed_same_endpoint_collapsed_edges") or 0), int(summary.get("undirected_same_endpoint_collapsed_edges") or 0))
-        return {"status": "ok", "summary": reason or "Graph diagnostics passed.", "degraded": degraded, "reason": reason, "path": str(diagnostics_path), "nodeCount": summary.get("node_count"), "node_count": summary.get("node_count"), "edgeCount": summary.get("raw_edge_count"), "edge_count": summary.get("raw_edge_count"), "sameEndpointCollapsedEdges": same_endpoint, "same_endpoint_collapsed_edges": same_endpoint}
+    def _diagnostics_payload(
+        self, summary: dict[str, Any], diagnostics_path: Path, degraded: bool, reason: str | None
+    ) -> dict[str, Any]:
+        same_endpoint = max(
+            int(summary.get("directed_same_endpoint_collapsed_edges") or 0),
+            int(summary.get("undirected_same_endpoint_collapsed_edges") or 0),
+        )
+        return {
+            "status": "ok",
+            "summary": reason or "Graph diagnostics passed.",
+            "degraded": degraded,
+            "reason": reason,
+            "path": str(diagnostics_path),
+            "nodeCount": summary.get("node_count"),
+            "node_count": summary.get("node_count"),
+            "edgeCount": summary.get("raw_edge_count"),
+            "edge_count": summary.get("raw_edge_count"),
+            "sameEndpointCollapsedEdges": same_endpoint,
+            "same_endpoint_collapsed_edges": same_endpoint,
+        }
 
     def _write_diagnostics(self, path: Path, payload: dict[str, Any]) -> None:
         try:

@@ -21,9 +21,23 @@ extension RusToPromptQueueManager {
     var queueDirectoryPath: String {
         appSupportURL.path
     }
+    /// Vision/multimodal models (llava, qwen*-vl, InternVL, etc.) are kept installed for
+    /// OCR / recognition work, but they are NOT text-stage candidates — they must not be
+    /// swept into translation / improve / confidence benchmarks, where they underperform
+    /// and pollute the comparison. This denylist is what removes them from the Tests grid
+    /// without uninstalling them.
+    nonisolated static func isVisionOnlyModel(_ model: String) -> Bool {
+        let normalized = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let markers = ["llava", "internvl", "minicpm-v", "moondream", "bakllava", "vision"]
+        if markers.contains(where: { normalized.contains($0) }) { return true }
+        // Catch the `vl` tag in names like qwen2.5vl:7b / qwen3-vl without matching unrelated words.
+        if normalized.contains("-vl") || normalized.contains("vl:") || normalized.hasSuffix("vl") { return true }
+        return false
+    }
     nonisolated static func isLocalStageModel(_ model: String) -> Bool {
         let normalized = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if normalized.isEmpty { return false }
+        if isVisionOnlyModel(normalized) { return false }
         if normalized.hasPrefix("gpt-oss") { return true }
         if normalized.hasPrefix("gpt-") || normalized.hasPrefix("codex-") { return false }
         if normalized.hasPrefix("o1") || normalized.hasPrefix("o3") || normalized.hasPrefix("o4") { return false }
@@ -152,10 +166,14 @@ extension RusToPromptQueueManager {
         }
     }
     func stopCurrent() {
-        guard let process = activeProcess else { return }
         writeControl(["stop": true])
-        process.terminate()
-        appendActivity("Stop requested for current run.")
+        if let process = activeProcess {
+            process.terminate()
+            appendActivity("Stop requested for current run.")
+        } else if let pid = activeReattachedPID {
+            kill(pid, SIGTERM)  // re-attached run has no Process handle; pollReattachedExit finalizes it
+            appendActivity("Stop requested for re-attached run (pid \(pid)).")
+        }
     }
     func retry(_ item: RusToPromptQueueItem) {
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
@@ -182,6 +200,10 @@ extension RusToPromptQueueManager {
         Task {
             let value = await Self.readFreeMemoryGB()
             await MainActor.run {
+                // Only republish when the displayed 0.1 GB value moves, so the 5s
+                // poll doesn't re-render observers when the number hasn't changed.
+                func tenths(_ v: Double?) -> Int? { v.map { Int(($0 * 10).rounded()) } }
+                guard tenths(value) != tenths(self.freeMemoryGB) else { return }
                 self.freeMemoryGB = value
             }
         }

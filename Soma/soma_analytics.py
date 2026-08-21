@@ -10,6 +10,7 @@ CLI: python3 soma_analytics.py --report today
      python3 soma_analytics.py --report 20260508
      python3 soma_analytics.py --summary
 """
+
 from __future__ import annotations
 
 import json
@@ -26,6 +27,7 @@ TOKEN_BUDGETS = {"micro": 1000, "fast": 2500, "balanced": 6000, "deep": 15000, "
 
 
 # ── Parser ────────────────────────────────────────────────────────────────────
+
 
 def _read_entries(date_str: str) -> list[dict[str, Any]]:
     log_file = SOMA_LOG_DIR / f"soma_{date_str}.jsonl"
@@ -45,6 +47,7 @@ def _read_entries(date_str: str) -> list[dict[str, Any]]:
 
 # ── Aggregation ───────────────────────────────────────────────────────────────
 
+
 def compute_report(date_str: str) -> dict[str, Any]:
     entries = _read_entries(date_str)
     tool_calls = [e for e in entries if e.get("event") == "tool_call"]
@@ -56,17 +59,30 @@ def compute_report(date_str: str) -> dict[str, Any]:
         return {"date": date_str, "status": "no_data", "message": f"No log file for {date_str}"}
 
     # Per-tool stats
-    per_tool: dict[str, dict[str, Any]] = defaultdict(lambda: {
-        "calls": 0, "ok": 0, "error": 0, "degraded": 0,
-        "total_duration_ms": 0.0, "avg_duration_ms": 0.0,
-        "total_input_tokens": 0, "total_output_tokens": 0,
-        "errors": [], "project_types": defaultdict(int),
-        "packet_modes": defaultdict(int), "evidence_count": 0,
-        "discovered_files": 0, "total_saved_tokens": 0,
-        "savings_samples": [], "budget_used_samples": [],
-        "operation_saved_tokens": 0, "operation_savings_samples": [],
-        "estimated_context_saved_tokens": 0, "estimated_context_samples": [],
-    })
+    per_tool: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {
+            "calls": 0,
+            "ok": 0,
+            "error": 0,
+            "degraded": 0,
+            "total_duration_ms": 0.0,
+            "avg_duration_ms": 0.0,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "errors": [],
+            "project_types": defaultdict(int),
+            "packet_modes": defaultdict(int),
+            "evidence_count": 0,
+            "discovered_files": 0,
+            "total_saved_tokens": 0,
+            "savings_samples": [],
+            "budget_used_samples": [],
+            "operation_saved_tokens": 0,
+            "operation_savings_samples": [],
+            "estimated_context_saved_tokens": 0,
+            "estimated_context_samples": [],
+        }
+    )
 
     slowest: list[dict[str, Any]] = []
     budget_hits: dict[str, int] = defaultdict(int)
@@ -137,10 +153,24 @@ def compute_report(date_str: str) -> dict[str, Any]:
         s["error_rate"] = round((s["error"] + s["degraded"]) / calls, 3)
         s["project_types"] = dict(s["project_types"])
         s["packet_modes"] = dict(s["packet_modes"])
-        s["avg_savings_pct"] = round(sum(s["savings_samples"]) / max(len(s["savings_samples"]), 1), 1) if s["savings_samples"] else None
-        s["avg_budget_used_pct"] = round(sum(s["budget_used_samples"]) / max(len(s["budget_used_samples"]), 1), 1) if s["budget_used_samples"] else None
-        s["avg_operation_savings_pct"] = round(sum(s["operation_savings_samples"]) / max(len(s["operation_savings_samples"]), 1), 1) if s["operation_savings_samples"] else None
-        s["avg_estimated_context_reduction_pct"] = round(sum(s["estimated_context_samples"]) / max(len(s["estimated_context_samples"]), 1), 1) if s["estimated_context_samples"] else None
+        s["avg_savings_pct"] = (
+            round(sum(s["savings_samples"]) / max(len(s["savings_samples"]), 1), 1) if s["savings_samples"] else None
+        )
+        s["avg_budget_used_pct"] = (
+            round(sum(s["budget_used_samples"]) / max(len(s["budget_used_samples"]), 1), 1)
+            if s["budget_used_samples"]
+            else None
+        )
+        s["avg_operation_savings_pct"] = (
+            round(sum(s["operation_savings_samples"]) / max(len(s["operation_savings_samples"]), 1), 1)
+            if s["operation_savings_samples"]
+            else None
+        )
+        s["avg_estimated_context_reduction_pct"] = (
+            round(sum(s["estimated_context_samples"]) / max(len(s["estimated_context_samples"]), 1), 1)
+            if s["estimated_context_samples"]
+            else None
+        )
         s.pop("savings_samples", None)
         s.pop("budget_used_samples", None)
         s.pop("operation_savings_samples", None)
@@ -169,14 +199,26 @@ def compute_report(date_str: str) -> dict[str, Any]:
     savings_values = [e.get("savings_pct") for e in tool_calls if isinstance(e.get("savings_pct"), (int, float))]
     avg_savings_pct = round(sum(savings_values) / max(len(savings_values), 1), 1) if savings_values else None
     operation_saved_tokens = sum(s.get("operation_saved_tokens", 0) for s in per_tool.values())
-    operation_values = [e.get("operation_savings_pct") for e in tool_calls if isinstance(e.get("operation_savings_pct"), (int, float))]
-    avg_operation_savings_pct = round(sum(operation_values) / max(len(operation_values), 1), 1) if operation_values else None
+    operation_values = [
+        e.get("operation_savings_pct") for e in tool_calls if isinstance(e.get("operation_savings_pct"), (int, float))
+    ]
+    avg_operation_savings_pct = (
+        round(sum(operation_values) / max(len(operation_values), 1), 1) if operation_values else None
+    )
     estimated_saved_tokens = sum(s.get("estimated_context_saved_tokens", 0) for s in per_tool.values())
-    estimated_values = [e.get("estimated_context_reduction_pct") for e in tool_calls if isinstance(e.get("estimated_context_reduction_pct"), (int, float))]
-    avg_estimated_context_reduction_pct = round(sum(estimated_values) / max(len(estimated_values), 1), 1) if estimated_values else None
+    estimated_values = [
+        e.get("estimated_context_reduction_pct")
+        for e in tool_calls
+        if isinstance(e.get("estimated_context_reduction_pct"), (int, float))
+    ]
+    avg_estimated_context_reduction_pct = (
+        round(sum(estimated_values) / max(len(estimated_values), 1), 1) if estimated_values else None
+    )
     local_model_usage = _aggregate_local_model_usage(local_model_calls)
     server_starts = sum(1 for e in entries if e.get("event") == "server_start")
-    savings_by_project_type: dict[str, dict[str, Any]] = defaultdict(lambda: {"calls": 0, "total_saved_tokens": 0, "savings_samples": []})
+    savings_by_project_type: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {"calls": 0, "total_saved_tokens": 0, "savings_samples": []}
+    )
     for e in tool_calls:
         project_type = e.get("project_type") or "unknown"
         saved = e.get("saved_tokens")
@@ -263,24 +305,28 @@ def compute_report(date_str: str) -> dict[str, Any]:
 
 
 def _aggregate_local_model_usage(entries: list[dict[str, Any]]) -> dict[str, Any]:
-    by_stage: dict[str, dict[str, Any]] = defaultdict(lambda: {
-        "calls": 0,
-        "ok": 0,
-        "error": 0,
-        "total_duration_ms": 0.0,
-        "total_input_tokens": 0,
-        "total_output_tokens": 0,
-        "models": defaultdict(int),
-    })
-    by_model: dict[str, dict[str, Any]] = defaultdict(lambda: {
-        "calls": 0,
-        "ok": 0,
-        "error": 0,
-        "total_duration_ms": 0.0,
-        "total_input_tokens": 0,
-        "total_output_tokens": 0,
-        "stages": defaultdict(int),
-    })
+    by_stage: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {
+            "calls": 0,
+            "ok": 0,
+            "error": 0,
+            "total_duration_ms": 0.0,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "models": defaultdict(int),
+        }
+    )
+    by_model: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {
+            "calls": 0,
+            "ok": 0,
+            "error": 0,
+            "total_duration_ms": 0.0,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "stages": defaultdict(int),
+        }
+    )
     slowest: list[dict[str, Any]] = []
 
     total_calls = 0
@@ -323,13 +369,15 @@ def _aggregate_local_model_usage(entries: list[dict[str, Any]]) -> dict[str, Any
         model_bucket["total_output_tokens"] += output_tokens
         model_bucket["stages"][stage] += 1
 
-        slowest.append({
-            "stage": stage,
-            "model": model,
-            "duration_ms": round(duration, 1),
-            "status": status,
-            "ts": entry.get("ts", ""),
-        })
+        slowest.append(
+            {
+                "stage": stage,
+                "model": model,
+                "duration_ms": round(duration, 1),
+                "status": status,
+                "ts": entry.get("ts", ""),
+            }
+        )
 
     def finalize(bucket: dict[str, Any]) -> dict[str, Any]:
         calls = bucket.get("calls") or 1
@@ -357,20 +405,26 @@ def _aggregate_local_model_usage(entries: list[dict[str, Any]]) -> dict[str, Any
     }
 
 
-def _mcp_usage_health(entries: list[dict[str, Any]], tool_calls: list[dict[str, Any]], mcp_requests: list[dict[str, Any]]) -> dict[str, Any]:
+def _mcp_usage_health(
+    entries: list[dict[str, Any]], tool_calls: list[dict[str, Any]], mcp_requests: list[dict[str, Any]]
+) -> dict[str, Any]:
     tools_list_count = sum(1 for entry in mcp_requests if entry.get("method") == "tools/list")
     soma_tool_call_count = sum(1 for entry in tool_calls if str(entry.get("tool") or "").startswith("soma_"))
-    mcp_tool_request_count = sum(1 for entry in mcp_requests if str(entry.get("method") or "").startswith("tools/call:soma_"))
+    mcp_tool_request_count = sum(
+        1 for entry in mcp_requests if str(entry.get("method") or "").startswith("tools/call:soma_")
+    )
     warnings: list[str] = []
     likely_causes: list[str] = []
 
     if tools_list_count > 0 and soma_tool_call_count == 0 and mcp_tool_request_count == 0:
         warnings.append("mcp_discovered_but_no_soma_tool_calls")
-        likely_causes.extend([
-            "project_prompt_did_not_request_soma_first",
-            "agent_used_native_file_tools_or_project_local_config",
-            "project_local_mcp_config_may_expose_raw_tools",
-        ])
+        likely_causes.extend(
+            [
+                "project_prompt_did_not_request_soma_first",
+                "agent_used_native_file_tools_or_project_local_config",
+                "project_local_mcp_config_may_expose_raw_tools",
+            ]
+        )
 
     project_setup_events = [entry for entry in entries if str(entry.get("event") or "").startswith("project_setup_")]
     latest_project_setup = project_setup_events[-1] if project_setup_events else None
@@ -393,13 +447,16 @@ def compute_multiday_summary(days: int = 7) -> dict[str, Any]:
     """Aggregate stats across the last N days."""
     now = datetime.now(tz=timezone.utc)
     totals: dict[str, Any] = {
-        "days_with_data": 0, "total_tool_calls": 0,
-        "total_tokens": 0, "total_errors": 0,
+        "days_with_data": 0,
+        "total_tool_calls": 0,
+        "total_tokens": 0,
+        "total_errors": 0,
         "per_tool_calls": defaultdict(int),
         "date_range": [],
     }
     for i in range(days):
         from datetime import timedelta
+
         date = now - timedelta(days=i)
         date_str = date.strftime("%Y%m%d")
         report = compute_report(date_str)
@@ -412,7 +469,9 @@ def compute_multiday_summary(days: int = 7) -> dict[str, Any]:
         totals["total_tokens"] += s.get("total_tokens", 0)
         totals["total_errors"] += s.get("error_count", 0)
         totals["local_model_call_count"] = totals.get("local_model_call_count", 0) + s.get("local_model_call_count", 0)
-        totals["local_model_total_tokens"] = totals.get("local_model_total_tokens", 0) + s.get("local_model_total_tokens", 0)
+        totals["local_model_total_tokens"] = totals.get("local_model_total_tokens", 0) + s.get(
+            "local_model_total_tokens", 0
+        )
         for tool, stats in report.get("per_tool", {}).items():
             totals["per_tool_calls"][tool] += stats.get("calls", 0)
     totals["per_tool_calls"] = dict(totals["per_tool_calls"])
@@ -422,32 +481,41 @@ def compute_multiday_summary(days: int = 7) -> dict[str, Any]:
 
 # ── Formatting ────────────────────────────────────────────────────────────────
 
+
 def _print_report(report: dict[str, Any]) -> None:
     if report.get("status") == "no_data":
         print(f"No data for {report['date']}")
         return
 
     s = report["summary"]
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Soma Analytics — {report['date']}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"Tool calls:     {s['total_tool_calls']}")
     print(f"Total tokens:   {s['total_tokens']:,}  (in:{s['total_input_tokens']:,} out:{s['total_output_tokens']:,})")
     if s.get("avg_operation_savings_pct") is not None:
         print(f"Operation save: {s['operation_saved_tokens']:,} saved avg {s['avg_operation_savings_pct']:.1f}%")
     if s.get("avg_estimated_context_reduction_pct") is not None:
-        print(f"Context reduce: {s['estimated_context_saved_tokens']:,} estimated avg {s['avg_estimated_context_reduction_pct']:.1f}%")
-    print(f"Local model:    {s.get('local_model_call_count', 0)} calls  {s.get('local_model_total_tokens', 0):,} tok  ERR:{s.get('local_model_error_count', 0)}")
-    print(f"MCP usage:      tools/list {s.get('mcp_tools_list_count', 0)}  soma calls {s.get('soma_tool_call_count', 0)}")
+        print(
+            f"Context reduce: {s['estimated_context_saved_tokens']:,} estimated avg {s['avg_estimated_context_reduction_pct']:.1f}%"
+        )
+    print(
+        f"Local model:    {s.get('local_model_call_count', 0)} calls  {s.get('local_model_total_tokens', 0):,} tok  ERR:{s.get('local_model_error_count', 0)}"
+    )
+    print(
+        f"MCP usage:      tools/list {s.get('mcp_tools_list_count', 0)}  soma calls {s.get('soma_tool_call_count', 0)}"
+    )
     print(f"Errors:         {s['error_count']}")
     print(f"Server starts:  {s['server_starts']}")
     print()
 
     print("Per-tool breakdown:")
     for tool, ts in sorted(report["per_tool"].items(), key=lambda x: -x[1]["calls"]):
-        err_str = f" ERR:{ts['error']+ts['degraded']}" if (ts['error'] + ts['degraded']) > 0 else ""
-        print(f"  {tool:<30} {ts['calls']:>4} calls  {ts['avg_duration_ms']:>7.0f}ms avg  "
-              f"{ts['total_input_tokens']+ts['total_output_tokens']:>6} tok{err_str}")
+        err_str = f" ERR:{ts['error'] + ts['degraded']}" if (ts["error"] + ts["degraded"]) > 0 else ""
+        print(
+            f"  {tool:<30} {ts['calls']:>4} calls  {ts['avg_duration_ms']:>7.0f}ms avg  "
+            f"{ts['total_input_tokens'] + ts['total_output_tokens']:>6} tok{err_str}"
+        )
 
     if report["slowest_calls"]:
         print("\nTop slowest calls:")
@@ -461,7 +529,9 @@ def _print_report(report: dict[str, Any]) -> None:
     if report.get("local_model_usage", {}).get("by_stage"):
         print("\nLocal model usage:")
         for stage, usage in sorted(report["local_model_usage"]["by_stage"].items(), key=lambda x: -x[1]["calls"]):
-            print(f"  {stage:<14} {usage['calls']:>4} calls  {usage['avg_duration_ms']:>7.0f}ms avg  {usage['total_tokens']:>6} tok  ERR:{usage['error']}")
+            print(
+                f"  {stage:<14} {usage['calls']:>4} calls  {usage['avg_duration_ms']:>7.0f}ms avg  {usage['total_tokens']:>6} tok  ERR:{usage['error']}"
+            )
     if report.get("mcp_usage_health", {}).get("warnings"):
         print("\nMCP usage warnings:")
         for warning in report["mcp_usage_health"]["warnings"]:
@@ -475,12 +545,9 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Soma analytics reporter")
-    parser.add_argument("--report", default=None,
-                        help="Date to report: 'today', 'yesterday', or YYYYMMDD")
-    parser.add_argument("--summary", action="store_true",
-                        help="7-day rolling summary")
-    parser.add_argument("--json", action="store_true",
-                        help="Output raw JSON instead of formatted text")
+    parser.add_argument("--report", default=None, help="Date to report: 'today', 'yesterday', or YYYYMMDD")
+    parser.add_argument("--summary", action="store_true", help="7-day rolling summary")
+    parser.add_argument("--json", action="store_true", help="Output raw JSON instead of formatted text")
     args = parser.parse_args()
 
     if args.summary:
@@ -491,6 +558,7 @@ if __name__ == "__main__":
             print(json.dumps(data, indent=2, default=str))
     elif args.report:
         from datetime import timedelta
+
         now = datetime.now(tz=timezone.utc)
         if args.report == "today":
             date_str = now.strftime("%Y%m%d")

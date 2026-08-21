@@ -11,6 +11,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "Soma"))
 from soma_test_bootstrap import install_soma_imports
+
 install_soma_imports()
 
 import gateway
@@ -29,11 +30,13 @@ import soma_language_optimizer
 import soma_logger
 import soma_audit
 import soma_project_setup
+import extension_manager
 
 
 class SomaMCPServerTests(unittest.TestCase):
     def setUp(self):
         import os
+
         self.previous_project_root = os.environ.get("SOMA_PROJECT_ROOT")
 
     def tearDown(self):
@@ -48,7 +51,7 @@ class SomaMCPServerTests(unittest.TestCase):
         (root / "Soma").mkdir()
         (root / "Soma" / "relay.py").write_text("MODEL = 'gemma4:e4b'\n\ndef relay():\n    return 'ok'\n")
         (root / "Soma" / "ContentView.swift").write_text(
-            "import SwiftUI\n\nstruct ContentView: View {\n    var body: some View { Text(\"Soma\") }\n}\n"
+            'import SwiftUI\n\nstruct ContentView: View {\n    var body: some View { Text("Soma") }\n}\n'
         )
         (root / "README.md").write_text("Soma test repo\n")
         subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
@@ -56,7 +59,9 @@ class SomaMCPServerTests(unittest.TestCase):
         subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
         subprocess.run(["git", "add", "."], cwd=root, check=True)
         subprocess.run(["git", "commit", "-m", "init"], cwd=root, check=True, capture_output=True)
-        (root / "Soma" / "relay.py").write_text("MODEL = 'gemma4:e4b'\n\ndef relay():\n    raise RuntimeError('slow')\n")
+        (root / "Soma" / "relay.py").write_text(
+            "MODEL = 'gemma4:e4b'\n\ndef relay():\n    raise RuntimeError('slow')\n"
+        )
         return tmp, root
 
     def test_tool_catalog_stays_small_and_soma_scoped(self):
@@ -77,7 +82,10 @@ class SomaMCPServerTests(unittest.TestCase):
     def test_tool_descriptor_exposes_signature(self):
         descriptor = gateway.tool_registry.tool_descriptor("soma_prepare_context")
 
-        self.assertEqual(descriptor["signature"], 'soma_prepare_context(goal: string, budget: string = "balanced", depth: string = "deterministic") -> string')
+        self.assertEqual(
+            descriptor["signature"],
+            'soma_prepare_context(goal: string, budget: string = "balanced", depth: string = "deterministic") -> string',
+        )
         self.assertEqual(descriptor["_meta"]["soma_signature"], descriptor["signature"])
         self.assertIn("inputSchema", descriptor)
 
@@ -91,26 +99,39 @@ class SomaMCPServerTests(unittest.TestCase):
 
     def test_tool_call_ignores_client_added_arguments(self):
         tmp, root = self.make_repo()
-        with tmp, patch.object(gateway.core.nexus, "discover", return_value=gateway.core.NexusState()), patch.object(
-            gateway.core.graphify,
-            "status",
-            return_value={"stale": True, "recommended_action": "Run graphify in the project root."},
-        ), patch.object(gateway.core.graphify, "god_nodes_from_report", return_value=[]):
+        with (
+            tmp,
+            patch.object(gateway.core.nexus, "discover", return_value=gateway.core.NexusState()),
+            patch.object(
+                gateway.core.graphify,
+                "status",
+                return_value={"stale": True, "recommended_action": "Run graphify in the project root."},
+            ),
+            patch.object(gateway.core.graphify, "god_nodes_from_report", return_value=[]),
+        ):
             os.environ["SOMA_PROJECT_ROOT"] = str(root)
-            payload = json.loads(asyncio.run(gateway.tool_registry.call_tool("soma_get_map", {"wait_for_previous": True})))
+            payload = json.loads(
+                asyncio.run(gateway.tool_registry.call_tool("soma_get_map", {"wait_for_previous": True}))
+            )
 
         self.assertEqual(payload["status"], "ok")
 
     def test_prepare_context_returns_structured_budgeted_packet(self):
         tmp, root = self.make_repo()
-        with tmp, patch.object(
-            gateway.core.graphify,
-            "query",
-            return_value={"graphs": [], "answers": [], "warnings": []},
+        with (
+            tmp,
+            patch.object(
+                gateway.core.graphify,
+                "query",
+                return_value={"graphs": [], "answers": [], "warnings": []},
+            ),
         ):
             import os
+
             os.environ["SOMA_PROJECT_ROOT"] = str(root)
-            payload = json.loads(asyncio.run(gateway.tools.context.soma_prepare_context("do we have bugs?", "micro", "deterministic")))
+            payload = json.loads(
+                asyncio.run(gateway.tools.context.soma_prepare_context("do we have bugs?", "micro", "deterministic"))
+            )
 
         self.assertEqual(payload["status"], "ok")
         self.assertIn("packet", payload)
@@ -225,7 +246,7 @@ class SomaMCPServerTests(unittest.TestCase):
     def test_install_codex_config_is_idempotent(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = Path(tmp) / "config.toml"
-            config.write_text("[mcp_servers.soma]\ncommand = \"/bad/python\"\nargs = [\"/bad/soma_mcp_server.py\"]\n")
+            config.write_text('[mcp_servers.soma]\ncommand = "/bad/python"\nargs = ["/bad/soma_mcp_server.py"]\n')
 
             first = gateway.server.install_codex_config(config, "/tmp/project", "/usr/bin/python3")
             second = gateway.server.install_codex_config(config, "/tmp/project", "/usr/bin/python3")
@@ -241,7 +262,7 @@ class SomaMCPServerTests(unittest.TestCase):
     def test_rollback_codex_config_restores_latest_backup(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = Path(tmp) / "config.toml"
-            config.write_text("[mcp_servers.soma]\ncommand = \"/new/python\"\nargs = [\"/new/soma_mcp_server.py\"]\n")
+            config.write_text('[mcp_servers.soma]\ncommand = "/new/python"\nargs = ["/new/soma_mcp_server.py"]\n')
             older = Path(tmp) / "config.toml.soma-backup-20260101-000000"
             newer = Path(tmp) / "config.toml.soma-backup-20260102-000000"
             older.write_text('model = "old"\n')
@@ -334,6 +355,254 @@ class SomaMCPServerTests(unittest.TestCase):
         self.assertIn("direct_nexus_exposed", payload["issues"])
         self.assertIn("project_root_mismatch", payload["issues"])
 
+    def test_extension_manager_repairs_antigravity_json_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            config = home / ".gemini/antigravity-ide/mcp_config.json"
+            config.parent.mkdir(parents=True)
+            config.write_text(
+                json.dumps(
+                    {
+                        "mcpServers": {
+                            "nexus-unity": {"command": "python3", "args": ["nexus_unity_bridge.py"]},
+                            "soma": {
+                                "command": "/usr/bin/python3",
+                                "args": ["/tmp/soma_mcp_server.py", "--project-root", "/tmp/old"],
+                                "env": {"SOMA_PROJECT_ROOT": "/tmp/old"},
+                            },
+                        }
+                    }
+                )
+            )
+
+            before = extension_manager.verify_ai_clients("/tmp/project", [], home=home)
+            synced = extension_manager.sync_ai_clients("/tmp/project", [], home=home)
+            updated = json.loads(config.read_text())
+
+        self.assertEqual(before["status"], "degraded")
+        self.assertNotIn("nexus-unity", updated["mcpServers"])
+        self.assertIn("soma", updated["mcpServers"])
+        self.assertIn("antigravity", {item["client"] for item in synced["clients"]})
+
+    def test_extension_manager_degrades_when_project_root_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "settings.json"
+            config.write_text(
+                json.dumps(
+                    {"mcpServers": {"soma": {"command": "/usr/bin/python3", "args": ["/tmp/soma_mcp_server.py"]}}}
+                )
+            )
+
+            payload = extension_manager._verify_json_config(config, "/tmp/project")
+
+        self.assertEqual(payload["status"], "degraded")
+        self.assertIn("project_root_missing", payload["issues"])
+
+    def test_extension_manager_update_does_not_sync_after_failed_update(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            before = {"tool_id": "graphify", "installed_version": "1.0.0", "latest_version": "1.0.1"}
+            failed = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="failed")
+
+            with (
+                patch.object(extension_manager, "_tool_status_one", side_effect=[before, before]),
+                patch.object(extension_manager, "_run_shell", return_value=failed),
+                patch.object(extension_manager, "sync_ai_clients") as sync,
+            ):
+                payload = extension_manager.update_tool("graphify", "/tmp/project", [], home=home)
+
+        sync.assert_not_called()
+        self.assertEqual(payload["status"], "degraded")
+        self.assertIn("update_command_failed", payload["issues"])
+        self.assertNotIn("smoke_failed", payload["issues"])
+        self.assertEqual(payload["clients"], [])
+
+    def test_extension_manager_backup_names_do_not_collide(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.json"
+            config.write_text("{}")
+            first = extension_manager._backup(config)
+            first.write_text("{}")
+
+            second = extension_manager._backup(config)
+
+        self.assertNotEqual(first, second)
+
+    def test_extension_manager_disables_antigravity_direct_tool_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            direct = home / ".gemini/antigravity/mcp/nexus-unity"
+            direct.mkdir(parents=True)
+            (direct / "unity_wait.json").write_text("{}")
+            (home / ".gemini/antigravity/mcp/soma").mkdir()
+
+            synced = extension_manager.sync_ai_clients(None, [], home=home)
+
+            tool_statuses = [
+                item
+                for item in synced["clients"]
+                if item["client"] == "antigravity" and "antigravity/mcp" in item["config_path"]
+            ]
+            self.assertEqual(tool_statuses[0]["status"], "ok")
+            self.assertFalse(direct.exists())
+            self.assertTrue(
+                any(path.name.startswith("nexus-unity.disabled-soma-backup-") for path in direct.parent.iterdir())
+            )
+
+    def test_extension_manager_scans_project_markers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            project = home / "Daliys/App"
+            project.mkdir(parents=True)
+            (project / ".mcp.json").write_text("{}")
+
+            report = extension_manager.scan_ai_clients(None, [], home=home)
+
+        self.assertIn(str(project.resolve()), {item["project_root"] for item in report["projects"]})
+
+    def test_extension_manager_sets_up_memory_tools_for_project(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            root = Path(tmp) / "project"
+            home.mkdir()
+            root.mkdir()
+            ok = subprocess.CompletedProcess(args=[], returncode=0, stdout="ok", stderr="")
+
+            with (
+                patch.object(extension_manager, "_installed_version", return_value="1.0.0"),
+                patch.object(extension_manager, "_latest_version", return_value="1.0.0"),
+                patch.object(extension_manager, "_codebase_memory_bin", return_value="/bin/echo"),
+                patch.object(extension_manager, "_projectmem_cli", return_value="/bin/echo"),
+                patch.object(extension_manager, "_run", return_value=ok),
+            ):
+                report = extension_manager.setup_memory_tools(str(root), home=home)
+
+            codex_config = home / ".codex/config.toml"
+            gemini_config = home / ".gemini/settings.json"
+            agents = root / "AGENTS.md"
+
+            self.assertEqual(report["status"], "ok")
+            self.assertIn("mcp_servers.projectmem", codex_config.read_text())
+            self.assertIn("projectmem", json.loads(gemini_config.read_text())["mcpServers"])
+            agents_text = agents.read_text()
+            self.assertIn("Default mode: light", agents_text)
+            self.assertIn("Codebase-Memory:", agents_text)
+            self.assertIn("projectmem:", agents_text)
+
+    def test_extension_manager_sets_up_single_project_tool(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            root = Path(tmp) / "project"
+            codebase_root = Path(tmp) / "codebase-project"
+            home.mkdir()
+            root.mkdir()
+            codebase_root.mkdir()
+            ok = subprocess.CompletedProcess(args=[], returncode=0, stdout="ok", stderr="")
+
+            with (
+                patch.object(extension_manager, "_installed_version", return_value="1.0.0"),
+                patch.object(extension_manager, "_projectmem_cli", return_value="/bin/echo"),
+                patch.object(extension_manager, "_codebase_memory_bin", return_value="/bin/echo"),
+                patch.object(extension_manager, "_run", return_value=ok),
+            ):
+                report = extension_manager.setup_project_tool("projectmem", str(root), home=home)
+                codebase_report = extension_manager.setup_project_tool("codebase-memory", str(codebase_root), home=home)
+                unsupported = extension_manager.setup_project_tool("graphify", str(root), home=home)
+
+            self.assertEqual(report["status"], "ok")
+            self.assertEqual(report["tool_id"], "projectmem")
+            self.assertIn("mcp_servers.projectmem", (home / ".codex/config.toml").read_text())
+            projectmem_agents = (root / "AGENTS.md").read_text()
+            self.assertIn("projectmem:", projectmem_agents)
+            self.assertNotIn("Codebase-Memory:", projectmem_agents)
+            self.assertEqual(codebase_report["status"], "ok")
+            codebase_agents = (codebase_root / "AGENTS.md").read_text()
+            self.assertIn("Codebase-Memory:", codebase_agents)
+            self.assertNotIn("projectmem:", codebase_agents)
+            self.assertEqual(unsupported["status"], "error")
+            self.assertIn("unsupported_project_tool", unsupported["issues"])
+
+    def test_project_overview_reports_dirty_git_repo(self):
+        tmp, root = self.make_repo()
+        with tmp, tempfile.TemporaryDirectory() as home_tmp:
+            home = Path(home_tmp)
+            other = home / "Daliys/Other"
+            other.mkdir(parents=True)
+            (other / "AGENTS.md").write_text("Other project\n")
+            (home / ".gemini").mkdir()
+            (home / ".gemini/settings.json").write_text(
+                json.dumps(
+                    {
+                        "mcpServers": {
+                            "soma": {
+                                "command": sys.executable,
+                                "args": ["/tmp/soma_mcp_server.py", "--project-root", str(other)],
+                                "env": {"SOMA_PROJECT_ROOT": str(other)},
+                            }
+                        }
+                    }
+                )
+            )
+            (root / ".gemini").mkdir()
+            (root / ".gemini/settings.json").write_text(
+                json.dumps(
+                    {
+                        "mcpServers": {
+                            "soma": {
+                                "command": sys.executable,
+                                "args": ["/tmp/soma_mcp_server.py", "--project-root", str(root)],
+                                "env": {"SOMA_PROJECT_ROOT": str(root)},
+                            }
+                        }
+                    }
+                )
+            )
+            subprocess.run(["git", "add", ".gemini/settings.json"], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-m", "config"], cwd=root, check=True, capture_output=True)
+            (root / "scratch.txt").write_text("new\n")
+
+            with (
+                patch.object(extension_manager, "_installed_version", return_value="1.0.0"),
+                patch.object(extension_manager, "_latest_version", return_value="1.0.0"),
+                patch.object(extension_manager, "_codebase_memory_indexed", return_value=True),
+            ):
+                payload = extension_manager.project_overview(
+                    str(root), [], home=home, graph_status={"project_graph_available": True, "stale": False}
+                )
+
+        self.assertEqual(payload["git"]["is_repo"], True)
+        self.assertEqual(payload["git"]["changed_count"], 2)
+        self.assertEqual(payload["git"]["untracked_count"], 1)
+        self.assertEqual(payload["memory"]["codebase_memory_indexed"], True)
+        self.assertEqual([item["id"] for item in payload["memory"]["installed_tools"]], ["codebase-memory", "graphify"])
+        self.assertNotIn("tools", payload)
+        self.assertNotIn("known_project_alerts", payload)
+        self.assertEqual(
+            [item["project_root"] for item in payload["clients"]], [scout_pipeline.normalize_path(str(root))]
+        )
+
+    def test_project_overview_handles_non_git_and_missing_roots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            root = Path(tmp) / "project"
+            missing = Path(tmp) / "missing"
+            home.mkdir()
+            root.mkdir()
+
+            with (
+                patch.object(extension_manager, "_installed_version", return_value=None),
+                patch.object(extension_manager, "_latest_version", return_value=None),
+            ):
+                non_git = extension_manager.project_overview(str(root), [], home=home)
+                missing_payload = extension_manager.project_overview(str(missing), [], home=home)
+
+        self.assertFalse(non_git["git"]["is_repo"])
+        self.assertEqual(non_git["memory"]["status"], "none")
+        self.assertEqual(non_git["memory"]["installed_tools"], [])
+        self.assertEqual(non_git["memory"]["issues"], [])
+        self.assertFalse(missing_payload["git"]["is_repo"])
+        self.assertIn("missing_project_root", missing_payload["issues"])
+
     def test_install_hermes_config_preserves_settings_and_removes_direct_nexus(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = Path(tmp) / "config.yaml"
@@ -409,7 +678,9 @@ class SomaMCPServerTests(unittest.TestCase):
     def test_mcp_smoke_client_statuses_include_hermes(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = Path(tmp) / "config.yaml"
-            config.write_text(gateway.server.build_client_config("hermes", "/tmp/project", "/usr/bin/python3"), encoding="utf-8")
+            config.write_text(
+                gateway.server.build_client_config("hermes", "/tmp/project", "/usr/bin/python3"), encoding="utf-8"
+            )
             args = type(
                 "Args",
                 (),
@@ -422,7 +693,9 @@ class SomaMCPServerTests(unittest.TestCase):
             )()
 
             with patch.object(gateway.client_config.shutil, "which", return_value="/usr/local/bin/hermes"):
-                statuses = verify_soma_mcp_clients._client_config_statuses(args, scout_pipeline.normalize_path("/tmp/project"))
+                statuses = verify_soma_mcp_clients._client_config_statuses(
+                    args, scout_pipeline.normalize_path("/tmp/project")
+                )
 
         self.assertIn("hermes", statuses)
         self.assertEqual(statuses["hermes"]["status"], "ok")
@@ -430,7 +703,9 @@ class SomaMCPServerTests(unittest.TestCase):
     def test_verify_hermes_config_degrades_when_cli_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = Path(tmp) / "config.yaml"
-            config.write_text(gateway.server.build_client_config("hermes", "/tmp/project", "/usr/bin/python3"), encoding="utf-8")
+            config.write_text(
+                gateway.server.build_client_config("hermes", "/tmp/project", "/usr/bin/python3"), encoding="utf-8"
+            )
 
             with patch.object(gateway.client_config.shutil, "which", return_value=None):
                 payload = gateway.server.verify_hermes_config(config, "/tmp/project")
@@ -480,8 +755,9 @@ class SomaMCPServerTests(unittest.TestCase):
             (root / "GEMINI.md").write_text("Use raw unity_apply_code_change first.\n", encoding="utf-8")
             (root / "AGENTS.md").write_text("Read graphify-out before inspecting files.\n", encoding="utf-8")
             report_dir = Path(tmp) / "reports"
-            with patch.object(soma_project_setup, "REPORT_DIR", report_dir), patch.object(
-                soma_project_setup, "LATEST_REPORT", report_dir / "latest.json"
+            with (
+                patch.object(soma_project_setup, "REPORT_DIR", report_dir),
+                patch.object(soma_project_setup, "LATEST_REPORT", report_dir / "latest.json"),
             ):
                 report = soma_project_setup.analyze_project_ai_setup(str(root))
 
@@ -517,16 +793,13 @@ class SomaMCPServerTests(unittest.TestCase):
             global_gemini = Path(tmp) / "home" / ".gemini" / "settings.json"
             global_codex = Path(tmp) / "home" / ".codex" / "config.toml"
             report_dir = Path(tmp) / "reports"
-            with patch.object(soma_project_setup, "REPORT_DIR", report_dir), patch.object(
-                soma_project_setup, "LATEST_REPORT", report_dir / "latest.json"
-            ), patch.object(
-                soma_project_setup, "gemini_config_default_path", return_value=global_gemini
-            ), patch.object(
-                gateway.client_config, "gemini_config_default_path", return_value=global_gemini
-            ), patch.object(
-                gateway.client_config, "codex_config_default_path", return_value=global_codex
-            ), patch.dict(
-                os.environ, {"SOMA_PROJECT_ONBOARDING_USE_LOCAL_AI": "0"}
+            with (
+                patch.object(soma_project_setup, "REPORT_DIR", report_dir),
+                patch.object(soma_project_setup, "LATEST_REPORT", report_dir / "latest.json"),
+                patch.object(soma_project_setup, "gemini_config_default_path", return_value=global_gemini),
+                patch.object(gateway.client_config, "gemini_config_default_path", return_value=global_gemini),
+                patch.object(gateway.client_config, "codex_config_default_path", return_value=global_codex),
+                patch.dict(os.environ, {"SOMA_PROJECT_ONBOARDING_USE_LOCAL_AI": "0"}),
             ):
                 report = soma_project_setup.harden_project_ai_setup(str(root), python_executable="/usr/bin/python3")
                 updated_project_gemini = json.loads(project_gemini.read_text(encoding="utf-8"))
@@ -558,16 +831,13 @@ class SomaMCPServerTests(unittest.TestCase):
             global_gemini = Path(tmp) / "home" / ".gemini" / "settings.json"
             global_codex = Path(tmp) / "home" / ".codex" / "config.toml"
             report_dir = Path(tmp) / "reports"
-            with patch.object(soma_project_setup, "REPORT_DIR", report_dir), patch.object(
-                soma_project_setup, "LATEST_REPORT", report_dir / "latest.json"
-            ), patch.object(
-                soma_project_setup, "gemini_config_default_path", return_value=global_gemini
-            ), patch.object(
-                gateway.client_config, "gemini_config_default_path", return_value=global_gemini
-            ), patch.object(
-                gateway.client_config, "codex_config_default_path", return_value=global_codex
-            ), patch.dict(
-                os.environ, {"SOMA_PROJECT_ONBOARDING_USE_LOCAL_AI": "0"}
+            with (
+                patch.object(soma_project_setup, "REPORT_DIR", report_dir),
+                patch.object(soma_project_setup, "LATEST_REPORT", report_dir / "latest.json"),
+                patch.object(soma_project_setup, "gemini_config_default_path", return_value=global_gemini),
+                patch.object(gateway.client_config, "gemini_config_default_path", return_value=global_gemini),
+                patch.object(gateway.client_config, "codex_config_default_path", return_value=global_codex),
+                patch.dict(os.environ, {"SOMA_PROJECT_ONBOARDING_USE_LOCAL_AI": "0"}),
             ):
                 soma_project_setup.harden_project_ai_setup(str(root), python_executable="/usr/bin/python3")
                 rollback = soma_project_setup.rollback_project_ai_setup(str(root))
@@ -602,15 +872,20 @@ class SomaMCPServerTests(unittest.TestCase):
             },
         )()
         tmp, root = self.make_repo()
-        with tmp, patch.object(verify_soma_mcp_clients, "_client_config_statuses", return_value={}), patch.object(
-            verify_soma_mcp_clients, "CORE_CALLS", {}
-        ), patch.object(gateway.core.nexus, "discover", return_value=gateway.core.NexusState()):
+        with (
+            tmp,
+            patch.object(verify_soma_mcp_clients, "_client_config_statuses", return_value={}),
+            patch.object(verify_soma_mcp_clients, "CORE_CALLS", {}),
+            patch.object(gateway.core.nexus, "discover", return_value=gateway.core.NexusState()),
+        ):
             args.project_root = str(root)
             report = verify_soma_mcp_clients.run_smoke(args)
 
         self.assertIn(report["status"], {"ok", "degraded"})
         self.assertEqual(report["plugin_status"]["unity_nexus"], "skipped")
-        plugin_results = {item["tool"]: item for item in report["tool_results"] if item["tool"] in {"soma_apply", "soma_execute"}}
+        plugin_results = {
+            item["tool"]: item for item in report["tool_results"] if item["tool"] in {"soma_apply", "soma_execute"}
+        }
         self.assertEqual(plugin_results["soma_apply"]["status"], "skipped")
         self.assertIn("plugin_guarded", plugin_results["soma_apply"]["reason"])
 
@@ -621,29 +896,33 @@ class SomaMCPServerTests(unittest.TestCase):
         def fake_translate(text, model, timeout):
             return "Check quiet hours and return a plan."
 
-        with tmp, tempfile.TemporaryDirectory() as log_tmp, patch.object(
-            gateway.core.graphify, "query", return_value={"graphs": [], "answers": [], "warnings": []}
-        ), patch.object(soma_language_optimizer, "_local_ollama_translate", side_effect=fake_translate), patch.object(
-            soma_logger, "SOMA_LOG_DIR", Path(log_tmp)
-        ), patch.object(
-            soma_logger, "SOMA_SESSION_STATS_FILE", Path(log_tmp) / "session_stats.json"
-        ), patch.object(
-            soma_audit, "SOMA_AUDIT_DIR", Path(log_tmp) / "audit"
-        ), patch.object(
-            soma_audit, "SOMA_AUDIT_RUNS_DIR", Path(log_tmp) / "audit" / "runs"
-        ), patch.object(
-            soma_audit, "SOMA_AUDIT_RAW_DIR", Path(log_tmp) / "audit" / "raw"
-        ), patch.object(
-            soma_audit, "SOMA_AUDIT_LATEST", Path(log_tmp) / "audit" / "latest.json"
-        ), patch.dict(
-            os.environ,
-            {"SOMA_PROJECT_ROOT": str(root), "SOMA_TRANSLATION_ENABLED": "1", "SOMA_TRANSLATION_PROVIDER": "local"},
+        with (
+            tmp,
+            tempfile.TemporaryDirectory() as log_tmp,
+            patch.object(gateway.core.graphify, "query", return_value={"graphs": [], "answers": [], "warnings": []}),
+            patch.object(soma_language_optimizer, "_local_ollama_translate", side_effect=fake_translate),
+            patch.object(soma_logger, "SOMA_LOG_DIR", Path(log_tmp)),
+            patch.object(soma_logger, "SOMA_SESSION_STATS_FILE", Path(log_tmp) / "session_stats.json"),
+            patch.object(soma_audit, "SOMA_AUDIT_DIR", Path(log_tmp) / "audit"),
+            patch.object(soma_audit, "SOMA_AUDIT_RUNS_DIR", Path(log_tmp) / "audit" / "runs"),
+            patch.object(soma_audit, "SOMA_AUDIT_RAW_DIR", Path(log_tmp) / "audit" / "raw"),
+            patch.object(soma_audit, "SOMA_AUDIT_LATEST", Path(log_tmp) / "audit" / "latest.json"),
+            patch.dict(
+                os.environ,
+                {"SOMA_PROJECT_ROOT": str(root), "SOMA_TRANSLATION_ENABLED": "1", "SOMA_TRANSLATION_PROVIDER": "local"},
+            ),
         ):
             payload = json.loads(
                 asyncio.run(
                     gateway.tool_registry.call_tool(
                         "soma_prepare_context",
-                        {"goal": russian_prompt, "budget": "micro", "depth": "deterministic", "run_id": "run_log_translation", "task_id": "translation"},
+                        {
+                            "goal": russian_prompt,
+                            "budget": "micro",
+                            "depth": "deterministic",
+                            "run_id": "run_log_translation",
+                            "task_id": "translation",
+                        },
                     )
                 )
             )
@@ -652,7 +931,7 @@ class SomaMCPServerTests(unittest.TestCase):
 
         self.assertIn(payload["language_optimization"]["status"], {"translated", "failed_fallback"})
         self.assertEqual(payload["audit"]["run_id"], "run_log_translation")
-        self.assertIn("\"run_id\": \"run_log_translation\"", log_text)
+        self.assertIn('"run_id": "run_log_translation"', log_text)
         self.assertIn("translation_status", log_text)
         self.assertIn("prompt_saved_tokens", log_text)
         self.assertNotIn("Проверь", log_text)
@@ -682,9 +961,14 @@ class SomaMCPServerTests(unittest.TestCase):
         tmp, root = self.make_repo()
         with tmp:
             import os
+
             os.environ["SOMA_PROJECT_ROOT"] = str(root)
             payload = json.loads(
-                asyncio.run(gateway.tools.memory.soma_remember("save", "Port conflicts happen during Unity reload.", "known_issues"))
+                asyncio.run(
+                    gateway.tools.memory.soma_remember(
+                        "save", "Port conflicts happen during Unity reload.", "known_issues"
+                    )
+                )
             )
             known_issues = json.loads((root / ".soma" / "known_issues.json").read_text())
 
@@ -702,17 +986,25 @@ class SomaMCPServerTests(unittest.TestCase):
 
     def test_get_map_uses_nexus_mock_and_graph_status(self):
         tmp, root = self.make_repo()
-        state = gateway.core.NexusState(connected=True, port=8081, project_path=str(root), session_id="abc123", session_generation=3)
-        with tmp, patch.object(gateway.core.nexus, "discover", return_value=state), patch.object(
-            gateway.core.nexus,
-            "compact_scene_snapshot",
-            return_value={"result": {"scene_name": "Main", "total_objects": 1}},
-        ), patch.object(
-            gateway.core.nexus,
-            "read_logs",
-            return_value={"result": {"logs": []}},
+        state = gateway.core.NexusState(
+            connected=True, port=8081, project_path=str(root), session_id="abc123", session_generation=3
+        )
+        with (
+            tmp,
+            patch.object(gateway.core.nexus, "discover", return_value=state),
+            patch.object(
+                gateway.core.nexus,
+                "compact_scene_snapshot",
+                return_value={"result": {"scene_name": "Main", "total_objects": 1}},
+            ),
+            patch.object(
+                gateway.core.nexus,
+                "read_logs",
+                return_value={"result": {"logs": []}},
+            ),
         ):
             import os
+
             os.environ["SOMA_PROJECT_ROOT"] = str(root)
             payload = json.loads(asyncio.run(gateway.tools.context.soma_get_map()))
 
@@ -722,18 +1014,24 @@ class SomaMCPServerTests(unittest.TestCase):
 
     def test_soma_execute_blocks_recursive_batch(self):
         with patch.object(gateway.core.nexus, "available", return_value=True):
-            payload = json.loads(asyncio.run(gateway.tools.nexus.soma_execute([{"method": "batch_execute", "params": {}}])))
+            payload = json.loads(
+                asyncio.run(gateway.tools.nexus.soma_execute([{"method": "batch_execute", "params": {}}]))
+            )
 
         self.assertEqual(payload["status"], "error")
         self.assertIn("blocked", payload["omitted"])
 
     def test_soma_execute_compacts_large_output_by_default(self):
         large = {"items": [{"message": "x" * 1000} for _ in range(20)]}
-        with patch.object(gateway.core.nexus, "available", return_value=True), patch.object(
-            gateway.core.nexus,
-            "batch_execute",
-            return_value={"result": large},
-        ), patch.dict(os.environ, {"SOMA_AUDIT_RAW_CAPTURE": "0"}):
+        with (
+            patch.object(gateway.core.nexus, "available", return_value=True),
+            patch.object(
+                gateway.core.nexus,
+                "batch_execute",
+                return_value={"result": large},
+            ),
+            patch.dict(os.environ, {"SOMA_AUDIT_RAW_CAPTURE": "0"}),
+        ):
             payload = json.loads(asyncio.run(gateway.tools.nexus.soma_execute([{"method": "read_logs", "params": {}}])))
 
         self.assertEqual(payload["status"], "ok")
@@ -743,10 +1041,13 @@ class SomaMCPServerTests(unittest.TestCase):
         self.assertNotIn("x" * 1000, json.dumps(payload["result"]))
 
     def test_soma_apply_uses_nexus_macro_shape(self):
-        with patch.object(gateway.core.nexus, "available", return_value=True), patch.object(
-            gateway.core.nexus,
-            "apply_code_change",
-            return_value={"result": {"status": "Success", "compiler_errors": []}},
+        with (
+            patch.object(gateway.core.nexus, "available", return_value=True),
+            patch.object(
+                gateway.core.nexus,
+                "apply_code_change",
+                return_value={"result": {"status": "Success", "compiler_errors": []}},
+            ),
         ):
             payload = json.loads(
                 asyncio.run(gateway.tools.nexus.soma_apply([{"path": "Assets/Test.cs", "content": "class Test {}"}]))
@@ -759,16 +1060,22 @@ class SomaMCPServerTests(unittest.TestCase):
     def test_soma_delta_uses_previous_scene_generation(self):
         tmp, root = self.make_repo()
         state = gateway.core.NexusState(connected=True, port=8081, project_path=str(root), session_generation=9)
-        with tmp, patch.object(gateway.core.nexus, "discover", return_value=state), patch.object(
-            gateway.core.nexus,
-            "timeline",
-            return_value={"result": {"events": []}},
-        ), patch.object(
-            gateway.core.nexus,
-            "scene_delta",
-            return_value={"result": {"changes": []}},
-        ) as scene_delta:
+        with (
+            tmp,
+            patch.object(gateway.core.nexus, "discover", return_value=state),
+            patch.object(
+                gateway.core.nexus,
+                "timeline",
+                return_value={"result": {"events": []}},
+            ),
+            patch.object(
+                gateway.core.nexus,
+                "scene_delta",
+                return_value={"result": {"changes": []}},
+            ) as scene_delta,
+        ):
             import os
+
             os.environ["SOMA_PROJECT_ROOT"] = str(root)
             gateway.core._last_scene_generation = 7
             payload = json.loads(asyncio.run(gateway.tools.nexus.soma_delta()))

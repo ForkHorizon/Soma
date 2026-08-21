@@ -6,20 +6,69 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		C3D4E5F62F9A000000000007 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8EB8A7402F939EED007CCC00 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8EB8A7472F939EED007CCC00;
+			remoteInfo = Soma;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		8EB8A7482F939EED007CCC00 /* Soma.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Soma.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1B2C3D42F9A000000000001 /* Soma Voice Server.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Soma Voice Server.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		C3D4E5F62F9A000000000001 /* SomaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SomaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		B2C3D4E52F9A000000000001 /* Exceptions for "Soma" folder in "Soma" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 8EB8A7472F939EED007CCC00 /* Soma */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		8EB8A74A2F939EED007CCC00 /* Soma */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B2C3D4E52F9A000000000001 /* Exceptions for "Soma" folder in "Soma" target */,
+			);
 			path = Soma;
+			sourceTree = "<group>";
+		};
+		A1B2C3D42F9A000000000002 /* SomaVoiceServer */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SomaVoiceServer;
+			sourceTree = "<group>";
+		};
+		C3D4E5F62F9A000000000002 /* SomaTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SomaTests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		8EB8A7452F939EED007CCC00 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1B2C3D42F9A000000000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C3D4E5F62F9A000000000003 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -33,6 +82,8 @@
 			isa = PBXGroup;
 			children = (
 				8EB8A74A2F939EED007CCC00 /* Soma */,
+				A1B2C3D42F9A000000000002 /* SomaVoiceServer */,
+				C3D4E5F62F9A000000000002 /* SomaTests */,
 				8EB8A7492F939EED007CCC00 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +92,8 @@
 			isa = PBXGroup;
 			children = (
 				8EB8A7482F939EED007CCC00 /* Soma.app */,
+				A1B2C3D42F9A000000000001 /* Soma Voice Server.app */,
+				C3D4E5F62F9A000000000001 /* SomaTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -70,6 +123,51 @@
 			productReference = 8EB8A7482F939EED007CCC00 /* Soma.app */;
 			productType = "com.apple.product-type.application";
 		};
+		A1B2C3D42F9A000000000006 /* Soma Voice Server */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1B2C3D42F9A000000000009 /* Build configuration list for PBXNativeTarget "Soma Voice Server" */;
+			buildPhases = (
+				A1B2C3D42F9A000000000005 /* Sources */,
+				A1B2C3D42F9A000000000003 /* Frameworks */,
+				A1B2C3D42F9A000000000004 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A1B2C3D42F9A000000000002 /* SomaVoiceServer */,
+			);
+			name = "Soma Voice Server";
+			packageProductDependencies = (
+			);
+			productName = "Soma Voice Server";
+			productReference = A1B2C3D42F9A000000000001 /* Soma Voice Server.app */;
+			productType = "com.apple.product-type.application";
+		};
+		C3D4E5F62F9A000000000004 /* SomaTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C3D4E5F62F9A00000000000A /* Build configuration list for PBXNativeTarget "SomaTests" */;
+			buildPhases = (
+				C3D4E5F62F9A000000000005 /* Sources */,
+				C3D4E5F62F9A000000000003 /* Frameworks */,
+				C3D4E5F62F9A000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C3D4E5F62F9A000000000009 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				C3D4E5F62F9A000000000002 /* SomaTests */,
+			);
+			name = SomaTests;
+			packageProductDependencies = (
+			);
+			productName = SomaTests;
+			productReference = C3D4E5F62F9A000000000001 /* SomaTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -82,6 +180,13 @@
 				TargetAttributes = {
 					8EB8A7472F939EED007CCC00 = {
 						CreatedOnToolsVersion = 26.2;
+					};
+					A1B2C3D42F9A000000000006 = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					C3D4E5F62F9A000000000004 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 8EB8A7472F939EED007CCC00;
 					};
 				};
 			};
@@ -100,12 +205,28 @@
 			projectRoot = "";
 			targets = (
 				8EB8A7472F939EED007CCC00 /* Soma */,
+				A1B2C3D42F9A000000000006 /* Soma Voice Server */,
+				C3D4E5F62F9A000000000004 /* SomaTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		8EB8A7462F939EED007CCC00 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1B2C3D42F9A000000000004 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C3D4E5F62F9A000000000006 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -122,7 +243,29 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A1B2C3D42F9A000000000005 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C3D4E5F62F9A000000000005 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		C3D4E5F62F9A000000000009 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8EB8A7472F939EED007CCC00 /* Soma */;
+			targetProxy = C3D4E5F62F9A000000000007 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		8EB8A7512F939EEE007CCC00 /* Debug */ = {
@@ -252,15 +395,17 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = "Apple Development: daliys133@gmail.com (8H68DRQK7H)";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = XBLGP3YUZF;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Soma/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -283,15 +428,17 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = "Apple Development: daliys133@gmail.com (8H68DRQK7H)";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = XBLGP3YUZF;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Soma/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -306,6 +453,98 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		A1B2C3D42F9A000000000007 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development: daliys133@gmail.com (8H68DRQK7H)";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = XBLGP3YUZF;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Daliys.SomaVoiceServer;
+				PRODUCT_NAME = "Soma Voice Server";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A1B2C3D42F9A000000000008 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development: daliys133@gmail.com (8H68DRQK7H)";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = XBLGP3YUZF;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Daliys.SomaVoiceServer;
+				PRODUCT_NAME = "Soma Voice Server";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		C3D4E5F62F9A00000000000B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				PRODUCT_BUNDLE_IDENTIFIER = Daliys.SomaTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Soma.app/Contents/MacOS/Soma";
+			};
+			name = Debug;
+		};
+		C3D4E5F62F9A00000000000C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				PRODUCT_BUNDLE_IDENTIFIER = Daliys.SomaTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Soma.app/Contents/MacOS/Soma";
 			};
 			name = Release;
 		};
@@ -326,6 +565,24 @@
 			buildConfigurations = (
 				8EB8A7542F939EEE007CCC00 /* Debug */,
 				8EB8A7552F939EEE007CCC00 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A1B2C3D42F9A000000000009 /* Build configuration list for PBXNativeTarget "Soma Voice Server" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1B2C3D42F9A000000000007 /* Debug */,
+				A1B2C3D42F9A000000000008 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C3D4E5F62F9A00000000000A /* Build configuration list for PBXNativeTarget "SomaTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C3D4E5F62F9A00000000000B /* Debug */,
+				C3D4E5F62F9A00000000000C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

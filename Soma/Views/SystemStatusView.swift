@@ -52,7 +52,7 @@ struct SystemStatusView: View {
         SomaPanel(title: "Needs Attention", subtitle: "Start here before reading dense diagnostics.", icon: "exclamationmark.triangle.fill", tone: attentionTone) {
             VStack(alignment: .leading, spacing: 8) {
                 if viewModel.selectedProjectRoot.isEmpty {
-                    StatusBanner(title: "No project selected", detail: "Choose a project in the top bar to unlock readiness checks, graph state, and audit traces.", tone: .warning)
+                    StatusBanner(title: "No project selected", detail: "Choose a project in the sidebar to unlock readiness checks, graph state, and audit traces.", tone: .warning)
                 }
                 if !viewModel.somaServerRunning {
                     StatusBanner(title: "MCP gateway is offline", detail: "Prepare Packet still works. Start MCP only when external clients need live Soma tools.", tone: viewModel.selectedProjectRoot.isEmpty ? .warning : .info)
@@ -74,7 +74,7 @@ struct SystemStatusView: View {
     }
 
     private var runtimeSnapshotPanel: some View {
-        SomaPanel(title: "Runtime Snapshot", subtitle: "Compact state mirrored from the top bar.", icon: "gauge.with.dots.needle.67percent", tone: overallTone) {
+        SomaPanel(title: "Runtime Snapshot", subtitle: "Compact state for the selected project and local runtime.", icon: "gauge.with.dots.needle.67percent", tone: overallTone) {
             SomaKeyValueRow(label: "Project", value: viewModel.selectedProjectRoot.isEmpty ? "Not selected" : (viewModel.selectedProjectRoot as NSString).lastPathComponent, tone: viewModel.selectedProjectRoot.isEmpty ? .warning : .info)
             SomaKeyValueRow(label: "MCP", value: viewModel.somaServerRunning ? "Online" : "Offline", tone: viewModel.somaServerRunning ? .good : .danger)
             SomaKeyValueRow(label: "Scout", value: ollama.modelName, tone: ollama.isModelLoaded ? .good : .warning)

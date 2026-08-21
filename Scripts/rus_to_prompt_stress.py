@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Stress-run Rus to Prompt with adversarial prompts."""
+
 from __future__ import annotations
 
 import sys as _sys

@@ -6,6 +6,7 @@ Every tool call, latency, token count, error, and status is written as a
 JSON line to ~/.soma/logs/soma_YYYYMMDD.jsonl. Daily rotation, 14-day
 retention. Provides @log_tool_call decorator for wrapping soma_* functions.
 """
+
 from __future__ import annotations
 
 import functools
@@ -27,6 +28,7 @@ SOMA_SESSION_STATS_FILE = SOMA_LOG_DIR / "session_stats.json"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _estimate_tokens(text: str) -> int:
     """Rough 4-chars-per-token estimate."""
@@ -59,6 +61,7 @@ def _rotate_old_logs() -> None:
 
 
 # ── Core write ────────────────────────────────────────────────────────────────
+
 
 def write_log_entry(entry: dict[str, Any]) -> None:
     """Append a structured log entry to today's JSONL file (fire-and-forget)."""
@@ -138,9 +141,14 @@ def _update_session_stats(entry: dict[str, Any]) -> None:
 
     if tool not in _session_stats:
         _session_stats[tool] = {
-            "calls": 0, "ok": 0, "error": 0, "degraded": 0,
-            "total_duration_ms": 0.0, "total_input_tokens": 0,
-            "total_output_tokens": 0, "errors": [],
+            "calls": 0,
+            "ok": 0,
+            "error": 0,
+            "degraded": 0,
+            "total_duration_ms": 0.0,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "errors": [],
         }
 
     s = _session_stats[tool]
@@ -156,7 +164,11 @@ def _update_session_stats(entry: dict[str, Any]) -> None:
     try:
         SOMA_LOG_DIR.mkdir(parents=True, exist_ok=True)
         SOMA_SESSION_STATS_FILE.write_text(
-            json.dumps({"updated_at": datetime.now(tz=timezone.utc).isoformat(), "tools": _session_stats}, indent=2, default=str)
+            json.dumps(
+                {"updated_at": datetime.now(tz=timezone.utc).isoformat(), "tools": _session_stats},
+                indent=2,
+                default=str,
+            )
         )
     except Exception:
         pass
@@ -167,6 +179,7 @@ def get_session_stats() -> dict[str, Any]:
 
 
 # ── Decorator ─────────────────────────────────────────────────────────────────
+
 
 def log_tool_call(func: Callable) -> Callable:
     """
@@ -215,7 +228,9 @@ def log_tool_call(func: Callable) -> Callable:
             analysis_stages = parsed_result.get("analysis_stages") if isinstance(parsed_result, dict) else []
             local_ai_metrics = parsed_result.get("local_ai_metrics") if isinstance(parsed_result, dict) else {}
             token_savings = parsed_result.get("token_savings") if isinstance(parsed_result, dict) else {}
-            language_optimization = parsed_result.get("language_optimization") if isinstance(parsed_result, dict) else {}
+            language_optimization = (
+                parsed_result.get("language_optimization") if isinstance(parsed_result, dict) else {}
+            )
             if not isinstance(token_savings, dict):
                 token_savings = {}
             if not isinstance(language_optimization, dict):
@@ -223,7 +238,9 @@ def log_tool_call(func: Callable) -> Callable:
             if not isinstance(local_ai_metrics, dict):
                 local_ai_metrics = {}
             operation_savings = parsed_result.get("operation_savings") or token_savings.get("operation_savings")
-            estimated_context = parsed_result.get("estimated_context_reduction") or token_savings.get("estimated_context_reduction")
+            estimated_context = parsed_result.get("estimated_context_reduction") or token_savings.get(
+                "estimated_context_reduction"
+            )
             if not isinstance(operation_savings, dict):
                 operation_savings = {}
             if not isinstance(estimated_context, dict):
@@ -259,7 +276,9 @@ def log_tool_call(func: Callable) -> Callable:
                     str(stage.get("stage")): stage.get("status")
                     for stage in analysis_stages
                     if isinstance(stage, dict) and stage.get("stage")
-                } if isinstance(analysis_stages, list) else None,
+                }
+                if isinstance(analysis_stages, list)
+                else None,
                 "packet_tokens": token_savings.get("packet_tokens"),
                 "budget_used_pct": token_savings.get("budget_used_pct"),
                 "saved_tokens": token_savings.get("saved_tokens"),
@@ -269,7 +288,8 @@ def log_tool_call(func: Callable) -> Callable:
                 "token_estimator": token_savings.get("estimator"),
                 "operation_saved_tokens": operation_savings.get("saved_tokens"),
                 "operation_savings_pct": operation_savings.get("savings_pct"),
-                "operation_baseline_tokens": operation_savings.get("operation_baseline_tokens") or operation_savings.get("baseline_tokens"),
+                "operation_baseline_tokens": operation_savings.get("operation_baseline_tokens")
+                or operation_savings.get("baseline_tokens"),
                 "soma_response_tokens": operation_savings.get("soma_response_tokens"),
                 "estimated_context_saved_tokens": estimated_context.get("saved_tokens"),
                 "estimated_context_reduction_pct": estimated_context.get("savings_pct"),
@@ -312,6 +332,7 @@ def log_tool_call(func: Callable) -> Callable:
 
 # ── MCP request/response logging ──────────────────────────────────────────────
 
+
 def log_mcp_request(method: str, req_id: Any, params_size: int, extra: dict[str, Any] | None = None) -> float:
     """Log an incoming MCP request. Returns the start timestamp."""
     start = time.monotonic()
@@ -324,7 +345,9 @@ def log_mcp_request(method: str, req_id: Any, params_size: int, extra: dict[str,
     return start
 
 
-def log_mcp_response(method: str, req_id: Any, start: float, status: str, output_size: int, extra: dict[str, Any] | None = None) -> None:
+def log_mcp_response(
+    method: str, req_id: Any, start: float, status: str, output_size: int, extra: dict[str, Any] | None = None
+) -> None:
     """Log an outgoing MCP response."""
     duration_ms = (time.monotonic() - start) * 1000
     log_mcp_event(
@@ -338,6 +361,7 @@ def log_mcp_response(method: str, req_id: Any, start: float, status: str, output
 
 
 # ── Server lifecycle ──────────────────────────────────────────────────────────
+
 
 def log_server_start(project_root: str | None, pid: int) -> None:
     _rotate_old_logs()
@@ -386,7 +410,7 @@ if __name__ == "__main__":
             print(json.dumps({"message": f"No log file for {date_str}"}))
         else:
             lines = log_file.read_text(encoding="utf-8").splitlines()
-            for line in lines[-args.tail:]:
+            for line in lines[-args.tail :]:
                 try:
                     entry = json.loads(line)
                     ts = entry.get("ts", "")[:19]

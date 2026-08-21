@@ -30,9 +30,12 @@ nonisolated struct RusToPromptQueueSettings: Codable, Hashable {
             key: "tests.rusToPrompt.improverModels",
             fallback: [RusToPromptSettingsStore.defaultAnalyzer]
         )
+        // Fast, family-diverse local judges by default: the heavy 30B pair couldn't score the
+        // improve stage within the timeout, so they dominated wall-clock. Hybrid escalates
+        // uncertain items to the online referee anyway, so the local pass should be cheap.
         let localJudges = localModelsFromDefaults(
             key: "tests.rusToPrompt.localConfidenceModels",
-            fallback: ["qwen3:30b-a3b", "qwen3-coder:30b-a3b-q4_K_M"]
+            fallback: ["qwen3:8b", "qwen3.5:4b"]
         )
         let confidenceModel = UserDefaults.standard.string(forKey: "tests.rusToPrompt.confidenceModel") ?? "gemini-3-flash-preview"
         let batchSize = UserDefaults.standard.integer(forKey: "tests.rusToPrompt.confidenceBatchSize")
@@ -46,7 +49,7 @@ nonisolated struct RusToPromptQueueSettings: Codable, Hashable {
             hybridGeminiModel: confidenceModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "gemini-3-flash-preview" : confidenceModel,
             hybridFallbackReferee: "gemini",
             confidenceBatchSize: [1, 5, 10, 20].contains(batchSize) ? batchSize : 10,
-            cooldownSeconds: 30,
+            cooldownSeconds: 0,  // was 30: keep_alive now keeps models resident; the knob stays for thermal tuning
             ramWarningGB: 6
         )
     }
@@ -97,6 +100,7 @@ nonisolated struct RusToPromptQueueItem: Identifiable, Codable, Hashable {
     var runCount: Int
     var recoveredAfterRestart: Bool
     var snapshot: RusToPromptQueueItemSnapshot?
+    var pid: Int32? = nil
 }
 nonisolated struct RusToPromptQueueDiskState: Codable {
     var settings: RusToPromptQueueSettings
@@ -192,7 +196,13 @@ final class RusToPromptQueueManager: ObservableObject {
     var activeControlFileURL: URL?
     var processOutputBuffer = ""
     var timer: Timer?
+    var progressTickCount = 0           // 1s ticks; housekeeping runs every 5th
     var batteryStartOverrideItemID: String?
+    // Re-attach support: the run is a detached child that survives app restarts.
+    var activeReattachedPID: Int32?     // set only when re-attached to a still-running child (no Process handle)
+    var reattachedExitInFlight = false  // finalization started; blocks double-entry during the async completion
+    var progressLogURL: URL?            // progress.log being tailed for the active run
+    var progressLogOffset: UInt64 = 0   // byte offset already consumed from progressLogURL
     init() {
         let sourceURL = URL(fileURLWithPath: #filePath)
         repoRootURL = sourceURL
@@ -211,7 +221,7 @@ final class RusToPromptQueueManager: ObservableObject {
         recoverRunningItems()
         applyPowerGate()
         saveToDisk()
-        startTimer()
+        startTimerIfNeeded()   // only poll if launch recovered active/queued work
     }
     deinit {
         timer?.invalidate()

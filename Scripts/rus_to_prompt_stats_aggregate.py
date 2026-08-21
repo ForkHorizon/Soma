@@ -105,7 +105,9 @@ def _collect_translation_attempt(
     value = confidence_value(confidence if isinstance(confidence, dict) else None)
     if value is not None:
         attempt["confidences"].append(value)
-    attempt["confidence_failed"] = attempt["confidence_failed"] or confidence_failed(confidence if isinstance(confidence, dict) else None)
+    attempt["confidence_failed"] = attempt["confidence_failed"] or confidence_failed(
+        confidence if isinstance(confidence, dict) else None
+    )
     attempt["translation_failed"] = attempt["translation_failed"] or _translation_failed(row)
     attempt["degraded"] = attempt["degraded"] or str(row.get("translation_status") or "") == "degraded"
     attempt["warnings"].extend(confidence_warnings(confidence if isinstance(confidence, dict) else None))
@@ -149,7 +151,9 @@ def _should_record_improver(row: dict[str, Any]) -> bool:
 def _record_improver_attempt(run: dict[str, Any], row: dict[str, Any], buckets: dict[str, RoleBucket]) -> None:
     improver_model = str(row.get("analyzer_model") or "unknown")
     explicit = str(row.get("analyzer_provider") or run["analyzer_providers"].get(improver_model) or "")
-    bucket = buckets.setdefault(improver_model, RoleBucket(improver_model, provider_for_model(improver_model, explicit)))
+    bucket = buckets.setdefault(
+        improver_model, RoleBucket(improver_model, provider_for_model(improver_model, explicit))
+    )
     confidence_dict = _effective_improve_confidence(row)
     row_status = str(row.get("status") or "")
     improve_status = str(row.get("improve_status") or row_status)
@@ -208,7 +212,11 @@ def _row_improved_prompt_sanity_error(row: dict[str, Any]) -> str | None:
     if not improved:
         return None
     source = str(row.get("translation") or "")
-    return improved_prompt_sanity_error(source, improved) or ("prompt improvement returned assistant reasoning instead of the direct task" if looks_like_reasoning_transcript(improved) else None)
+    return improved_prompt_sanity_error(source, improved) or (
+        "prompt improvement returned assistant reasoning instead of the direct task"
+        if looks_like_reasoning_transcript(improved)
+        else None
+    )
 
 
 def _finalize_translation_attempts(
@@ -218,7 +226,9 @@ def _finalize_translation_attempts(
 ) -> None:
     for attempt in attempts.values():
         model = str(attempt["model"])
-        bucket = buckets.setdefault(model, RoleBucket(model, provider_for_model(model, run["translator_providers"].get(model))))
+        bucket = buckets.setdefault(
+            model, RoleBucket(model, provider_for_model(model, run["translator_providers"].get(model)))
+        )
         values = [float(value) for value in attempt["confidences"]]
         averaged = statistics.mean(values) if values else None
         bucket.add_attempt(

@@ -18,7 +18,14 @@ class TokenAndUniversalCLITests(unittest.TestCase):
     def test_rus_to_prompt_script_entrypoint_resolves_facade_api(self):
         script = Path(__file__).resolve().parents[1] / "Soma" / "soma_language_optimizer.py"
         completed = subprocess.run(
-            [sys.executable, str(script), "--rus-to-prompt-translate", "--translator-model", "unused-local-model", "Check this."],
+            [
+                sys.executable,
+                str(script),
+                "--rus-to-prompt-translate",
+                "--translator-model",
+                "unused-local-model",
+                "Check this.",
+            ],
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -65,17 +72,21 @@ class TokenAndUniversalCLITests(unittest.TestCase):
         self.assertGreater(result["operation_baseline_tokens"], 0)
 
     def test_agent_usage_extractor_handles_cli_usage_and_fallback(self):
-        stdout = "\n".join([
-            json.dumps({"event": "started"}),
-            json.dumps({"usage": {"input_tokens": 120, "output_tokens": 30, "total_tokens": 150}}),
-        ])
+        stdout = "\n".join(
+            [
+                json.dumps({"event": "started"}),
+                json.dumps({"usage": {"input_tokens": 120, "output_tokens": 30, "total_tokens": 150}}),
+            ]
+        )
         usage = soma_agent_ab_benchmark.extract_usage_from_events(stdout)
         self.assertEqual(usage["usage_source"], "cli_event")
         self.assertEqual(usage["total_tokens"], 150)
         self.assertIsNone(soma_agent_ab_benchmark.extract_usage_from_events("plain transcript"))
 
     def test_agent_command_supports_hermes_with_file_terminal_tools(self):
-        args, cwd = soma_agent_ab_benchmark._agent_command("hermes", "Check quiet hours", Path("/tmp/project"), None, True)
+        args, cwd = soma_agent_ab_benchmark._agent_command(
+            "hermes", "Check quiet hours", Path("/tmp/project"), None, True
+        )
         self.assertEqual(cwd, Path("/tmp/project"))
         self.assertEqual(args[:3], ["hermes", "--toolsets", "file,terminal"])
         self.assertIn("-z", args)
@@ -100,7 +111,9 @@ class TokenAndUniversalCLITests(unittest.TestCase):
             "must_not_claim": ["delete settings"],
             "must_not_mention_files": ["QuietHoursManager.swift", "Configuration.swift"],
         }
-        passed = soma_agent_ab_benchmark._evaluate_acceptance(task, "Check CooldownPolicy.swift around midnight.", "", "ok")
+        passed = soma_agent_ab_benchmark._evaluate_acceptance(
+            task, "Check CooldownPolicy.swift around midnight.", "", "ok"
+        )
         failed = soma_agent_ab_benchmark._evaluate_acceptance(
             task,
             "Check SettingsView.swift and QuietHoursManager.swift.",
@@ -115,8 +128,23 @@ class TokenAndUniversalCLITests(unittest.TestCase):
 
     def test_agent_ab_summary_does_not_fake_failed_savings(self):
         runs = [
-            {"task_id": "debug", "agent": "codex", "mode": "direct", "status": "ok", "total_tokens": 1000, "acceptance_status": "manual_review_required"},
-            {"task_id": "debug", "agent": "codex", "mode": "with_soma", "status": "error", "total_tokens": 100, "acceptance_status": "not_applicable", "soma_packet_status": "degraded"},
+            {
+                "task_id": "debug",
+                "agent": "codex",
+                "mode": "direct",
+                "status": "ok",
+                "total_tokens": 1000,
+                "acceptance_status": "manual_review_required",
+            },
+            {
+                "task_id": "debug",
+                "agent": "codex",
+                "mode": "with_soma",
+                "status": "error",
+                "total_tokens": 100,
+                "acceptance_status": "not_applicable",
+                "soma_packet_status": "degraded",
+            },
         ]
         comparisons = soma_agent_ab_benchmark._compare_pairs(runs)
         summary = soma_agent_ab_benchmark._build_summary(runs, comparisons)
@@ -130,11 +158,13 @@ class TokenAndUniversalCLITests(unittest.TestCase):
             "status": "ok",
             "calls": {"soma_prepare_context": {"status": "ok"}},
         }
-        with patch.object(universal, "fixture_templates", return_value=[FIXTURES / "python_package"]), patch.object(
-            universal, "_verify_fixture", return_value=fake
-        ), patch.object(universal, "_ollama_health", return_value={"status": "offline"}), patch.object(
-            sys, "argv", ["verify_soma_universal_workflow.py"]
-        ), tempfile.TemporaryDirectory() as tmp:
+        with (
+            patch.object(universal, "fixture_templates", return_value=[FIXTURES / "python_package"]),
+            patch.object(universal, "_verify_fixture", return_value=fake),
+            patch.object(universal, "_ollama_health", return_value={"status": "offline"}),
+            patch.object(sys, "argv", ["verify_soma_universal_workflow.py"]),
+            tempfile.TemporaryDirectory() as tmp,
+        ):
             with patch.dict(os.environ, {"HOME": tmp}):
                 rc = universal.main()
                 latest = Path(tmp) / ".soma" / "acceptance" / "universal" / "latest.json"
@@ -160,9 +190,12 @@ class TokenAndUniversalCLITests(unittest.TestCase):
             "estimated_tokens_reported": 200,
             "omitted": {},
         }
-        with patch.object(soma_token_benchmark, "fixture_templates", return_value=[FIXTURES / "python_package"]), patch.object(
-            soma_token_benchmark, "_benchmark_fixture", return_value=fake_result
-        ), patch.object(sys, "argv", ["soma_token_benchmark.py"]), tempfile.TemporaryDirectory() as tmp:
+        with (
+            patch.object(soma_token_benchmark, "fixture_templates", return_value=[FIXTURES / "python_package"]),
+            patch.object(soma_token_benchmark, "_benchmark_fixture", return_value=fake_result),
+            patch.object(sys, "argv", ["soma_token_benchmark.py"]),
+            tempfile.TemporaryDirectory() as tmp,
+        ):
             with patch.dict(os.environ, {"HOME": tmp}):
                 rc = soma_token_benchmark.main()
                 stats = json.loads((Path(tmp) / ".soma" / "token_stats.json").read_text())
@@ -174,8 +207,22 @@ class TokenAndUniversalCLITests(unittest.TestCase):
     def test_token_benchmark_summary_excludes_failed_results(self):
         summary = soma_token_benchmark._build_summary(
             [
-                {"fixture": "ok", "status": "ok", "baseline_tokens": 1000, "soma_packet_tokens": 200, "saved_tokens": 800, "savings_pct": 80.0},
-                {"fixture": "bad", "status": "error", "baseline_tokens": None, "soma_packet_tokens": None, "saved_tokens": None, "savings_pct": None},
+                {
+                    "fixture": "ok",
+                    "status": "ok",
+                    "baseline_tokens": 1000,
+                    "soma_packet_tokens": 200,
+                    "saved_tokens": 800,
+                    "savings_pct": 80.0,
+                },
+                {
+                    "fixture": "bad",
+                    "status": "error",
+                    "baseline_tokens": None,
+                    "soma_packet_tokens": None,
+                    "saved_tokens": None,
+                    "savings_pct": None,
+                },
             ],
             "fixtures",
         )
@@ -220,8 +267,9 @@ class TokenAndUniversalCLITests(unittest.TestCase):
                 },
             ]
             log_file.write_text("\n".join(json.dumps(entry) for entry in entries), encoding="utf-8")
-            with patch.object(soma_analytics, "SOMA_LOG_DIR", log_dir), patch.object(
-                soma_analytics, "SOMA_ANALYTICS_DIR", analytics_dir
+            with (
+                patch.object(soma_analytics, "SOMA_LOG_DIR", log_dir),
+                patch.object(soma_analytics, "SOMA_ANALYTICS_DIR", analytics_dir),
             ):
                 report = soma_analytics.compute_report("20260515")
 
@@ -238,5 +286,5 @@ class TokenAndUniversalCLITests(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

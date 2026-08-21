@@ -6,10 +6,22 @@ with open(SERVER, "r") as f:
     module = cst.parse_module(f.read())
 
 TARGETS = [
-    "_json", "_safe_text", "_compact_result", "_error_response", "_ok_response",
-    "_parse_ports", "NexusState", "NexusClient", "_packet_budget", "_analysis_depth",
-    "_evidence_summary", "_append_graph_context", "_enforce_packet_budget", "_safe_nexus_result"
+    "_json",
+    "_safe_text",
+    "_compact_result",
+    "_error_response",
+    "_ok_response",
+    "_parse_ports",
+    "NexusState",
+    "NexusClient",
+    "_packet_budget",
+    "_analysis_depth",
+    "_evidence_summary",
+    "_append_graph_context",
+    "_enforce_packet_budget",
+    "_safe_nexus_result",
 ]
+
 
 class CoreExtractor(cst.CSTTransformer):
     def __init__(self):
@@ -26,7 +38,7 @@ class CoreExtractor(cst.CSTTransformer):
             self.extracted.append(original_node)
             return cst.RemovalSentinel.REMOVE
         return updated_node
-        
+
     def leave_Assign(self, original_node, updated_node):
         # Extract nexus = NexusClient(), graphify = GraphifyAdapter(), memory_store = MemoryStore()
         if len(original_node.targets) == 1 and isinstance(original_node.targets[0].target, cst.Name):
@@ -35,6 +47,7 @@ class CoreExtractor(cst.CSTTransformer):
                 self.extracted.append(original_node)
                 return cst.RemovalSentinel.REMOVE
         return updated_node
+
 
 extractor = CoreExtractor()
 module = module.visit(extractor)

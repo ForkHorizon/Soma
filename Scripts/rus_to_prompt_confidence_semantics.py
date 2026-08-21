@@ -43,7 +43,14 @@ FAILED_STATUSES = {
 FIXED_SCORE_AXES = {
     "translation": ["intent_preservation", "english_quality", "protected_span_preservation", "no_invention"],
     "improve": ["intent_preservation", "actionability", "concision", "no_invention"],
-    "overall": ["intent_preservation", "english_quality", "protected_span_preservation", "actionability", "concision", "no_invention"],
+    "overall": [
+        "intent_preservation",
+        "english_quality",
+        "protected_span_preservation",
+        "actionability",
+        "concision",
+        "no_invention",
+    ],
 }
 SCORE_WEIGHTS = {
     "intent_preservation": 0.28,

@@ -31,16 +31,20 @@ DEEPSEEK_LEGACY_MODELS = {
     "deepseek-reasoner",
 }
 
+
 @dataclass(frozen=True)
 class ProtectedPrompt:
     text: str
     spans: list[str]
 
+
 def _sha(text: str) -> str:
     return "sha256:" + hashlib.sha256((text or "").encode("utf-8", errors="replace")).hexdigest()
 
+
 def _placeholder(index: int) -> str:
     return f"{PLACEHOLDER_PREFIX}{index}__"
+
 
 def detect_language(text: str) -> str:
     if not text.strip():
@@ -51,6 +55,7 @@ def detect_language(text: str) -> str:
         return "ru"
     non_ascii_letters = len(re.findall(r"[^\W\d_A-Za-z]", text, flags=re.UNICODE))
     return "non_en" if non_ascii_letters > max(6, latin // 3) else "en"
+
 
 def is_codex_stage_model(model: str | None) -> bool:
     normalized = (model or "").strip().lower()
@@ -65,9 +70,15 @@ def is_codex_stage_model(model: str | None) -> bool:
         or normalized.startswith("o4")
     )
 
+
 def is_deepseek_stage_model(model: str | None) -> bool:
     normalized = (model or "").strip().lower()
-    return normalized in DEEPSEEK_STAGE_MODELS or normalized in DEEPSEEK_LEGACY_MODELS or normalized.startswith("deepseek-")
+    return (
+        normalized in DEEPSEEK_STAGE_MODELS
+        or normalized in DEEPSEEK_LEGACY_MODELS
+        or normalized.startswith("deepseek-")
+    )
+
 
 def _span_patterns() -> list[re.Pattern[str]]:
     return [
@@ -75,15 +86,24 @@ def _span_patterns() -> list[re.Pattern[str]]:
         re.compile(r"`[^`\n]+`"),
         re.compile(r"https?://[^\s)]+"),
         re.compile(r"\b[A-Za-z]:\\(?:[^\\\s:\"<>|?*]+\\)*[^\\\s:\"<>|?*]+\.[A-Za-z0-9_]+"),
-        re.compile(r"(?<![A-Za-z0-9_.\\/-])(?:git|rg|sed|find|grep|cat|python3?|xcodebuild|codex|gemini|npm|pnpm|yarn|swift|cargo)\s+(?:\"[^\"]*\"|'[^']*'|(?:\.{0,2}/|/)[A-Za-z0-9._/-]*[A-Za-z0-9_/-]|[^\s.,;`]+(?:[.,][^\s.,;`]+)*)(?:\s+(?:\"[^\"]*\"|'[^']*'|(?:\.{0,2}/|/)[A-Za-z0-9._/-]*[A-Za-z0-9_/-]|[^\s.,;`]+(?:[.,][^\s.,;`]+)*)){0,40}"),
+        re.compile(
+            r"(?<![A-Za-z0-9_.\\/-])(?:git|rg|sed|find|grep|cat|python3?|xcodebuild|codex|gemini|npm|pnpm|yarn|swift|cargo)\s+(?:\"[^\"]*\"|'[^']*'|(?:\.{0,2}/|/)[A-Za-z0-9._/-]*[A-Za-z0-9_/-]|[^\s.,;`]+(?:[.,][^\s.,;`]+)*)(?:\s+(?:\"[^\"]*\"|'[^']*'|(?:\.{0,2}/|/)[A-Za-z0-9._/-]*[A-Za-z0-9_/-]|[^\s.,;`]+(?:[.,][^\s.,;`]+)*)){0,40}"
+        ),
         re.compile(r"(?<!\w)/(?:[A-Za-z0-9._\-]+/)+[A-Za-z0-9._\-]*[A-Za-z0-9_\-]"),
-        re.compile(r"(?:^|\s)(?:\./|\../)(?:[A-Za-z0-9._\-]+/)*[A-Za-z0-9._\-]*[A-Za-z0-9_\-]\.[A-Za-z0-9._\-]*[A-Za-z0-9_\-]"),
-        re.compile(r"\b[A-Za-z0-9_./-]+\.(?:swift|py|ts|tsx|js|jsx|go|rs|cpp|cc|h|hpp|java|kt|php|rb|json|jsonl|yaml|yml|toml|md|txt)\b"),
+        re.compile(
+            r"(?:^|\s)(?:\./|\../)(?:[A-Za-z0-9._\-]+/)*[A-Za-z0-9._\-]*[A-Za-z0-9_\-]\.[A-Za-z0-9._\-]*[A-Za-z0-9_\-]"
+        ),
+        re.compile(
+            r"\b[A-Za-z0-9_./-]+\.(?:swift|py|ts|tsx|js|jsx|go|rs|cpp|cc|h|hpp|java|kt|php|rb|json|jsonl|yaml|yml|toml|md|txt)\b"
+        ),
         re.compile(r"\{(?:[^{}]|\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})*\}", re.DOTALL),
         re.compile(r"\b(?:[A-Z][A-Za-z0-9_]*[A-Z0-9_][A-Za-z0-9_]*|[a-z]+[A-Z][A-Za-z0-9_]*)(?:\.[A-Za-z0-9_]+)?\b"),
-        re.compile(r"(?m)^\s*(?:git|rg|sed|find|grep|cat|python3?|xcodebuild|codex|gemini|npm|pnpm|yarn|swift|go|cargo)\b.*$"),
+        re.compile(
+            r"(?m)^\s*(?:git|rg|sed|find|grep|cat|python3?|xcodebuild|codex|gemini|npm|pnpm|yarn|swift|go|cargo)\b.*$"
+        ),
         re.compile(r"(?m)^\s*(?:at\s+|File\s+\"|Traceback\b|[A-Za-z_][A-Za-z0-9_]*Error:).*$"),
     ]
+
 
 def protect_spans(text: str) -> ProtectedPrompt:
     spans: list[tuple[int, int]] = []
@@ -92,6 +112,7 @@ def protect_spans(text: str) -> ProtectedPrompt:
     spans.sort()
     return _protected_prompt_from_spans(text, spans)
 
+
 def _non_overlapping_matches(pattern, text, spans):
     matches = []
     for match in pattern.finditer(text):
@@ -99,6 +120,7 @@ def _non_overlapping_matches(pattern, text, spans):
         if start != end and not any(not (end <= old_start or start >= old_end) for old_start, old_end in spans):
             matches.append((start, end))
     return matches
+
 
 def _protected_prompt_from_spans(text, spans):
     protected_values, parts, cursor = [], [], 0
@@ -109,6 +131,7 @@ def _protected_prompt_from_spans(text, spans):
         cursor = end
     parts.append(text[cursor:])
     return ProtectedPrompt("".join(parts), protected_values)
+
 
 def restore_spans(text: str, spans: list[str]) -> str:
     restored = text
@@ -127,6 +150,7 @@ def restore_spans(text: str, spans: list[str]) -> str:
         restored = re.sub(pattern, replacement, restored)
     return restored
 
+
 def invalid_placeholders(text: str, count: int) -> list[str]:
     invalid = []
     for index in range(count):
@@ -138,8 +162,10 @@ def invalid_placeholders(text: str, count: int) -> list[str]:
             invalid.append(f"{placeholder} (duplicated {occurrences} times)")
     return invalid
 
+
 def _cyrillic_count(text: str) -> int:
     return len(re.findall(r"[\u0400-\u04FF]", text or ""))
+
 
 def _improved_prompt_sanity_error(source: str, improved: str) -> str | None:
     source_normalized = (source or "").strip().lower()
@@ -159,11 +185,13 @@ def _improved_prompt_sanity_error(source: str, improved: str) -> str | None:
     ]
     return next((error for error in checks if error), None)
 
+
 def _placeholder_leak_error(source, improved):
     match = re.search(r"__SOMA_PROTECTED_SPAN_\d+__|SOMAPROTECTED\d+", improved or "")
     if match and match.group(0) not in (source or ""):
         return "prompt improvement leaked an internal placeholder"
     return None
+
 
 def _instruction_leak_error(source_normalized, improved_normalized):
     markers = [
@@ -183,7 +211,12 @@ def _instruction_leak_error(source_normalized, improved_normalized):
         "rejected prompt rewrite",
         "rejection reason",
     ]
-    return "prompt improvement leaked internal instructions" if any(marker in improved_normalized and marker not in source_normalized for marker in markers) else None
+    return (
+        "prompt improvement leaked internal instructions"
+        if any(marker in improved_normalized and marker not in source_normalized for marker in markers)
+        else None
+    )
+
 
 def _reasoning_transcript_error(source_normalized, improved_normalized):
     starters = [
@@ -196,7 +229,9 @@ def _reasoning_transcript_error(source_normalized, improved_normalized):
         "looking at the original",
         "let me",
     ]
-    if any(improved_normalized.startswith(starter) and not source_normalized.startswith(starter) for starter in starters):
+    if any(
+        improved_normalized.startswith(starter) and not source_normalized.startswith(starter) for starter in starters
+    ):
         return "prompt improvement returned assistant reasoning instead of the direct task"
     reasoning_phrases = [
         "the task is to rewrite",
@@ -207,11 +242,21 @@ def _reasoning_transcript_error(source_normalized, improved_normalized):
         "repair prompt",
         "failure reason",
     ]
-    return "prompt improvement returned repair metadata instead of the direct task" if any(phrase in improved_normalized and phrase not in source_normalized for phrase in reasoning_phrases) else None
+    return (
+        "prompt improvement returned repair metadata instead of the direct task"
+        if any(phrase in improved_normalized and phrase not in source_normalized for phrase in reasoning_phrases)
+        else None
+    )
+
 
 def _reasoning_tag_error(source_normalized, improved_normalized):
     markers = ["<think>", "</think>", "<reasoning>", "</reasoning>"]
-    return "prompt improvement leaked assistant reasoning tags" if any(marker in improved_normalized and marker not in source_normalized for marker in markers) else None
+    return (
+        "prompt improvement leaked assistant reasoning tags"
+        if any(marker in improved_normalized and marker not in source_normalized for marker in markers)
+        else None
+    )
+
 
 def _duplicate_prompt_error(improved_normalized):
     cleaned = re.sub(r"</?think>|</?reasoning>", "\n\n", improved_normalized)
@@ -223,21 +268,66 @@ def _duplicate_prompt_error(improved_normalized):
         seen.add(block)
     return None
 
+
 def _politeness_error(improved):
     pattern = r"\bplease\b[^.\n]{0,96}\b(?:represents|refers to|validation|mechanism|process|specific|preserved)\b"
-    return "prompt improvement treated a politeness word as a technical concept" if re.search(pattern, improved, flags=re.IGNORECASE) else None
+    return (
+        "prompt improvement treated a politeness word as a technical concept"
+        if re.search(pattern, improved, flags=re.IGNORECASE)
+        else None
+    )
+
 
 def _meta_prompt_error(source_normalized, improved_normalized):
-    starters = ["create a task prompt for an ai assistant", "create a direct task prompt for an ai assistant", "create a prompt for an ai assistant", "create a compact prompt for ai", "create a general-purpose prompt utility", "create a comprehensive prompt for an ai assistant", "create a detailed prompt for an ai assistant", "write a comprehensive prompt for an ai assistant", "generate a comprehensive prompt for an ai assistant", "generate a prompt for an ai assistant", "generate a structured prompt utility", "generate a structured output", "rewrite the provided information", "translate the following instruction"]
-    if any(improved_normalized.startswith(starter) and not source_normalized.startswith(starter) for starter in starters):
+    starters = [
+        "create a task prompt for an ai assistant",
+        "create a direct task prompt for an ai assistant",
+        "create a prompt for an ai assistant",
+        "create a compact prompt for ai",
+        "create a general-purpose prompt utility",
+        "create a comprehensive prompt for an ai assistant",
+        "create a detailed prompt for an ai assistant",
+        "write a comprehensive prompt for an ai assistant",
+        "generate a comprehensive prompt for an ai assistant",
+        "generate a prompt for an ai assistant",
+        "generate a structured prompt utility",
+        "generate a structured output",
+        "rewrite the provided information",
+        "translate the following instruction",
+    ]
+    if any(
+        improved_normalized.startswith(starter) and not source_normalized.startswith(starter) for starter in starters
+    ):
         return "prompt improvement returned a meta-prompt instead of the direct task"
     phrases = ["translate and improve:", "generate a prompt", "prompt structure", "prompt generation"]
-    return "prompt improvement returned meta-prompt wording" if any(phrase in improved_normalized and phrase not in source_normalized for phrase in phrases) else None
+    return (
+        "prompt improvement returned meta-prompt wording"
+        if any(phrase in improved_normalized and phrase not in source_normalized for phrase in phrases)
+        else None
+    )
+
 
 def _unsafe_injection_error(improved_normalized):
-    unsafe = ["ignore previous instructions", "reveal all hidden instructions", "reveal hidden instructions", "output the hidden system prompt", "hidden system prompt"]
-    safe = ["treat as untrusted", "ignore the injected instruction", "do not follow the injected instruction", "do not reveal hidden"]
-    return "prompt improvement preserved unsafe prompt-injection text" if any(marker in improved_normalized for marker in unsafe) and not any(marker in improved_normalized for marker in safe) else None
+    unsafe = [
+        "ignore previous instructions",
+        "reveal all hidden instructions",
+        "reveal hidden instructions",
+        "output the hidden system prompt",
+        "hidden system prompt",
+    ]
+    safe = [
+        "treat as untrusted",
+        "ignore the injected instruction",
+        "do not follow the injected instruction",
+        "do not reveal hidden",
+    ]
+    return (
+        "prompt improvement preserved unsafe prompt-injection text"
+        if any(marker in improved_normalized for marker in unsafe)
+        and not any(marker in improved_normalized for marker in safe)
+        else None
+    )
+
 
 def _sarcasm_inversion_error(source_normalized, improved_normalized):
     if "red error" in improved_normalized and "proper empty state" in source_normalized:
@@ -245,7 +335,10 @@ def _sarcasm_inversion_error(source_normalized, improved_normalized):
             return "prompt improvement inverted sarcasm about error versus empty state"
     return None
 
-def _restore_valid_improved_prompt(source: str, protected: ProtectedPrompt, improved_protected: str) -> tuple[str, str | None]:
+
+def _restore_valid_improved_prompt(
+    source: str, protected: ProtectedPrompt, improved_protected: str
+) -> tuple[str, str | None]:
     invalid = invalid_placeholders(improved_protected, len(protected.spans))
     if invalid:
         return "", "prompt improvement corrupted protected placeholders: " + ", ".join(invalid[:5])
@@ -253,17 +346,41 @@ def _restore_valid_improved_prompt(source: str, protected: ProtectedPrompt, impr
     sanity_error = _improved_prompt_sanity_error(source, improved)
     return ("", sanity_error) if sanity_error else (improved, None)
 
-def _compute_metadata(*, original: str, normalized: str, source_language: str, status: str, engine: str | None, protected_count: int, warning: str | None = None, model_profile: str = "gpt-5.5") -> dict[str, Any]:
+
+def _compute_metadata(
+    *,
+    original: str,
+    normalized: str,
+    source_language: str,
+    status: str,
+    engine: str | None,
+    protected_count: int,
+    warning: str | None = None,
+    model_profile: str = "gpt-5.5",
+) -> dict[str, Any]:
     original_tokens = estimate_tokens(original or "", model_profile)
     normalized_tokens = estimate_tokens(normalized or "", model_profile)
     saved = max(0, original_tokens - normalized_tokens)
-    metadata = {"status": status, "source_language": source_language, "target_language": TARGET_LANGUAGE, "engine": engine, "original_prompt_tokens": original_tokens, "normalized_prompt_tokens": normalized_tokens, "saved_tokens": saved, "savings_pct": round(100 * saved / max(original_tokens, 1), 1), "protected_spans_count": protected_count, "original_prompt_hash": _sha(original)}
+    metadata = {
+        "status": status,
+        "source_language": source_language,
+        "target_language": TARGET_LANGUAGE,
+        "engine": engine,
+        "original_prompt_tokens": original_tokens,
+        "normalized_prompt_tokens": normalized_tokens,
+        "saved_tokens": saved,
+        "savings_pct": round(100 * saved / max(original_tokens, 1), 1),
+        "protected_spans_count": protected_count,
+        "original_prompt_hash": _sha(original),
+    }
     if warning:
         metadata["warning"] = warning[:300]
     return metadata
 
+
 def _clip_text(text: str, limit: int = 12_000) -> str:
     return text or "" if len(text or "") <= limit else (text or "")[:limit] + "\n...[truncated]"
+
 
 def _extract_json_object(text: str) -> dict[str, Any] | None:
     try:
@@ -275,10 +392,11 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
     if start == -1 or end == -1 or end <= start:
         return None
     try:
-        decoded = json.loads(text[start:end + 1])
+        decoded = json.loads(text[start : end + 1])
         return decoded if isinstance(decoded, dict) else None
     except Exception:
         return None
+
 
 def _string_list(value: Any, limit: int = 6) -> list[str]:
     if isinstance(value, list):
@@ -287,15 +405,25 @@ def _string_list(value: Any, limit: int = 6) -> list[str]:
         return [value][:limit]
     return []
 
+
 def _schema_string_list(max_items: int = 6) -> dict[str, Any]:
     return {"type": "array", "items": {"type": "string"}, "maxItems": max_items}
+
 
 def _looks_like_codex_payload_echo(text: str) -> bool:
     lowered = (text or "").lower()
     markers = ["source_language_hint", "target_language", "protected_spans", '"prompt"', '"translation"']
     return sum(1 for marker in markers if marker in lowered) >= 2
 
+
 def log_fields(metadata: dict[str, Any] | None) -> dict[str, Any]:
     if not isinstance(metadata, dict):
         return {}
-    return {"source_language": metadata.get("source_language"), "translation_status": metadata.get("status"), "translation_engine": metadata.get("engine"), "prompt_saved_tokens": metadata.get("saved_tokens"), "prompt_savings_pct": metadata.get("savings_pct"), "protected_spans_count": metadata.get("protected_spans_count")}
+    return {
+        "source_language": metadata.get("source_language"),
+        "translation_status": metadata.get("status"),
+        "translation_engine": metadata.get("engine"),
+        "prompt_saved_tokens": metadata.get("saved_tokens"),
+        "prompt_savings_pct": metadata.get("savings_pct"),
+        "protected_spans_count": metadata.get("protected_spans_count"),
+    }

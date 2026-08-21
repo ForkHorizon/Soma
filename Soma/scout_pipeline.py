@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys
 import os
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from scout_pipeline_module import *
 
@@ -8,6 +9,7 @@ if __name__ == "__main__":
     import argparse
     import asyncio
     import json
+
     parser = argparse.ArgumentParser()
     parser.add_argument("prompt")
     parser.add_argument("history", nargs="?", default="[]")
@@ -21,9 +23,23 @@ if __name__ == "__main__":
     parser.add_argument("--planning-mode", default="auto", choices=["off", "local", "auto"])
     args = parser.parse_args()
 
-    if args.mode == "gather": asyncio.run(run_gather(args.prompt, args.project_root, args.recent_roots_json, args.token_budget, args.use_local_summary, args.analysis_depth, args.packet_profile, args.planning_mode))
+    if args.mode == "gather":
+        asyncio.run(
+            run_gather(
+                args.prompt,
+                args.project_root,
+                args.recent_roots_json,
+                args.token_budget,
+                args.use_local_summary,
+                args.analysis_depth,
+                args.packet_profile,
+                args.planning_mode,
+            )
+        )
     else:
         history = []
-        try: history = json.loads(args.history)
-        except: pass
+        try:
+            history = json.loads(args.history)
+        except:
+            pass
         asyncio.run(run_chat(args.prompt, history))

@@ -45,6 +45,13 @@ extension RusToPromptQueueManager {
     func recoverRunningItems() {
         var changed = false
         for index in items.indices where items[index].status == .running {
+            // Child still alive? Re-attach instead of re-spawning — avoids the duplicate
+            // run_start/resume cycles that previously stacked up errors across restarts.
+            if reattachRunningChildIfAlive(index: index) {
+                changed = true
+                continue
+            }
+            items[index].pid = nil
             items[index].status = .queued
             items[index].statusMessage = isPowerPaused ? "Paused on battery; connect power to continue" : (isPaused ? "Paused after restart; resume to continue" : "Recovered after restart")
             items[index].recoveredAfterRestart = true
@@ -57,12 +64,45 @@ extension RusToPromptQueueManager {
     }
 
 
+    /// Whether the queue has anything that needs the housekeeping timer: an
+    /// active/reattached run, or any item still queued/running/waiting. When this
+    /// is false the app is idle and should poll nothing.
+    var hasLiveQueueWork: Bool {
+        activeProcess != nil || activeReattachedPID != nil || activeItemID != nil
+            || items.contains { $0.status == .queued || $0.status == .running || $0.status == .waitingLocalAI }
+    }
+
+    /// Start the 1s housekeeping timer only when there's live work and it isn't
+    /// already running. Idle → no timer, no 5s RAM/power poll.
+    func startTimerIfNeeded() {
+        guard timer == nil, hasLiveQueueWork else { return }
+        startTimer()
+    }
+
+    /// Stop the timer once the queue drains, so an idle app costs zero polling.
+    func stopTimerIfIdle() {
+        guard !hasLiveQueueWork else { return }
+        timer?.invalidate()
+        timer = nil
+    }
+
     func startTimer() {
-        timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+        // Tick fast for live progress (cheap file read + kill(pid,0)); run the heavier
+        // memory/power/queue-advance housekeeping every 5th tick to keep its prior cadence.
+        // The timer only runs while there is live work (see startTimerIfNeeded); it
+        // stops itself once the queue is idle.
+        timer?.invalidate()   // never stack a second 1s timer if called again
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             DispatchQueue.main.async { [weak self] in
-                self?.refreshFreeMemory()
-                self?.refreshPowerSource()
-                self?.startNextIfPossible()
+                guard let self else { return }
+                self.pumpProgressLog()        // live progress comes from tailing progress.log
+                self.pollReattachedExit()     // detect exit of a re-attached (Process-less) run
+                self.progressTickCount += 1
+                guard self.progressTickCount % 5 == 0 else { return }
+                self.refreshFreeMemory()
+                self.refreshPowerSource()
+                self.startNextIfPossible()
+                self.stopTimerIfIdle()        // drained → stop polling until new work
             }
         }
         refreshFreeMemory()

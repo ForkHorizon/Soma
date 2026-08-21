@@ -47,11 +47,19 @@ def make_result(case: rus_to_prompt_stress.PromptCase, analyzer_model: str) -> r
 
 
 def response_item(item_id: str, confidence: float, status: str = "ok", verdict: str = "pass", warnings=None) -> dict:
-    return {"id": item_id, "status": status, "confidence": confidence, "verdict": verdict, "scores": dict(SCORES), "warnings": warnings or [], "notes": []}
+    return {
+        "id": item_id,
+        "status": status,
+        "confidence": confidence,
+        "verdict": verdict,
+        "scores": dict(SCORES),
+        "warnings": warnings or [],
+        "notes": [],
+    }
 
 
 def payload_from(prompt: str) -> dict:
-    return json.loads(prompt[prompt.index("Payload:") + len("Payload:"):])
+    return json.loads(prompt[prompt.index("Payload:") + len("Payload:") :])
 
 
 def make_items(case_id="rtp-batch"):
@@ -104,7 +112,14 @@ class RusToPromptOnlineConfidenceBatchingTests(unittest.TestCase):
 
     def test_confidence_normalization_canonicalizes_nonstandard_failed_status(self):
         confidence = rus_to_prompt_stress.normalize_confidence_payload(
-            {"status": "rejected", "confidence": 0.95, "verdict": "pass", "scores": dict(SCORES), "warnings": [], "notes": []},
+            {
+                "status": "rejected",
+                "confidence": 0.95,
+                "verdict": "pass",
+                "scores": dict(SCORES),
+                "warnings": [],
+                "notes": [],
+            },
             provider="local",
             model="judge-a",
             stage="overall",
@@ -124,7 +139,10 @@ class RusToPromptOnlineConfidenceBatchingTests(unittest.TestCase):
             payload = payload_from(prompt)
             self.assertEqual(len(payload["items"]), 2)
             self.assertEqual({item["case_id"] for item in payload["items"]}, {"rtp-batch"})
-            results = [response_item(payload["items"][0]["id"], 0.91), response_item(payload["items"][1]["id"], 0.72, "review", "review", ["Too verbose."])]
+            results = [
+                response_item(payload["items"][0]["id"], 0.91),
+                response_item(payload["items"][1]["id"], 0.72, "review", "review", ["Too verbose."]),
+            ]
             return {"results": results}, {"status": "ok", "seconds": 10.0}
 
         with patch.object(rus_to_prompt_stress, "run_gemini_json", side_effect=fake_gemini_json):
@@ -161,9 +179,19 @@ class RusToPromptOnlineConfidenceBatchingTests(unittest.TestCase):
         def fake_gemini_json(prompt, schema, model, timeout, gemini_bin, temp_prefix):
             payload = payload_from(prompt)
             if "items" not in payload:
-                return {"status": "ok", "confidence": 0.86, "verdict": "pass", "scores": SCORES, "warnings": [], "notes": []}, {"status": "ok", "seconds": 4.0}
+                return {
+                    "status": "ok",
+                    "confidence": 0.86,
+                    "verdict": "pass",
+                    "scores": SCORES,
+                    "warnings": [],
+                    "notes": [],
+                }, {"status": "ok", "seconds": 4.0}
             calls.append(len(payload["items"]))
-            return {"results": [response_item(item["id"], 0.86) for item in payload["items"][:1]]}, {"status": "ok", "seconds": 4.0}
+            return {"results": [response_item(item["id"], 0.86) for item in payload["items"][:1]]}, {
+                "status": "ok",
+                "seconds": 4.0,
+            }
 
         with patch.object(rus_to_prompt_stress, "run_gemini_json", side_effect=fake_gemini_json):
             by_id = score_batch(items)
@@ -177,10 +205,21 @@ class RusToPromptOnlineConfidenceBatchingTests(unittest.TestCase):
 
         def fake_local_json(prompt, schema, model, timeout):
             base = 0.92 if model == "local-a" else 0.90
-            return {"results": [response_item(item["id"], base) for item in payload_from(prompt)["items"]]}, {"status": "ok", "seconds": 2.0}
+            return {"results": [response_item(item["id"], base) for item in payload_from(prompt)["items"]]}, {
+                "status": "ok",
+                "seconds": 2.0,
+            }
 
-        with patch.object(rus_to_prompt_stress, "run_local_ollama_json", side_effect=fake_local_json), patch.object(rus_to_prompt_stress, "run_gemini_json", side_effect=AssertionError("Gemini should not run")):
-            by_id = score_batch(items, provider="hybrid", local_models=["local-a", "local-b"], hybrid_gemini_model="gemini-3-flash-preview")
+        with (
+            patch.object(rus_to_prompt_stress, "run_local_ollama_json", side_effect=fake_local_json),
+            patch.object(rus_to_prompt_stress, "run_gemini_json", side_effect=AssertionError("Gemini should not run")),
+        ):
+            by_id = score_batch(
+                items,
+                provider="hybrid",
+                local_models=["local-a", "local-b"],
+                hybrid_gemini_model="gemini-3-flash-preview",
+            )
 
         first = by_id[items[0][0]]
         self.assertEqual(set(by_id), {item_id for item_id, _case, _result in items})
@@ -195,13 +234,29 @@ class RusToPromptOnlineConfidenceBatchingTests(unittest.TestCase):
         def fake_local_json(prompt, schema, model, timeout):
             confidence = 0.95 if model == "local-a" else 0.52
             status, verdict = ("review", "review") if confidence < 0.75 else ("ok", "pass")
-            return {"results": [response_item(item["id"], confidence, status, verdict, ["uncertain"] if confidence < 0.75 else []) for item in payload_from(prompt)["items"]]}, {"status": "ok", "seconds": 2.0}
+            return {
+                "results": [
+                    response_item(item["id"], confidence, status, verdict, ["uncertain"] if confidence < 0.75 else [])
+                    for item in payload_from(prompt)["items"]
+                ]
+            }, {"status": "ok", "seconds": 2.0}
 
         def fake_gemini_json(prompt, schema, model, timeout, gemini_bin, temp_prefix):
-            return {"results": [response_item(item["id"], 0.88) for item in payload_from(prompt)["items"]]}, {"status": "ok", "seconds": 5.0}
+            return {"results": [response_item(item["id"], 0.88) for item in payload_from(prompt)["items"]]}, {
+                "status": "ok",
+                "seconds": 5.0,
+            }
 
-        with patch.object(rus_to_prompt_stress, "run_local_ollama_json", side_effect=fake_local_json), patch.object(rus_to_prompt_stress, "run_gemini_json", side_effect=fake_gemini_json):
-            by_id = score_batch(items, provider="hybrid", local_models=["local-a", "local-b"], hybrid_gemini_model="gemini-3-flash-preview")
+        with (
+            patch.object(rus_to_prompt_stress, "run_local_ollama_json", side_effect=fake_local_json),
+            patch.object(rus_to_prompt_stress, "run_gemini_json", side_effect=fake_gemini_json),
+        ):
+            by_id = score_batch(
+                items,
+                provider="hybrid",
+                local_models=["local-a", "local-b"],
+                hybrid_gemini_model="gemini-3-flash-preview",
+            )
 
         first = by_id[items[0][0]]
         self.assertTrue(first["hybrid_escalated"])
@@ -215,13 +270,23 @@ class RusToPromptOnlineConfidenceBatchingTests(unittest.TestCase):
         def fake_local_json(prompt, schema, model, timeout):
             confidence = 0.93 if model == "local-a" else 0.52
             status, verdict = ("review", "review") if confidence < 0.75 else ("ok", "pass")
-            return {"results": [response_item(item["id"], confidence, status, verdict) for item in payload_from(prompt)["items"]]}, {"status": "ok", "seconds": 2.0}
+            return {
+                "results": [
+                    response_item(item["id"], confidence, status, verdict) for item in payload_from(prompt)["items"]
+                ]
+            }, {"status": "ok", "seconds": 2.0}
 
         def fake_deepseek_json(prompt, schema, model, timeout, temp_prefix):
             self.assertEqual(model, "deepseek-v4-flash")
-            return {"results": [response_item(item["id"], 0.86) for item in payload_from(prompt)["items"]]}, {"status": "ok", "seconds": 5.0}
+            return {"results": [response_item(item["id"], 0.86) for item in payload_from(prompt)["items"]]}, {
+                "status": "ok",
+                "seconds": 5.0,
+            }
 
-        with patch.object(rus_to_prompt_stress, "run_local_ollama_json", side_effect=fake_local_json), patch.object(rus_to_prompt_stress, "run_deepseek_json", side_effect=fake_deepseek_json):
+        with (
+            patch.object(rus_to_prompt_stress, "run_local_ollama_json", side_effect=fake_local_json),
+            patch.object(rus_to_prompt_stress, "run_deepseek_json", side_effect=fake_deepseek_json),
+        ):
             by_id = score_batch(
                 items,
                 provider="hybrid",
@@ -242,13 +307,26 @@ class RusToPromptOnlineConfidenceBatchingTests(unittest.TestCase):
         def fake_local_json(prompt, schema, model, timeout):
             confidence = 0.86 if model == "local-a" else 0.72
             status, verdict = ("review", "review") if confidence < 0.80 else ("ok", "pass")
-            return {"results": [response_item(item["id"], confidence, status, verdict, ["uncertain"] if confidence < 0.80 else []) for item in payload_from(prompt)["items"]]}, {"status": "ok", "seconds": 2.0}
+            return {
+                "results": [
+                    response_item(item["id"], confidence, status, verdict, ["uncertain"] if confidence < 0.80 else [])
+                    for item in payload_from(prompt)["items"]
+                ]
+            }, {"status": "ok", "seconds": 2.0}
 
         def fake_gemini_json(prompt, schema, model, timeout, gemini_bin, temp_prefix):
             return None, {"status": "failed", "error": "429 quota exceeded", "error_type": "rate_limit", "seconds": 1.0}
 
-        with patch.object(rus_to_prompt_stress, "run_local_ollama_json", side_effect=fake_local_json), patch.object(rus_to_prompt_stress, "run_gemini_json", side_effect=fake_gemini_json):
-            by_id = score_batch(items, provider="hybrid", local_models=["local-a", "local-b"], hybrid_gemini_model="gemini-3-flash-preview")
+        with (
+            patch.object(rus_to_prompt_stress, "run_local_ollama_json", side_effect=fake_local_json),
+            patch.object(rus_to_prompt_stress, "run_gemini_json", side_effect=fake_gemini_json),
+        ):
+            by_id = score_batch(
+                items,
+                provider="hybrid",
+                local_models=["local-a", "local-b"],
+                hybrid_gemini_model="gemini-3-flash-preview",
+            )
 
         first = by_id[items[0][0]]
         self.assertTrue(first["hybrid_escalated"])
@@ -264,7 +342,15 @@ class RusToPromptOnlineConfidenceBatchingTests(unittest.TestCase):
         result.placeholder_leak = True
         result.internal_instruction_leak = True
         result.cyrillic_in_translation = 4
-        confidence = {"provider": "hybrid", "model": "local-a + local-b", "stage": "translation", "status": "ok", "confidence": 0.96, "verdict": "pass", "warnings": []}
+        confidence = {
+            "provider": "hybrid",
+            "model": "local-a + local-b",
+            "stage": "translation",
+            "status": "ok",
+            "confidence": 0.96,
+            "verdict": "pass",
+            "warnings": [],
+        }
 
         capped = rus_to_prompt_stress.apply_deterministic_confidence_caps(confidence, result, "translation")
 
@@ -282,7 +368,15 @@ class RusToPromptOnlineConfidenceBatchingTests(unittest.TestCase):
         result.improve_status = None
         result.improved_prompt = ""
         result.translation = "**Task:** Determine additional AI features for the editor.\n\nRequirements:\n- Prioritize implementation value."
-        confidence = {"provider": "hybrid", "model": "local-a + local-b", "stage": "translation", "status": "ok", "confidence": 0.99, "verdict": "pass", "warnings": []}
+        confidence = {
+            "provider": "hybrid",
+            "model": "local-a + local-b",
+            "stage": "translation",
+            "status": "ok",
+            "confidence": 0.99,
+            "verdict": "pass",
+            "warnings": [],
+        }
 
         capped = rus_to_prompt_stress.apply_deterministic_confidence_caps(confidence, result, "translation")
 
@@ -304,7 +398,15 @@ class RusToPromptOnlineConfidenceBatchingTests(unittest.TestCase):
             "Prompt improvement failed validation: retry failed",
             "Codex improvement failed validation: dropped protected placeholders",
         ]
-        confidence = {"provider": "hybrid", "model": "local-a + local-b", "stage": "overall", "status": "ok", "confidence": 1.0, "verdict": "pass", "warnings": []}
+        confidence = {
+            "provider": "hybrid",
+            "model": "local-a + local-b",
+            "stage": "overall",
+            "status": "ok",
+            "confidence": 1.0,
+            "verdict": "pass",
+            "warnings": [],
+        }
 
         capped = rus_to_prompt_stress.apply_deterministic_confidence_caps(confidence, result, "overall")
 
@@ -319,14 +421,22 @@ class RusToPromptOnlineConfidenceBatchingTests(unittest.TestCase):
         self.assertIn("fell back to translation", reasons)
 
     def test_reasoning_transcript_output_caps_improver_confidence(self):
-        case = rus_to_prompt_stress.PromptCase("rtp-reasoning-leak", "unit", "Проверь, что последний линтер для SWIFT работает корректно.")
+        case = rus_to_prompt_stress.PromptCase(
+            "rtp-reasoning-leak", "unit", "Проверь, что последний линтер для SWIFT работает корректно."
+        )
         result = rus_to_prompt_stress.build_case_result_from_payloads(
             case,
             "qwen3.5:9b",
             "qwen3:30b-a3b",
             "local",
             "local",
-            {"status": "ok", "translation_status": "translated", "translation": "Verify that the latest linter for SWIFT works correctly.", "source_language": "ru", "warnings": []},
+            {
+                "status": "ok",
+                "translation_status": "translated",
+                "translation": "Verify that the latest linter for SWIFT works correctly.",
+                "source_language": "ru",
+                "warnings": [],
+            },
             {
                 "status": "ok",
                 "improved_prompt": (
@@ -339,7 +449,15 @@ class RusToPromptOnlineConfidenceBatchingTests(unittest.TestCase):
             1.0,
             1.0,
         )
-        confidence = {"provider": "hybrid", "model": "local-a + local-b", "stage": "improve", "status": "ok", "confidence": 0.95, "verdict": "pass", "warnings": []}
+        confidence = {
+            "provider": "hybrid",
+            "model": "local-a + local-b",
+            "stage": "improve",
+            "status": "ok",
+            "confidence": 0.95,
+            "verdict": "pass",
+            "warnings": [],
+        }
 
         capped = rus_to_prompt_stress.apply_deterministic_confidence_caps(confidence, result, "improve")
 
@@ -359,7 +477,15 @@ class RusToPromptOnlineConfidenceBatchingTests(unittest.TestCase):
         result.translation_status = "failed_fallback"
         result.translation = ""
         result.warnings = ["timed out"]
-        confidence = {"provider": "hybrid", "model": "local-a + local-b", "stage": "translation", "status": "ok", "confidence": 0.92, "verdict": "pass", "warnings": []}
+        confidence = {
+            "provider": "hybrid",
+            "model": "local-a + local-b",
+            "stage": "translation",
+            "status": "ok",
+            "confidence": 0.92,
+            "verdict": "pass",
+            "warnings": [],
+        }
 
         capped = rus_to_prompt_stress.apply_deterministic_confidence_caps(confidence, result, "translation")
 
@@ -381,7 +507,13 @@ class RusToPromptOnlineConfidenceBatchingTests(unittest.TestCase):
             "qwen3:30b-a3b",
             "local",
             "local",
-            {"status": "ok", "translation_status": "translated", "translation": "Make Project Info more compact.", "source_language": "ru", "warnings": []},
+            {
+                "status": "ok",
+                "translation_status": "translated",
+                "translation": "Make Project Info more compact.",
+                "source_language": "ru",
+                "warnings": [],
+            },
             {
                 "status": "ok",
                 "improved_prompt": "Make Project Info more compact.\n</think>\n\nMake Project Info more compact.",
@@ -390,7 +522,15 @@ class RusToPromptOnlineConfidenceBatchingTests(unittest.TestCase):
             1.0,
             1.0,
         )
-        confidence = {"provider": "hybrid", "model": "local-a + local-b", "stage": "improve", "status": "ok", "confidence": 0.95, "verdict": "pass", "warnings": []}
+        confidence = {
+            "provider": "hybrid",
+            "model": "local-a + local-b",
+            "stage": "improve",
+            "status": "ok",
+            "confidence": 0.95,
+            "verdict": "pass",
+            "warnings": [],
+        }
 
         capped = rus_to_prompt_stress.apply_deterministic_confidence_caps(confidence, result, "improve")
 

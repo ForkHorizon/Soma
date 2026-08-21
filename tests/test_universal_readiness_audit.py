@@ -37,7 +37,7 @@ class UniversalReadinessAuditTests(UniversalReadinessTestCase):
         self.assertEqual(args.hybrid_confidence_fallback_referee, "deepseek")
 
     def test_rus_to_prompt_codex_translate_rejects_payload_echo(self):
-        prompt = "Проверь JSON {\"mode\":\"compact\"}."
+        prompt = 'Проверь JSON {"mode":"compact"}.'
 
         def fake_codex_json(prompt, schema, model, timeout, codex_bin, temp_prefix, **_kwargs):
             return (
@@ -78,13 +78,19 @@ class UniversalReadinessAuditTests(UniversalReadinessTestCase):
         self.assertTrue(any("validation" in warning for warning in payload["warnings"]))
 
     def test_rus_to_prompt_deepseek_translate_restores_protected_spans(self):
-        prompt = "Сохрани `A.swift` и JSON {\"mode\":\"compact\"}."
+        prompt = 'Сохрани `A.swift` и JSON {"mode":"compact"}.'
 
         def fake_deepseek_json(prompt, schema, model, timeout, temp_prefix):
             self.assertEqual(model, "deepseek-v4-flash")
             self.assertIn("__SOMA_PROTECTED_SPAN_0__", prompt)
             self.assertIn("<<<PROMPT", prompt)
-            payload = {"status": "ok", "source_language": "ru", "translation_status": "translated", "translation": "Preserve __SOMA_PROTECTED_SPAN_0__ and __SOMA_PROTECTED_SPAN_1__ __SOMA_PROTECTED_SPAN_2__.", "warnings": []}
+            payload = {
+                "status": "ok",
+                "source_language": "ru",
+                "translation_status": "translated",
+                "translation": "Preserve __SOMA_PROTECTED_SPAN_0__ and __SOMA_PROTECTED_SPAN_1__ __SOMA_PROTECTED_SPAN_2__.",
+                "warnings": [],
+            }
             return payload, {"status": "ok", "seconds": 1.0}
 
         with patch.object(rus_to_prompt_stress, "run_deepseek_json", side_effect=fake_deepseek_json):
@@ -93,7 +99,7 @@ class UniversalReadinessAuditTests(UniversalReadinessTestCase):
         self.assertEqual(payload["status"], "ok")
         self.assertEqual(payload["translation_status"], "translated")
         self.assertIn("`A.swift`", payload["translation"])
-        self.assertIn("{\"mode\":\"compact\"}", payload["translation"])
+        self.assertIn('{"mode":"compact"}', payload["translation"])
         self.assertNotIn("__SOMA_PROTECTED_SPAN_", payload["translation"])
 
     def test_rus_to_prompt_deepseek_translate_accepts_success_status_synonym(self):
@@ -123,7 +129,9 @@ class UniversalReadinessAuditTests(UniversalReadinessTestCase):
             return None, {"status": "failed", "error": "DeepSeek API key missing.", "seconds": 0.0}
 
         with patch.object(rus_to_prompt_stress, "run_deepseek_json", side_effect=fake_deepseek_json):
-            payload = rus_to_prompt_stress.translate_with_deepseek("Проверь проект.", "deepseek-v4-flash", 30, "gpt-5.5")
+            payload = rus_to_prompt_stress.translate_with_deepseek(
+                "Проверь проект.", "deepseek-v4-flash", 30, "gpt-5.5"
+            )
 
         self.assertEqual(payload["status"], "failed")
         self.assertTrue(any("API key missing" in warning for warning in payload["warnings"]))
@@ -188,10 +196,18 @@ class UniversalReadinessAuditTests(UniversalReadinessTestCase):
                 "Return likely root cause, exact files, tests, and minimal fix plan."
             )
 
-        with tmp, patch.object(gateway.core.graphify, "query", return_value={"graphs": [], "answers": [], "warnings": []}), patch.object(
-            soma_language_optimizer, "_local_ollama_translate", side_effect=fake_translate
-        ), patch.dict(os.environ, {"SOMA_PROJECT_ROOT": str(root), "SOMA_TRANSLATION_ENABLED": "1", "SOMA_TRANSLATION_PROVIDER": "local"}):
-            payload = json.loads(asyncio.run(gateway.tools.context.soma_prepare_context(prompt, "fast", "deterministic")))
+        with (
+            tmp,
+            patch.object(gateway.core.graphify, "query", return_value={"graphs": [], "answers": [], "warnings": []}),
+            patch.object(soma_language_optimizer, "_local_ollama_translate", side_effect=fake_translate),
+            patch.dict(
+                os.environ,
+                {"SOMA_PROJECT_ROOT": str(root), "SOMA_TRANSLATION_ENABLED": "1", "SOMA_TRANSLATION_PROVIDER": "local"},
+            ),
+        ):
+            payload = json.loads(
+                asyncio.run(gateway.tools.context.soma_prepare_context(prompt, "fast", "deterministic"))
+            )
 
         packet = payload["packet"]
         self.assertEqual(payload["status"], "ok")
@@ -204,5 +220,5 @@ class UniversalReadinessAuditTests(UniversalReadinessTestCase):
             self.assertIn(expected, packet)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

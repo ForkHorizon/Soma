@@ -16,7 +16,9 @@ def summary_metadata(args, translators, analyzers, total_operations: int, result
         "analyzer_models": analyzers if args.benchmark_mode != "translation" else [TRANSLATION_ONLY_ANALYZER_MODEL],
         "confidence_referee": args.confidence_referee,
         "confidence_model": args.confidence_model,
-        "translator_providers": {model: provider_for_stage_model(model, args.translator_provider) for model in translators},
+        "translator_providers": {
+            model: provider_for_stage_model(model, args.translator_provider) for model in translators
+        },
         "analyzer_providers": {model: provider_for_stage_model(model, args.analyzer_provider) for model in analyzers},
         "model_combinations": model_combinations(results),
         "external_error_counts": external_error_counts(results),
@@ -29,7 +31,15 @@ def model_combinations(results) -> list[dict[str, Any]]:
         key = (str(result.translator_model or "none"), str(result.analyzer_model or "none"))
         groups.setdefault(key, []).append(result)
     rows = [_combination_row(translator, analyzer, items) for (translator, analyzer), items in groups.items()]
-    return sorted(rows, key=lambda row: ((row.get("quality_score") if row.get("quality_score") is not None else -1), -int(row.get("failed") or 0), row["combo_id"]), reverse=True)
+    return sorted(
+        rows,
+        key=lambda row: (
+            (row.get("quality_score") if row.get("quality_score") is not None else -1),
+            -int(row.get("failed") or 0),
+            row["combo_id"],
+        ),
+        reverse=True,
+    )
 
 
 def _combination_row(translator: str, analyzer: str, items) -> dict[str, Any]:
@@ -55,12 +65,11 @@ def _combination_row(translator: str, analyzer: str, items) -> dict[str, Any]:
 
 def confidence_aggregate(confidences) -> dict[str, Any]:
     items = [confidence for confidence in confidences if isinstance(confidence, dict)]
-    values = [
-        value
+    values = [value for confidence in items if (value := confidence_value(confidence)) is not None]
+    by_status = Counter(
+        "failed" if confidence_failed(confidence) else str(confidence.get("status") or "unknown")
         for confidence in items
-        if (value := confidence_value(confidence)) is not None
-    ]
-    by_status = Counter("failed" if confidence_failed(confidence) else str(confidence.get("status") or "unknown") for confidence in items)
+    )
     return {
         "count": len(values),
         "avg": statistics.mean(values) if values else None,
@@ -105,14 +114,27 @@ def low_cases(items) -> list[dict[str, Any]]:
     for result in items:
         confidence_map, failed = _case_confidence_flags(result)
         if failed or any(value < 0.75 for value in confidence_map.values()):
-            rows.append({"id": result.id, "category": result.category, "status": result.status, "confidences": confidence_map, "failed_stages": failed, "warnings": list(result.warnings or [])[:4]})
+            rows.append(
+                {
+                    "id": result.id,
+                    "category": result.category,
+                    "status": result.status,
+                    "confidences": confidence_map,
+                    "failed_stages": failed,
+                    "warnings": list(result.warnings or [])[:4],
+                }
+            )
     return rows[:8]
 
 
 def _case_confidence_flags(result) -> tuple[dict[str, float], list[str]]:
     confidence_map: dict[str, float] = {}
     failed: list[str] = []
-    for name, confidence in [("translation", result.translation_confidence), ("improve", result.improve_confidence), ("overall", result.overall_confidence)]:
+    for name, confidence in [
+        ("translation", result.translation_confidence),
+        ("improve", result.improve_confidence),
+        ("overall", result.overall_confidence),
+    ]:
         if not isinstance(confidence, dict):
             continue
         if confidence_failed(confidence):

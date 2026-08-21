@@ -94,7 +94,11 @@ class CaseResult:
 
 
 def progress_event_line(**values: Any) -> str:
-    payload = {"event": values.pop("event"), "stage": values.pop("stage"), "timestamp": datetime.now(timezone.utc).isoformat()}
+    payload = {
+        "event": values.pop("event"),
+        "stage": values.pop("stage"),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
     payload.update({key: value for key, value in values.items() if value is not None})
     return PROGRESS_PREFIX + json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
@@ -139,7 +143,9 @@ def classify_external_error(message: str | None) -> str | None:
     lowered = (message or "").lower()
     if any(token in lowered for token in ["429", "rate limit", "quota", "resource exhausted"]):
         return "rate_limit"
-    if any(token in lowered for token in ["401", "403", "unauthorized", "forbidden", "invalid api key", "api key missing"]):
+    if any(
+        token in lowered for token in ["401", "403", "unauthorized", "forbidden", "invalid api key", "api key missing"]
+    ):
         return "auth_error"
     if any(token in lowered for token in ["timed out", "timeout", "deadline"]):
         return "timeout"
@@ -154,7 +160,7 @@ def split_model_values(values: list[str] | None, fallback: str) -> list[str]:
 
 def chunked(items: list[Any], size: int) -> list[list[Any]]:
     safe_size = max(1, size)
-    return [items[index:index + safe_size] for index in range(0, len(items), safe_size)]
+    return [items[index : index + safe_size] for index in range(0, len(items), safe_size)]
 
 
 def read_control_file(path: str | None) -> dict[str, Any]:
@@ -221,7 +227,9 @@ def confidence_logical_check_count(mode: str, case_count: int, translator_count:
     return 3 * case_count * translator_count * improver_count
 
 
-def confidence_request_estimate(mode: str, case_count: int, translator_count: int, improver_count: int, batch_size: int) -> int:
+def confidence_request_estimate(
+    mode: str, case_count: int, translator_count: int, improver_count: int, batch_size: int
+) -> int:
     if mode == "off":
         return 0
     batches = lambda count: (count + max(1, batch_size) - 1) // max(1, batch_size)

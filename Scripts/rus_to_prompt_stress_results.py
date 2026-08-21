@@ -32,7 +32,10 @@ def has_internal_instruction_leak(text: str, source: str = "") -> bool:
     if reason:
         return "internal instruction" in reason or "repair metadata" in reason
     lowered = (text or "").lower()
-    return any(marker in lowered for marker in ["return only the improved prompt", "rewrite the user's request", "hidden system prompt"])
+    return any(
+        marker in lowered
+        for marker in ["return only the improved prompt", "rewrite the user's request", "hidden system prompt"]
+    )
 
 
 def is_meta_prompt(text: str) -> bool:
@@ -49,10 +52,21 @@ def looks_like_reasoning_transcript(text: str) -> bool:
     lowered = (text or "").strip().lower()
     if any(marker in lowered for marker in ("<think>", "</think>", "<reasoning>", "</reasoning>")):
         return True
-    starters = ("hmm,", "we are given", "i need to", "i should", "the user is asking", "looking at the original", "let me")
+    starters = (
+        "hmm,",
+        "we are given",
+        "i need to",
+        "i should",
+        "the user is asking",
+        "looking at the original",
+        "let me",
+    )
     if lowered.startswith(starters):
         return True
-    return any(marker in lowered for marker in ["rejected prompt rewrite", "the previous rewrite", "the key issue was", "failure reason"])
+    return any(
+        marker in lowered
+        for marker in ["rejected prompt rewrite", "the previous rewrite", "the key issue was", "failure reason"]
+    )
 
 
 def improved_prompt_sanity_error(source: str, improved: str) -> str | None:
@@ -73,8 +87,19 @@ def confidence_local_checks(source_prompt: str, result: CaseResult) -> dict[str,
     }
 
 
-def failed_confidence_result(model: str, stage: str, error: str, reasoning_effort: str | None = None, provider: str = "codex") -> dict[str, Any]:
-    payload = {"provider": provider, "model": model, "stage": stage, "status": "failed", "confidence": None, "verdict": "fail", "warnings": [error], "error": error}
+def failed_confidence_result(
+    model: str, stage: str, error: str, reasoning_effort: str | None = None, provider: str = "codex"
+) -> dict[str, Any]:
+    payload = {
+        "provider": provider,
+        "model": model,
+        "stage": stage,
+        "status": "failed",
+        "confidence": None,
+        "verdict": "fail",
+        "warnings": [error],
+        "error": error,
+    }
     if reasoning_effort:
         payload["reasoning_effort"] = reasoning_effort
     return payload
@@ -82,7 +107,13 @@ def failed_confidence_result(model: str, stage: str, error: str, reasoning_effor
 
 def translation_confidence_allows_improve(confidence: dict[str, Any] | None, threshold: float) -> bool:
     value = confidence_value(confidence)
-    return bool(confidence and confidence.get("status") != "failed" and confidence.get("verdict") != "fail" and value is not None and value >= threshold)
+    return bool(
+        confidence
+        and confidence.get("status") != "failed"
+        and confidence.get("verdict") != "fail"
+        and value is not None
+        and value >= threshold
+    )
 
 
 def translation_rejection_reason(confidence: dict[str, Any] | None, threshold: float) -> str:
@@ -90,7 +121,11 @@ def translation_rejection_reason(confidence: dict[str, Any] | None, threshold: f
     if confidence is None or confidence.get("status") == "failed":
         return "Translation confidence check failed; skipped improver stage."
     if confidence.get("verdict") == "fail":
-        reasons = confidence.get("deterministic_confidence_cap_reasons") if isinstance(confidence.get("deterministic_confidence_cap_reasons"), list) else []
+        reasons = (
+            confidence.get("deterministic_confidence_cap_reasons")
+            if isinstance(confidence.get("deterministic_confidence_cap_reasons"), list)
+            else []
+        )
         reason = str(reasons[0]) if reasons else "confidence verdict failed"
         return f"Translation confidence failed deterministic gate: {reason}; skipped improver stage."
     return f"Translation confidence {value or 0:.2f} is below threshold {threshold:.2f}; skipped improver stage."
@@ -107,7 +142,19 @@ def build_translation_rejected_result(
     reason: str,
 ) -> CaseResult:
     translation = str(translation_payload.get("translation") or "")
-    return _case_result(case, translator_model, analyzer_model, translator_provider, analyzer_provider, translation_payload, None, translation_seconds, 0.0, "translation_rejected", reason)
+    return _case_result(
+        case,
+        translator_model,
+        analyzer_model,
+        translator_provider,
+        analyzer_provider,
+        translation_payload,
+        None,
+        translation_seconds,
+        0.0,
+        "translation_rejected",
+        reason,
+    )
 
 
 def build_translation_only_result(
@@ -119,7 +166,19 @@ def build_translation_only_result(
     translation_payload: dict[str, Any],
     translation_seconds: float,
 ) -> CaseResult:
-    return _case_result(case, translator_model, analyzer_model, translator_provider, analyzer_provider, translation_payload, None, translation_seconds, 0.0, "translation_only", None)
+    return _case_result(
+        case,
+        translator_model,
+        analyzer_model,
+        translator_provider,
+        analyzer_provider,
+        translation_payload,
+        None,
+        translation_seconds,
+        0.0,
+        "translation_only",
+        None,
+    )
 
 
 def build_case_result_from_payloads(
@@ -137,7 +196,19 @@ def build_case_result_from_payloads(
     status = "ok" if improve_status == "ok" else improve_status
     if translation_payload.get("status") != "ok":
         status = "translation_failed"
-    return _case_result(case, translator_model, analyzer_model, translator_provider, analyzer_provider, translation_payload, improve_payload, translation_seconds, improve_seconds, status, None)
+    return _case_result(
+        case,
+        translator_model,
+        analyzer_model,
+        translator_provider,
+        analyzer_provider,
+        translation_payload,
+        improve_payload,
+        translation_seconds,
+        improve_seconds,
+        status,
+        None,
+    )
 
 
 def apply_deterministic_confidence_caps(confidence: dict[str, Any], result: CaseResult, stage: str) -> dict[str, Any]:
@@ -370,7 +441,34 @@ def _case_result(
         warnings = warnings + ["Improved prompt sanity failed: " + improved_sanity]
         if status == "ok":
             status = "degraded"
-    return CaseResult(case.id, case.category, status, translation_payload.get("translation_status"), (improve_payload or {}).get("status"), translation_seconds + improve_seconds, translation_payload.get("source_language"), int(translation_payload.get("protected_spans_count") or 0) + int((improve_payload or {}).get("protected_spans_count") or 0), missing_spans(case.prompt, translation, improved), has_internal_placeholder_leak(translation + improved, case.prompt), has_internal_instruction_leak(improved, case.prompt + translation), is_meta_prompt(improved), bool((improve_payload or {}).get("improvement_retry_used")), optimizer._cyrillic_count(translation), optimizer._cyrillic_count(improved), warnings, translation, improved, translation_seconds, improve_seconds, translator_provider, analyzer_provider, translator_model, analyzer_model, error=error)
+    return CaseResult(
+        case.id,
+        case.category,
+        status,
+        translation_payload.get("translation_status"),
+        (improve_payload or {}).get("status"),
+        translation_seconds + improve_seconds,
+        translation_payload.get("source_language"),
+        int(translation_payload.get("protected_spans_count") or 0)
+        + int((improve_payload or {}).get("protected_spans_count") or 0),
+        missing_spans(case.prompt, translation, improved),
+        has_internal_placeholder_leak(translation + improved, case.prompt),
+        has_internal_instruction_leak(improved, case.prompt + translation),
+        is_meta_prompt(improved),
+        bool((improve_payload or {}).get("improvement_retry_used")),
+        optimizer._cyrillic_count(translation),
+        optimizer._cyrillic_count(improved),
+        warnings,
+        translation,
+        improved,
+        translation_seconds,
+        improve_seconds,
+        translator_provider,
+        analyzer_provider,
+        translator_model,
+        analyzer_model,
+        error=error,
+    )
 
 
 def _issue_counts(summary: dict[str, Any], total_operations: int) -> dict[str, int]:
@@ -390,7 +488,10 @@ def _issue_counts(summary: dict[str, Any], total_operations: int) -> dict[str, i
 
 
 def _confidence_values(result: CaseResult) -> list[float]:
-    values = [confidence_value(item) for item in [result.translation_confidence, result.improve_confidence, result.overall_confidence]]
+    values = [
+        confidence_value(item)
+        for item in [result.translation_confidence, result.improve_confidence, result.overall_confidence]
+    ]
     return [value for value in values if value is not None]
 
 
@@ -409,7 +510,10 @@ def _result_counts(results: list[CaseResult]) -> dict[str, int]:
 
 
 def _confidence_failed(result: CaseResult) -> int:
-    return sum(confidence_failed(item) for item in [result.translation_confidence, result.improve_confidence, result.overall_confidence])
+    return sum(
+        confidence_failed(item)
+        for item in [result.translation_confidence, result.improve_confidence, result.overall_confidence]
+    )
 
 
 def _translation_failed_result(result: CaseResult) -> bool:

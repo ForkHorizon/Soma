@@ -1,7 +1,3 @@
-
-
-
-
 import sys
 import json
 
@@ -9,19 +5,14 @@ import os
 import re
 
 
-
-
-
 from pathlib import Path
-
-
 
 
 from .config import *
 
 
 def fix_path(path, allowed_dirs):
-    if path.startswith('/'):
+    if path.startswith("/"):
         return path
     for root in allowed_dirs:
         candidate = os.path.join(root, path)
@@ -36,20 +27,22 @@ def normalize_path(path):
 
 
 def is_noise_path(path):
-    if (type(path) is str):
-        if ('__pycache__' in path):
-            if ('__pycache__' in path.split('/')):
+    if type(path) is str:
+        if "__pycache__" in path:
+            if "__pycache__" in path.split("/"):
                 return True
-        name = (path.rsplit('/', 1)[(- 1)] if ('/' in path) else path)
-        if (name in NOISE_PATH_NAMES):
+        name = path.rsplit("/", 1)[(-1)] if ("/" in path) else path
+        if name in NOISE_PATH_NAMES:
             return True
-        if ('.' in name):
-            suffix = name[name.rfind('.'):].lower()
-            if (suffix in NOISE_SUFFIXES):
+        if "." in name:
+            suffix = name[name.rfind(".") :].lower()
+            if suffix in NOISE_SUFFIXES:
                 return True
         return False
     else:
-        return ((path.name in NOISE_PATH_NAMES) or (path.suffix.lower() in NOISE_SUFFIXES) or ('__pycache__' in path.parts))
+        return (
+            (path.name in NOISE_PATH_NAMES) or (path.suffix.lower() in NOISE_SUFFIXES) or ("__pycache__" in path.parts)
+        )
 
 
 def path_parts_for_policy(path, project_root=None):
@@ -57,17 +50,17 @@ def path_parts_for_policy(path, project_root=None):
         raw = rel_path(path, project_root) if project_root else str(path)
     except Exception:
         raw = str(path)
-    return [part for part in raw.replace('\\', '/').split('/') if part]
+    return [part for part in raw.replace("\\", "/").split("/") if part]
 
 
 def is_generated_dependency_path(path, project_root=None):
     parts = path_parts_for_policy(path, project_root)
-    rel = '/'.join(parts)
+    rel = "/".join(parts)
     lower_parts = {part.lower() for part in parts}
     lower_rel = rel.lower()
     for marker in GENERATED_DEPENDENCY_PARTS:
         marker_lower = marker.lower()
-        if '/' in marker_lower:
+        if "/" in marker_lower:
             if marker_lower in lower_rel:
                 return True
         elif marker_lower in lower_parts:
@@ -79,7 +72,7 @@ def is_project_owned_path(path, project_root=None, project_type=None):
     parts = path_parts_for_policy(path, project_root)
     if not parts:
         return False
-    if project_type == 'unity':
+    if project_type == "unity":
         return parts[0] in PROJECT_OWNED_UNITY_PARTS or len(parts) == 1
     return not is_generated_dependency_path(path, project_root)
 
@@ -102,45 +95,50 @@ def dedupe_strings(items):
 
 
 def should_skip_dir(name):
-    return ((name in SKIP_DIRS) or (name.startswith('.') and (name not in {'.config', '.github'})))
+    return (name in SKIP_DIRS) or (name.startswith(".") and (name not in {".config", ".github"}))
 
 
 def categorize_path(path):
-    if (type(path) is str):
-        name = (path.rsplit('/', 1)[(- 1)] if ('/' in path) else path)
-        suffix = (name[name.rfind('.'):].lower() if ('.' in name) else '')
+    if type(path) is str:
+        name = path.rsplit("/", 1)[(-1)] if ("/" in path) else path
+        suffix = name[name.rfind(".") :].lower() if ("." in name) else ""
     else:
         name = path.name
         suffix = path.suffix.lower()
-    if ((name in MANIFEST_NAMES) or (name == 'project.pbxproj') or name.endswith('.xcodeproj') or name.endswith('.xcworkspace')):
-        return 'manifest'
-    if (suffix in UNITY_EXTENSIONS):
-        return 'unity'
-    if ((suffix in LOG_EXTENSIONS) or name.lower().startswith(('ollama_', 'stderr', 'stdout'))):
-        return 'log'
-    if (suffix in NOTE_EXTENSIONS):
-        return 'notes'
-    if ((suffix in SOURCE_EXTENSIONS) and (suffix not in {'.bat', '.command', '.ps1', '.sh', '.zsh'})):
-        return 'source'
-    if ((suffix in SCRIPT_EXTENSIONS) or ((not suffix) and os.access(path, os.X_OK))):
-        return 'script'
-    if (suffix in SOURCE_EXTENSIONS):
-        return 'source'
-    if (suffix in CONFIG_EXTENSIONS):
-        return 'config'
-    if re.search(r'(^|[_.-])logs?([_.-]|$)', name.lower()):
-        return 'log'
+    if (
+        (name in MANIFEST_NAMES)
+        or (name == "project.pbxproj")
+        or name.endswith(".xcodeproj")
+        or name.endswith(".xcworkspace")
+    ):
+        return "manifest"
+    if suffix in UNITY_EXTENSIONS:
+        return "unity"
+    if (suffix in LOG_EXTENSIONS) or name.lower().startswith(("ollama_", "stderr", "stdout")):
+        return "log"
+    if suffix in NOTE_EXTENSIONS:
+        return "notes"
+    if (suffix in SOURCE_EXTENSIONS) and (suffix not in {".bat", ".command", ".ps1", ".sh", ".zsh"}):
+        return "source"
+    if (suffix in SCRIPT_EXTENSIONS) or ((not suffix) and os.access(path, os.X_OK)):
+        return "script"
+    if suffix in SOURCE_EXTENSIONS:
+        return "source"
+    if suffix in CONFIG_EXTENSIONS:
+        return "config"
+    if re.search(r"(^|[_.-])logs?([_.-]|$)", name.lower()):
+        return "log"
     return None
 
 
 def parse_recent_roots(raw_json):
     try:
-        decoded = json.loads((raw_json or '[]'))
+        decoded = json.loads((raw_json or "[]"))
     except Exception as exc:
         print(f"parse_recent_roots failed: {exc}", file=sys.stderr)
         decoded = []
     roots = []
     for item in decoded:
-        if (isinstance(item, str) and os.path.isdir(os.path.expanduser(item))):
+        if isinstance(item, str) and os.path.isdir(os.path.expanduser(item)):
             roots.append(normalize_path(item))
     return dedupe_strings(roots)

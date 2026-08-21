@@ -38,8 +38,12 @@ class GraphStorageStatusMixin:
             "source_root": self.graph_source_root(root),
         }
 
-    def _status_stale(self, graphs: list[Path], managed_graphs: list[Path], legacy_graphs: list[Path], root: Path | None) -> bool:
-        entries = [self._graph_entry(path, root, "managed" if path in managed_graphs else "legacy") for path in graphs[:8]]
+    def _status_stale(
+        self, graphs: list[Path], managed_graphs: list[Path], legacy_graphs: list[Path], root: Path | None
+    ) -> bool:
+        entries = [
+            self._graph_entry(path, root, "managed" if path in managed_graphs else "legacy") for path in graphs[:8]
+        ]
         return any(entry.get("stale") for entry in entries) if entries else True
 
     def _status_payload(self, root: Path | None, context: dict[str, Any]) -> dict[str, Any]:
@@ -49,7 +53,9 @@ class GraphStorageStatusMixin:
         selected = context["selected"]
         storage_kind = "managed" if managed_graphs else ("legacy" if legacy_graphs else "missing")
         node_count, edge_count = self.count_graph(selected) if selected else (None, None)
-        entries = [self._graph_entry(path, root, "managed" if path in managed_graphs else "legacy") for path in graphs[:8]]
+        entries = [
+            self._graph_entry(path, root, "managed" if path in managed_graphs else "legacy") for path in graphs[:8]
+        ]
         diagnostics = context["diagnostics"]
         return {
             **self._availability_fields(graphs, managed_graphs, legacy_graphs, storage_kind),

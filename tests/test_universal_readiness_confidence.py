@@ -35,8 +35,9 @@ class UniversalReadinessConfidenceTests(UniversalReadinessTestCase):
             self.assertIn("__SOMA_PROTECTED_SPAN_9__", previous_output)
             return "Make the Project Info card compact and keep the input visible."
 
-        with patch.object(soma_language_optimizer, "_local_ollama_improve_prompt", side_effect=fake_improve), patch.object(
-            soma_language_optimizer, "_local_ollama_repair_prompt", side_effect=fake_repair
+        with (
+            patch.object(soma_language_optimizer, "_local_ollama_improve_prompt", side_effect=fake_improve),
+            patch.object(soma_language_optimizer, "_local_ollama_repair_prompt", side_effect=fake_repair),
         ):
             payload = soma_language_optimizer.improve_general_prompt(translation, "analyzer-stage", "gpt-5.5")
 
@@ -46,7 +47,7 @@ class UniversalReadinessConfidenceTests(UniversalReadinessTestCase):
         self.assertNotIn("__SOMA_PROTECTED_SPAN_", payload["improved_prompt"])
 
     def test_rus_to_prompt_retry_recovers_dropped_protected_placeholder(self):
-        translation = "Fix `A.swift` and `B.swift` without changing JSON {\"actions\":[]}."
+        translation = 'Fix `A.swift` and `B.swift` without changing JSON {"actions":[]}.'
 
         def fake_improve(text, model, timeout):
             placeholders = list(dict.fromkeys(re.findall(r"__SOMA_PROTECTED_SPAN_\d+__", text)))
@@ -58,8 +59,9 @@ class UniversalReadinessConfidenceTests(UniversalReadinessTestCase):
             self.assertIn("corrupted protected placeholders", failure_reason)
             return "Fix " + ", ".join(placeholders) + " without changing behavior."
 
-        with patch.object(soma_language_optimizer, "_local_ollama_improve_prompt", side_effect=fake_improve), patch.object(
-            soma_language_optimizer, "_local_ollama_repair_prompt", side_effect=fake_repair
+        with (
+            patch.object(soma_language_optimizer, "_local_ollama_improve_prompt", side_effect=fake_improve),
+            patch.object(soma_language_optimizer, "_local_ollama_repair_prompt", side_effect=fake_repair),
         ):
             payload = soma_language_optimizer.improve_general_prompt(translation, "analyzer-stage", "gpt-5.5")
 
@@ -67,7 +69,7 @@ class UniversalReadinessConfidenceTests(UniversalReadinessTestCase):
         self.assertTrue(payload["improvement_retry_used"])
         self.assertIn("`A.swift`", payload["improved_prompt"])
         self.assertIn("`B.swift`", payload["improved_prompt"])
-        self.assertIn("{\"actions\":[]}", payload["improved_prompt"])
+        self.assertIn('{"actions":[]}', payload["improved_prompt"])
 
     def test_rus_to_prompt_degrades_when_repair_returns_reasoning_transcript(self):
         translation = "Verify that the latest linter works correctly for SWIFT projects."
@@ -85,8 +87,9 @@ class UniversalReadinessConfidenceTests(UniversalReadinessTestCase):
                 f"Verify that the latest linter works correctly for {placeholder} projects."
             )
 
-        with patch.object(soma_language_optimizer, "_local_ollama_improve_prompt", side_effect=fake_improve), patch.object(
-            soma_language_optimizer, "_local_ollama_repair_prompt", side_effect=fake_repair
+        with (
+            patch.object(soma_language_optimizer, "_local_ollama_improve_prompt", side_effect=fake_improve),
+            patch.object(soma_language_optimizer, "_local_ollama_repair_prompt", side_effect=fake_repair),
         ):
             payload = soma_language_optimizer.improve_general_prompt(translation, "analyzer-stage", "gpt-5.5")
 
@@ -97,8 +100,13 @@ class UniversalReadinessConfidenceTests(UniversalReadinessTestCase):
     def test_rus_to_prompt_fails_when_translation_fails(self):
         prompt = "Проверь quiet hours и верни план."
 
-        with patch.object(soma_language_optimizer, "_local_ollama_translate", side_effect=RuntimeError("offline")), patch.object(
-            soma_language_optimizer, "_local_ollama_improve_prompt", side_effect=AssertionError("polish should be skipped")
+        with (
+            patch.object(soma_language_optimizer, "_local_ollama_translate", side_effect=RuntimeError("offline")),
+            patch.object(
+                soma_language_optimizer,
+                "_local_ollama_improve_prompt",
+                side_effect=AssertionError("polish should be skipped"),
+            ),
         ):
             payload = soma_language_optimizer.optimize_general_prompt(prompt, "gpt-5.5")
 
@@ -210,5 +218,5 @@ class UniversalReadinessConfidenceTests(UniversalReadinessTestCase):
         self.assertIn("codex", payload["error"])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

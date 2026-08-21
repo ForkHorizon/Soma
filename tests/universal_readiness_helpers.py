@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "Soma"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "Scripts"))
 from soma_test_bootstrap import install_soma_imports
+
 install_soma_imports()
 
 from scout_pipeline import TOKEN_BUDGETS
@@ -55,7 +56,6 @@ EXPECTED_TYPES = {
 }
 
 
-
 def make_quiet_hours_repo():
     tmp = tempfile.TemporaryDirectory()
     root = Path(tmp.name)
@@ -67,7 +67,14 @@ def make_quiet_hours_repo():
 
 
 def _make_quiet_dirs(root):
-    for path in ["Moodling/Core", "Moodling/Models", "Moodling/Views", "MoodlingTests", "docs", "fixtures/system_events"]:
+    for path in [
+        "Moodling/Core",
+        "Moodling/Models",
+        "Moodling/Views",
+        "MoodlingTests",
+        "docs",
+        "fixtures/system_events",
+    ]:
         (root / path).mkdir(parents=True, exist_ok=True)
 
 
@@ -81,18 +88,33 @@ def _write_quiet_sources(root):
         "return currentMinute >= start || currentMinute < end\n}\n}\n",
         encoding="utf-8",
     )
-    (root / "Moodling" / "Core" / "NudgeScheduler.swift").write_text("struct NudgeScheduler { let cooldownPolicy = CooldownPolicy() }\n", encoding="utf-8")
-    (root / "Moodling" / "AppState.swift").write_text("final class AppState { let nudgeScheduler = NudgeScheduler(); func testNudge() {} }\n", encoding="utf-8")
-    (root / "Moodling" / "Models" / "MoodlingSettings.swift").write_text("struct MoodlingSettings { var quietHoursEnabled = true; var quietHoursStartMinutes = 23 * 60; var quietHoursEndMinutes = 8 * 60 }\n", encoding="utf-8")
-    (root / "Moodling" / "Views" / "SettingsView.swift").write_text("struct SettingsView { let label = \"Quiet hours\" }\n", encoding="utf-8")
-    (root / "MoodlingTests" / "CooldownPolicyTests.swift").write_text("import XCTest\nfinal class CooldownPolicyTests: XCTestCase { func testQuietHoursCrossMidnight() {} }\n", encoding="utf-8")
+    (root / "Moodling" / "Core" / "NudgeScheduler.swift").write_text(
+        "struct NudgeScheduler { let cooldownPolicy = CooldownPolicy() }\n", encoding="utf-8"
+    )
+    (root / "Moodling" / "AppState.swift").write_text(
+        "final class AppState { let nudgeScheduler = NudgeScheduler(); func testNudge() {} }\n", encoding="utf-8"
+    )
+    (root / "Moodling" / "Models" / "MoodlingSettings.swift").write_text(
+        "struct MoodlingSettings { var quietHoursEnabled = true; var quietHoursStartMinutes = 23 * 60; var quietHoursEndMinutes = 8 * 60 }\n",
+        encoding="utf-8",
+    )
+    (root / "Moodling" / "Views" / "SettingsView.swift").write_text(
+        'struct SettingsView { let label = "Quiet hours" }\n', encoding="utf-8"
+    )
+    (root / "MoodlingTests" / "CooldownPolicyTests.swift").write_text(
+        "import XCTest\nfinal class CooldownPolicyTests: XCTestCase { func testQuietHoursCrossMidnight() {} }\n",
+        encoding="utf-8",
+    )
 
 
 def _write_quiet_docs(root):
-    (root / "docs" / "behavior.md").write_text("# Behavior\nQuiet hours suppress nudges and bubbles between start and end, including midnight crossing intervals.\n", encoding="utf-8")
+    (root / "docs" / "behavior.md").write_text(
+        "# Behavior\nQuiet hours suppress nudges and bubbles between start and end, including midnight crossing intervals.\n",
+        encoding="utf-8",
+    )
     (root / "fixtures" / "system_events" / "quiet_hours_cross_midnight.jsonl").write_text(
-        "{\"type\":\"manual_nudge\",\"expected\":\"allowed_before_quiet_hours\"}\n"
-        "{\"type\":\"agent_log\",\"expected\":\"suppressed_after_midnight\"}\n",
+        '{"type":"manual_nudge","expected":"allowed_before_quiet_hours"}\n'
+        '{"type":"agent_log","expected":"suppressed_after_midnight"}\n',
         encoding="utf-8",
     )
 

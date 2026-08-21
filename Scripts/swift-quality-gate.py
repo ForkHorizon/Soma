@@ -207,27 +207,41 @@ def detect_project(root: Path, config: dict) -> SwiftProject:
     if workspace:
         workspace_path = root / workspace
         require_path(workspace_path, "xcode_workspace")
-        return SwiftProject("xcode-workspace", workspace, scheme or detect_scheme(root, "-workspace", workspace), destination, configuration)
+        return SwiftProject(
+            "xcode-workspace",
+            workspace,
+            scheme or detect_scheme(root, "-workspace", workspace),
+            destination,
+            configuration,
+        )
 
     if project:
         project_path = root / project
         require_path(project_path, "xcode_project")
-        return SwiftProject("xcode-project", project, scheme or detect_scheme(root, "-project", project), destination, configuration)
+        return SwiftProject(
+            "xcode-project", project, scheme or detect_scheme(root, "-project", project), destination, configuration
+        )
 
     workspaces = sorted(path for path in root.glob("*.xcworkspace") if path.is_dir())
     projects = sorted(path for path in root.glob("*.xcodeproj") if path.is_dir())
 
     if len(workspaces) == 1:
         rel = workspaces[0].relative_to(root).as_posix()
-        return SwiftProject("xcode-workspace", rel, scheme or detect_scheme(root, "-workspace", rel), destination, configuration)
+        return SwiftProject(
+            "xcode-workspace", rel, scheme or detect_scheme(root, "-workspace", rel), destination, configuration
+        )
     if len(projects) == 1:
         rel = projects[0].relative_to(root).as_posix()
-        return SwiftProject("xcode-project", rel, scheme or detect_scheme(root, "-project", rel), destination, configuration)
+        return SwiftProject(
+            "xcode-project", rel, scheme or detect_scheme(root, "-project", rel), destination, configuration
+        )
     if not workspaces and not projects and (root / "Package.swift").exists():
         return SwiftProject("spm")
 
     if len(workspaces) + len(projects) > 1:
-        fail("Multiple Xcode projects/workspaces found. Set xcode_workspace or xcode_project in .swift-quality-gate.json.")
+        fail(
+            "Multiple Xcode projects/workspaces found. Set xcode_workspace or xcode_project in .swift-quality-gate.json."
+        )
     fail("No SwiftPM package or root Xcode project/workspace found.")
 
 
@@ -252,7 +266,9 @@ def detect_scheme(root: Path, flag: str, project_path: str) -> str:
         return str(schemes[0])
     if not schemes:
         fail(f"No shared schemes found for {project_path}. Set xcode_scheme in .swift-quality-gate.json.")
-    fail(f"Multiple schemes found for {project_path}: {', '.join(map(str, schemes))}. Set xcode_scheme in .swift-quality-gate.json.")
+    fail(
+        f"Multiple schemes found for {project_path}: {', '.join(map(str, schemes))}. Set xcode_scheme in .swift-quality-gate.json."
+    )
 
 
 def xcodebuild_base_command(project: SwiftProject) -> list[str]:
