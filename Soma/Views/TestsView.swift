@@ -4,7 +4,7 @@ import Foundation
 import Combine
 
 enum TestsViewMode {
-    case full   // the full batch-runner page (separate window)
+    case full  // the full batch-runner page (separate window)
     case queue  // queue-only, as a sidebar route
     case stats  // model-stats-only, as a sidebar route
 }
@@ -103,7 +103,6 @@ struct TestsView: View {
     @State var customTranslatorModel = ""
     @State var customImproverModel = ""
 
-
     var body: some View {
         switch mode {
         case .full:
@@ -117,7 +116,7 @@ struct TestsView: View {
                     queueManager.refreshPowerSource()
                     queueManager.startNextIfPossible()
                     ollama.refreshInstalledModels()
-                    loadModelStatsIfNeeded()   // candidate panels show benchmark stats from this
+                    loadModelStatsIfNeeded()  // candidate panels show benchmark stats from this
                 }
                 .onChange(of: queueManager.completedCount) { _, _ in loadModelStats() }
         case .stats:
@@ -161,7 +160,7 @@ struct TestsView: View {
 
             benchmarkModePanel
                 .padding(.horizontal, 18)
-            .padding(.bottom, 18)
+                .padding(.bottom, 18)
 
             testRunControls
                 .padding(.horizontal, 18)

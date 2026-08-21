@@ -28,13 +28,16 @@ extension TestsView {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 3) {
-                Picker("Benchmark mode", selection: Binding(
-                    get: { selectedBenchmarkMode },
-                    set: { mode in
-                        selectedBenchmarkMode = mode
-                        saveBenchmarkMode(mode)
-                    }
-                )) {
+                Picker(
+                    "Benchmark mode",
+                    selection: Binding(
+                        get: { selectedBenchmarkMode },
+                        set: { mode in
+                            selectedBenchmarkMode = mode
+                            saveBenchmarkMode(mode)
+                        }
+                    )
+                ) {
                     ForEach(TestBenchmarkMode.allCases) { mode in
                         Text(mode.rawValue).tag(mode)
                     }
@@ -54,7 +57,6 @@ extension TestsView {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.12)))
     }
-
 
     var testRunControls: some View {
         HStack(spacing: 10) {
@@ -87,7 +89,6 @@ extension TestsView {
         }
     }
 
-
     var testOutputTabs: some View {
         VStack(alignment: .leading, spacing: 10) {
             Picker("Output", selection: $selectedOutputTab) {
@@ -107,7 +108,6 @@ extension TestsView {
             }
         }
     }
-
 
     var testProgressPanel: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -172,7 +172,6 @@ extension TestsView {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.12)))
     }
 
-
     var pipelineTimeline: some View {
         HStack(spacing: 8) {
             ForEach(TestPipelineStep.allCases.indices, id: \.self) { index in
@@ -188,7 +187,6 @@ extension TestsView {
         }
         .padding(.vertical, 4)
     }
-
 
     var activeWorkPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -207,7 +205,8 @@ extension TestsView {
             }
 
             if let reason = currentProgressEvent?.reason,
-               !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            {
                 Text(reason)
                     .font(.caption)
                     .foregroundColor(.secondary)

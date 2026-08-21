@@ -22,7 +22,6 @@ nonisolated struct VoiceChunk: Sendable {
     }
 }
 
-
 enum VoicePauseEvent {
     case none
     case speechStarted

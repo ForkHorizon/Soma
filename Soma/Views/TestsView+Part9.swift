@@ -11,24 +11,23 @@ extension TestsView {
         return "\(modelStatsStatusText) · Logs: \(stressDirectoryURL.path)"
     }
 
-
     var selectedTranslationStats: TestModelRoleStats? {
         if let selectedTranslationStatsID,
-           let selected = sortedTranslationModelStats.first(where: { $0.id == selectedTranslationStatsID }) {
+            let selected = sortedTranslationModelStats.first(where: { $0.id == selectedTranslationStatsID })
+        {
             return selected
         }
         return sortedTranslationModelStats.first
     }
 
-
     var selectedImproverStats: TestModelRoleStats? {
         if let selectedImproverStatsID,
-           let selected = sortedImproverModelStats.first(where: { $0.id == selectedImproverStatsID }) {
+            let selected = sortedImproverModelStats.first(where: { $0.id == selectedImproverStatsID })
+        {
             return selected
         }
         return sortedImproverModelStats.first
     }
-
 
     func modelStatsSection(
         title: String,
@@ -73,16 +72,24 @@ extension TestsView {
         }
     }
 
-
     func modelStatsHeaderRow(sort: Binding<TestModelStatsSort?>) -> some View {
         HStack(spacing: 10) {
             modelStatsHeaderButton("Model", column: .model, sort: sort, alignment: .leading)
-            modelStatsHeaderButton("Runs", column: .attempts, sort: sort, width: 54, alignment: .trailing, help: "Total attempts for this model.")
-            modelStatsHeaderButton("Score", column: .quality, sort: sort, width: 58, alignment: .trailing, help: "Main trust score across all attempts. Failed attempts count as 0.")
-            modelStatsHeaderButton("OK", column: .ok, sort: sort, width: 64, alignment: .trailing, help: "Usable scored attempts out of total attempts.")
-            modelStatsHeaderButton("Problems", column: .problems, sort: sort, width: 72, alignment: .trailing, help: "Attempts with any judge failure, run failure, or degraded warning. Each attempt counts once.")
-            modelStatsHeaderButton("Clean", column: .clean, sort: sort, width: 56, alignment: .trailing, help: "Share of attempts without judge failure, run failure, or degraded warning.")
-            modelStatsHeaderButton("Speed", column: .runtime, sort: sort, width: 60, alignment: .trailing, help: "Average model runtime for this role.")
+            modelStatsHeaderButton(
+                "Runs", column: .attempts, sort: sort, width: 54, alignment: .trailing, help: "Total attempts for this model.")
+            modelStatsHeaderButton(
+                "Score", column: .quality, sort: sort, width: 58, alignment: .trailing,
+                help: "Main trust score across all attempts. Failed attempts count as 0.")
+            modelStatsHeaderButton(
+                "OK", column: .ok, sort: sort, width: 64, alignment: .trailing, help: "Usable scored attempts out of total attempts.")
+            modelStatsHeaderButton(
+                "Problems", column: .problems, sort: sort, width: 72, alignment: .trailing,
+                help: "Attempts with any judge failure, run failure, or degraded warning. Each attempt counts once.")
+            modelStatsHeaderButton(
+                "Clean", column: .clean, sort: sort, width: 56, alignment: .trailing,
+                help: "Share of attempts without judge failure, run failure, or degraded warning.")
+            modelStatsHeaderButton(
+                "Speed", column: .runtime, sort: sort, width: 60, alignment: .trailing, help: "Average model runtime for this role.")
             modelStatsHeaderButton("Last", column: .last, sort: sort, width: 136, alignment: .leading)
         }
         .font(.caption2.bold())
@@ -90,7 +97,6 @@ extension TestsView {
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
     }
-
 
     @ViewBuilder
     func modelStatsHeaderButton(
@@ -119,7 +125,6 @@ extension TestsView {
         .buttonStyle(.plain)
         .help(help.map { "\($0) Sort by \(title)." } ?? "Sort by \(title)")
     }
-
 
     func modelStatsRow(_ row: TestModelRoleStats, selectedID: Binding<String?>) -> some View {
         Button {
@@ -157,9 +162,10 @@ extension TestsView {
             .background(selectedID.wrappedValue == row.id ? Color.accentColor.opacity(0.12) : Color.clear)
         }
         .buttonStyle(.plain)
-        .help("runs \(row.attempts), score \(formatConfidence(row.qualityScore)), OK \(row.confidenceCount)/\(row.attempts), problems \(modelStatsProblemCount(row)), clean \(modelStatsCleanLabel(row))")
+        .help(
+            "runs \(row.attempts), score \(formatConfidence(row.qualityScore)), OK \(row.confidenceCount)/\(row.attempts), problems \(modelStatsProblemCount(row)), clean \(modelStatsCleanLabel(row))"
+        )
     }
-
 
     func modelStatsDetailPanel(title: String, row: TestModelRoleStats) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -201,7 +207,8 @@ extension TestsView {
                     title: "Recent runs",
                     lines: row.recentRuns.prefix(6).map { run in
                         let name = URL(fileURLWithPath: run.runDir).lastPathComponent
-                        return "\(shortDateTime(run.finishedAt)) · \(name) · \(run.attempts) runs · score \(formatConfidence(run.qualityScore)) · OK avg \(formatConfidence(run.avgConfidence))"
+                        return
+                            "\(shortDateTime(run.finishedAt)) · \(name) · \(run.attempts) runs · score \(formatConfidence(run.qualityScore)) · OK avg \(formatConfidence(run.avgConfidence))"
                     }
                 )
             }
@@ -211,7 +218,8 @@ extension TestsView {
                     title: "Worst cases",
                     lines: row.worstCases.prefix(6).map { item in
                         let score = item.effectiveScore ?? item.confidence
-                        let confidence = item.confidenceFailed == true ? "effective 0.00" : (score.map { String(format: "%.2f", $0) } ?? "n/a")
+                        let confidence =
+                            item.confidenceFailed == true ? "effective 0.00" : (score.map { String(format: "%.2f", $0) } ?? "n/a")
                         let related = item.relatedModel.map { " · \($0)" } ?? ""
                         let warning = item.warnings?.first.map { " · \($0)" } ?? ""
                         return "\(item.caseID): \(confidence) · \(item.status ?? "unknown")\(related)\(warning)"
@@ -229,7 +237,6 @@ extension TestsView {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.10)))
     }
 
-
     func modelStatsDetailColumn(title: String, lines: [String]) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(title)
@@ -242,7 +249,6 @@ extension TestsView {
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
-
 
     var modelResultsTable: some View {
         VStack(spacing: 0) {

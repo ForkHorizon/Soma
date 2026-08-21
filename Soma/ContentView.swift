@@ -26,9 +26,13 @@ struct ContentView: View {
                 if let route = selectedRoute {
                     switch route {
                     case .rusToPrompt:
-                        RusToPromptView(viewModel: rusToPromptViewModel, somaViewModel: viewModel, ollama: ollama, queueManager: rusToPromptQueueManager)
+                        RusToPromptView(
+                            viewModel: rusToPromptViewModel, somaViewModel: viewModel, ollama: ollama, queueManager: rusToPromptQueueManager
+                        )
                     case .voiceToText:
-                        VoiceToTextView(somaViewModel: viewModel, ollama: ollama, asr: voiceASR, prompter: voicePrompter, globalVoice: globalVoice, textPriorityQueue: textPriorityQueue)
+                        VoiceToTextView(
+                            somaViewModel: viewModel, ollama: ollama, asr: voiceASR, prompter: voicePrompter, globalVoice: globalVoice,
+                            textPriorityQueue: textPriorityQueue)
                     case .queue:
                         TestsView(mode: .queue, ollama: ollama, queueManager: rusToPromptQueueManager)
                     case .modelStats:
@@ -63,13 +67,15 @@ struct ContentView: View {
             viewModel.hydrateProjectRootsIfNeeded()
         }
         .onAppear {
-            ResourceSampler.shared.start()   // memory+CPU log to ~/.soma/logs/soma_resource.log
-            textPriorityQueue.onImportTranslationCompleted = { [weak voiceASR] id, path in
-                voiceASR?.setImportedTranslation(id, path: path)
+            ResourceSampler.shared.start()  // memory+CPU log to ~/.soma/logs/soma_resource.log
+            let asr = voiceASR
+            textPriorityQueue.onImportTranslationCompleted = { [weak asr] id, path in
+                asr?.setImportedTranslation(id, path: path)
             }
             textPriorityQueue.configure(somaViewModel: viewModel, ollama: ollama, prompter: voicePrompter)
             voiceASR.configure(textPriorityQueue: textPriorityQueue)
-            globalVoice.configure(asr: voiceASR, somaViewModel: viewModel, ollama: ollama, prompter: voicePrompter, textPriorityQueue: textPriorityQueue)
+            globalVoice.configure(
+                asr: voiceASR, somaViewModel: viewModel, ollama: ollama, prompter: voicePrompter, textPriorityQueue: textPriorityQueue)
             globalVoice.setEnabled(globalVoicePasteEnabled)
         }
         .onChange(of: globalVoicePasteEnabled) { _, enabled in
@@ -194,19 +200,29 @@ struct ProjectOverviewView: View {
                 .truncationMode(.middle)
                 .textSelection(.enabled)
             HStack(spacing: 8) {
-                Button { Task { await refresh(projectRoot: viewModel.selectedProjectRoot) } } label: {
+                Button {
+                    Task { await refresh(projectRoot: viewModel.selectedProjectRoot) }
+                } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
-                Button { Task { await runThenRefresh(["--sync-project-clients"], done: "Project client sync finished.") } } label: {
+                Button {
+                    Task { await runThenRefresh(["--sync-project-clients"], done: "Project client sync finished.") }
+                } label: {
                     Label("Sync Clients", systemImage: "arrow.triangle.2.circlepath")
                 }
-                Button { Task { await runThenRefresh(["--refresh-managed-graph"], done: "Graph refresh finished.") } } label: {
+                Button {
+                    Task { await runThenRefresh(["--refresh-managed-graph"], done: "Graph refresh finished.") }
+                } label: {
                     Label("Refresh Graph", systemImage: "point.3.connected.trianglepath.dotted")
                 }
-                Button { viewModel.openGraphifyReport() } label: {
+                Button {
+                    viewModel.openGraphifyReport()
+                } label: {
                     Label("Open Report", systemImage: "doc.richtext")
                 }
-                Button { openProjectFolder() } label: {
+                Button {
+                    openProjectFolder()
+                } label: {
                     Label("Open Folder", systemImage: "folder")
                 }
             }
@@ -222,10 +238,14 @@ struct ProjectOverviewView: View {
 
     private var metrics: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 12)], spacing: 12) {
-            metricCard("Git", currentOverview?.git?.summary ?? "Unknown", currentOverview?.git?.branch ?? "No branch", "point.topleft.down.curvedto.point.bottomright.up", currentOverview?.git?.dirty == true ? .orange : .green)
+            metricCard(
+                "Git", currentOverview?.git?.summary ?? "Unknown", currentOverview?.git?.branch ?? "No branch",
+                "point.topleft.down.curvedto.point.bottomright.up", currentOverview?.git?.dirty == true ? .orange : .green)
             metricCard("Graph", graphSummary, graphSubtitle, "network", currentOverview?.graph?.stale == true ? .orange : .green)
             metricCard("Memory", memoryMetric, memorySummary, "brain", memoryTone)
-            metricCard("Clients", clientSummary, "\(currentOverview?.clients?.count ?? 0) configs", "terminal", clientSummary == "ok" ? .green : .orange)
+            metricCard(
+                "Clients", clientSummary, "\(currentOverview?.clients?.count ?? 0) configs", "terminal",
+                clientSummary == "ok" ? .green : .orange)
         }
     }
 
@@ -234,7 +254,10 @@ struct ProjectOverviewView: View {
             let git = currentOverview?.git
             row("Repository", git?.is_repo == true ? "Yes" : "No")
             row("Branch", git?.branch ?? "None")
-            row("Changes", "\(git?.changed_count ?? 0) total, \(git?.staged_count ?? 0) staged, \(git?.unstaged_count ?? 0) unstaged, \(git?.untracked_count ?? 0) untracked")
+            row(
+                "Changes",
+                "\(git?.changed_count ?? 0) total, \(git?.staged_count ?? 0) staged, \(git?.unstaged_count ?? 0) unstaged, \(git?.untracked_count ?? 0) untracked"
+            )
             if let ahead = git?.ahead { row("Ahead", String(ahead)) }
             if let behind = git?.behind { row("Behind", String(behind)) }
             row("Last commit", git?.last_commit ?? "None")
@@ -248,7 +271,9 @@ struct ProjectOverviewView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
-                Button { openToolChooser() } label: {
+                Button {
+                    openToolChooser()
+                } label: {
                     Label("Add Tool", systemImage: "plus.circle")
                 }
                 .controlSize(.small)

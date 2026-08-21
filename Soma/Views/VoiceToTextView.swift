@@ -71,8 +71,8 @@ struct VoiceToTextView: View {
         guard !text.isEmpty else { return }
         switch voiceMode {
         case "translate": startPrompter(text, mode: .translateOnly)
-        case "prompt":    startPrompter(text, mode: .fullPrompt)
-        default: break    // "text": just keep the transcript; user can run actions manually
+        case "prompt": startPrompter(text, mode: .fullPrompt)
+        default: break  // "text": just keep the transcript; user can run actions manually
         }
     }
 
@@ -110,8 +110,10 @@ struct VoiceToTextView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .disabled(asr.isTranscribing || asr.isRecording)
-            Text("Whisper: best all-round, keeps English words and punctuation. GigaAM: faster, Russian-only, but garbles English. Switching reloads the model on the next recording.")
-                .font(.caption).foregroundStyle(.secondary)
+            Text(
+                "Whisper: best all-round, keeps English words and punctuation. GigaAM: faster, Russian-only, but garbles English. Switching reloads the model on the next recording."
+            )
+            .font(.caption).foregroundStyle(.secondary)
         }
         .padding(12)
         .frame(maxWidth: 640, alignment: .leading)
@@ -201,8 +203,12 @@ struct VoiceToTextView: View {
                     .font(.callout.weight(.medium))
                 Spacer()
                 if !asr.transcript.isEmpty {
-                    Button { asr.copyToClipboard(asr.transcript) } label: { Image(systemName: "doc.on.doc") }
-                        .buttonStyle(.borderless).help(Text(verbatim: "Copy text"))
+                    Button {
+                        asr.copyToClipboard(asr.transcript)
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    .buttonStyle(.borderless).help(Text(verbatim: "Copy text"))
                 }
             }
             Text(asr.transcript.isEmpty ? "Recognized speech will appear here after recording." : asr.transcript)
@@ -210,10 +216,14 @@ struct VoiceToTextView: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
             HStack(spacing: 8) {
-                Button { startPrompter(asr.transcript, mode: .translateOnly) } label: {
+                Button {
+                    startPrompter(asr.transcript, mode: .translateOnly)
+                } label: {
                     Label("Translate", systemImage: "character.book.closed")
                 }
-                Button { startPrompter(asr.transcript, mode: .fullPrompt) } label: {
+                Button {
+                    startPrompter(asr.transcript, mode: .fullPrompt)
+                } label: {
                     Label("To prompt", systemImage: "wand.and.stars")
                 }
             }
@@ -228,33 +238,41 @@ struct VoiceToTextView: View {
 
     /// Card 2 — the English translation.
     private var translationCard: some View {
-        resultCard(title: "Translation (EN)", icon: "character.book.closed",
-                   text: prompter.translation,
-                   placeholder: "Translation will appear here.",
-                   running: prompter.phase == .translating,
-                   accent: false)
+        resultCard(
+            title: "Translation (EN)", icon: "character.book.closed",
+            text: prompter.translation,
+            placeholder: "Translation will appear here.",
+            running: prompter.phase == .translating,
+            accent: false)
     }
 
     /// Card 3 — the polished English prompt.
     private var promptCard: some View {
-        resultCard(title: "Prompt (EN)", icon: "wand.and.stars",
-                   text: prompter.improvedPrompt,
-                   placeholder: "Prompt will appear here.",
-                   running: prompter.phase == .analyzing || prompter.phase == .checkingConfidence,
-                   accent: true,
-                   error: prompter.errorMessage)
+        resultCard(
+            title: "Prompt (EN)", icon: "wand.and.stars",
+            text: prompter.improvedPrompt,
+            placeholder: "Prompt will appear here.",
+            running: prompter.phase == .analyzing || prompter.phase == .checkingConfidence,
+            accent: true,
+            error: prompter.errorMessage)
     }
 
-    private func resultCard(title: String, icon: String, text: String, placeholder: String,
-                            running: Bool, accent: Bool, error: String? = nil) -> some View {
+    private func resultCard(
+        title: String, icon: String, text: String, placeholder: String,
+        running: Bool, accent: Bool, error: String? = nil
+    ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Label(title, systemImage: icon).font(.callout.weight(.medium))
                 if running { ProgressView().controlSize(.small) }
                 Spacer()
                 if !text.isEmpty {
-                    Button { asr.copyToClipboard(text) } label: { Image(systemName: "doc.on.doc") }
-                        .buttonStyle(.borderless).help(Text(verbatim: "Copy"))
+                    Button {
+                        asr.copyToClipboard(text)
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    .buttonStyle(.borderless).help(Text(verbatim: "Copy"))
                 }
             }
             if let error, !error.isEmpty {
@@ -298,9 +316,11 @@ struct VoiceToTextView: View {
             }
             Toggle("Also translate imported transcripts to English in the background", isOn: $translateImportedMedia)
                 .font(.caption)
-            Text("Drop one or more media files here. Soma converts audio locally to lossless 16 kHz FLAC chunks. Live dictation always goes ahead of background imports and translation.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(
+                "Drop one or more media files here. Soma converts audio locally to lossless 16 kHz FLAC chunks. Live dictation always goes ahead of background imports and translation."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
             Text(importDropTarget ? "Release to queue files" : "Drop audio or video files")
                 .font(.callout.weight(.medium))
                 .frame(maxWidth: .infinity, minHeight: 64)
@@ -440,7 +460,7 @@ struct VoiceToTextView: View {
     private func receiveDroppedMedia(_ providers: [NSItemProvider]) -> Bool {
         let group = DispatchGroup()
         let lock = NSLock()
-        var urls = Array<URL?>(repeating: nil, count: providers.count)
+        var urls = [URL?](repeating: nil, count: providers.count)
         for (index, provider) in providers.enumerated() {
             group.enter()
             provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
@@ -627,7 +647,9 @@ struct VoiceToTextView: View {
                             .foregroundStyle(.red)
                     }
                     HStack(spacing: 8) {
-                        Button { Task { await asr.checkVoiceServer() } } label: {
+                        Button {
+                            Task { await asr.checkVoiceServer() }
+                        } label: {
                             Label("Test Server", systemImage: "network")
                         }
                         .disabled(asr.isRecording || asr.isTranscribing || asr.voiceServerConnectionState == .checking)

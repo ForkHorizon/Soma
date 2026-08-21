@@ -5,7 +5,6 @@ enum VoiceWorkClass: String, Codable, Sendable {
     case background
 }
 
-
 enum VoiceChunkPipelineError: LocalizedError {
     case unsupported
     case missingSession
@@ -68,7 +67,7 @@ nonisolated enum VoiceMetrics {
         payload["event"] = event
         payload["timestamp_milliseconds"] = "\(Int(Date().timeIntervalSince1970 * 1_000))"
         guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
-              let text = String(data: data, encoding: .utf8)
+            let text = String(data: data, encoding: .utf8)
         else { return }
         print("[soma.voice] \(text)")
     }

@@ -5,7 +5,7 @@ extension ASRManager {
     @MainActor
     func transcribeImportedRemotely(_ id: UUID) async throws -> String {
         guard var job = currentImport(id), let rawURL = job.remoteURL,
-              let base = URL(string: rawURL), base.scheme?.lowercased() == "https"
+            let base = URL(string: rawURL), base.scheme?.lowercased() == "https"
         else { throw SomaError("Remote imports require an HTTPS Soma Voice Server URL.") }
         let token = voiceServerToken
         guard !token.isEmpty else { throw SomaError("Set the Soma Voice Server token before importing media.") }
@@ -17,7 +17,9 @@ extension ASRManager {
                 guard let sessionID = job.sessionID else { throw SomaError("Import session could not be prepared.") }
                 updateImport(id, phase: .transcribing)
                 try await retryImportRequest(id) { try await self.finalizeImportedSession(base: base, token: token, sessionID: sessionID) }
-                let final = try await retryImportRequest(id) { try await self.waitForImportedSession(base: base, token: token, sessionID: sessionID) }
+                let final = try await retryImportRequest(id) {
+                    try await self.waitForImportedSession(base: base, token: token, sessionID: sessionID)
+                }
                 return final.text ?? ""
             } catch is ImportedSessionLost {
                 job = currentImport(id) ?? job
@@ -30,7 +32,9 @@ extension ASRManager {
     }
 
     @MainActor
-    func prepareRemoteImportSession(_ id: UUID, job: MediaImportJob, base: URL, token: String, clientID: String) async throws -> MediaImportJob {
+    func prepareRemoteImportSession(_ id: UUID, job: MediaImportJob, base: URL, token: String, clientID: String) async throws
+        -> MediaImportJob
+    {
         guard job.sessionID == nil else { return job }
         updateImport(id, phase: .uploading)
         let sessionID = try await retryImportRequest(id) {
@@ -43,28 +47,36 @@ extension ASRManager {
     }
 
     @MainActor
-    func uploadRemoteImportChunks(_ id: UUID, job: MediaImportJob, base: URL, token: String, clientID: String) async throws -> MediaImportJob {
+    func uploadRemoteImportChunks(_ id: UUID, job: MediaImportJob, base: URL, token: String, clientID: String) async throws
+        -> MediaImportJob
+    {
         guard let sessionID = job.sessionID, let chunks = job.plannedChunks else {
             throw SomaError("Import session could not be prepared.")
         }
         var current = job
         while current.nextChunkIndex < chunks.count {
-            current = try await uploadRemoteImportChunk(id, job: current, chunks: chunks, sessionID: sessionID, base: base, token: token, clientID: clientID)
+            current = try await uploadRemoteImportChunk(
+                id, job: current, chunks: chunks, sessionID: sessionID, base: base, token: token, clientID: clientID)
         }
         return current
     }
 
     @MainActor
-    func uploadRemoteImportChunk(_ id: UUID, job: MediaImportJob, chunks: [MediaImportChunk], sessionID: String, base: URL, token: String, clientID: String) async throws -> MediaImportJob {
+    func uploadRemoteImportChunk(
+        _ id: UUID, job: MediaImportJob, chunks: [MediaImportChunk], sessionID: String, base: URL, token: String, clientID: String
+    ) async throws -> MediaImportJob {
         let index = job.nextChunkIndex
         let chunk = chunks[index]
         let chunkURL = importChunkURL(for: job, index: index)
         updateImport(id, phase: .converting)
-        try await MediaImportTools.exportChunk(sourceURL: job.sourceURL, startSeconds: chunk.startSeconds, durationSeconds: chunk.durationSeconds, to: chunkURL)
+        try await MediaImportTools.exportChunk(
+            sourceURL: job.sourceURL, startSeconds: chunk.startSeconds, durationSeconds: chunk.durationSeconds, to: chunkURL)
         defer { try? FileManager.default.removeItem(at: chunkURL) }
         try ensureImportActive(id)
         let reason = VoiceChunkReason(rawValue: chunk.reason) ?? .forced
-        try await uploadAndConfirmImportedChunk(id, job: job, chunks: chunks, sessionID: sessionID, chunkURL: chunkURL, reason: reason, base: base, token: token, clientID: clientID)
+        try await uploadAndConfirmImportedChunk(
+            id, job: job, chunks: chunks, sessionID: sessionID, chunkURL: chunkURL, reason: reason, base: base, token: token,
+            clientID: clientID)
         var updated = currentImport(id) ?? job
         updated.nextChunkIndex += 1
         updated.retryCount = 0
@@ -73,51 +85,84 @@ extension ASRManager {
     }
 
     @MainActor
-    func uploadAndConfirmImportedChunk(_ id: UUID, job: MediaImportJob, chunks: [MediaImportChunk], sessionID: String, chunkURL: URL, reason: VoiceChunkReason, base: URL, token: String, clientID: String) async throws {
+    func uploadAndConfirmImportedChunk(
+        _ id: UUID, job: MediaImportJob, chunks: [MediaImportChunk], sessionID: String, chunkURL: URL, reason: VoiceChunkReason, base: URL,
+        token: String, clientID: String
+    ) async throws {
         let index = job.nextChunkIndex
         let chunk = chunks[index]
         let overlap = Int(chunk.overlapSeconds * 1_000)
         let duration = Int(chunk.durationSeconds * 1_000)
         updateImport(id, phase: .uploading)
-        let jobID = try await submitImportedChunkRequest(id, base: base, token: token, clientID: clientID, sessionID: sessionID, job: job, index: index, attempt: 0, chunkURL: chunkURL, reason: reason, overlap: overlap, duration: duration)
+        let jobID = try await submitImportedChunkRequest(
+            id, base: base, token: token, clientID: clientID, sessionID: sessionID, job: job, index: index, attempt: 0, chunkURL: chunkURL,
+            reason: reason, overlap: overlap, duration: duration)
         do {
-            _ = try await retryImportRequest(id) { try await self.waitForImportedChunk(base: base, token: token, clientID: clientID, jobID: jobID) }
+            _ = try await retryImportRequest(id) {
+                try await self.waitForImportedChunk(base: base, token: token, clientID: clientID, jobID: jobID)
+            }
         } catch let error as VoiceServerRemoteError where error.code == "pathological_repetition" {
-            try await recoverPathologicalImportedChunk(id, job: job, chunks: chunks, sessionID: sessionID, chunkURL: chunkURL, reason: reason, base: base, token: token, clientID: clientID)
+            try await recoverPathologicalImportedChunk(
+                id, job: job, chunks: chunks, sessionID: sessionID, chunkURL: chunkURL, reason: reason, base: base, token: token,
+                clientID: clientID)
         }
     }
 
-    func submitImportedChunkRequest(_ id: UUID, base: URL, token: String, clientID: String, sessionID: String, job: MediaImportJob, index: Int, attempt: Int, chunkURL: URL, reason: VoiceChunkReason, overlap: Int, duration: Int, contextChunkIndex: Int? = nil) async throws -> String {
+    func submitImportedChunkRequest(
+        _ id: UUID, base: URL, token: String, clientID: String, sessionID: String, job: MediaImportJob, index: Int, attempt: Int,
+        chunkURL: URL, reason: VoiceChunkReason, overlap: Int, duration: Int, contextChunkIndex: Int? = nil
+    ) async throws -> String {
         try await retryImportRequest(id) {
-            try await self.uploadImportedChunk(base: base, token: token, clientID: clientID, sessionID: sessionID, job: job, index: index, attempt: attempt, chunkURL: chunkURL, reason: reason, overlapMilliseconds: overlap, durationMilliseconds: duration, retryFailedChunk: attempt > 0, contextChunkIndex: contextChunkIndex)
+            try await self.uploadImportedChunk(
+                base: base, token: token, clientID: clientID, sessionID: sessionID, job: job, index: index, attempt: attempt,
+                chunkURL: chunkURL, reason: reason, overlapMilliseconds: overlap, durationMilliseconds: duration,
+                retryFailedChunk: attempt > 0, contextChunkIndex: contextChunkIndex)
         }
     }
 
     @MainActor
-    func recoverPathologicalImportedChunk(_ id: UUID, job: MediaImportJob, chunks: [MediaImportChunk], sessionID: String, chunkURL: URL, reason: VoiceChunkReason, base: URL, token: String, clientID: String) async throws {
+    func recoverPathologicalImportedChunk(
+        _ id: UUID, job: MediaImportJob, chunks: [MediaImportChunk], sessionID: String, chunkURL: URL, reason: VoiceChunkReason, base: URL,
+        token: String, clientID: String
+    ) async throws {
         let index = job.nextChunkIndex
         let chunk = chunks[index]
         let overlap = Int(chunk.overlapSeconds * 1_000)
         let duration = Int(chunk.durationSeconds * 1_000)
-        let retryJobID = try await submitImportedChunkRequest(id, base: base, token: token, clientID: clientID, sessionID: sessionID, job: job, index: index, attempt: 1, chunkURL: chunkURL, reason: reason, overlap: overlap, duration: duration)
+        let retryJobID = try await submitImportedChunkRequest(
+            id, base: base, token: token, clientID: clientID, sessionID: sessionID, job: job, index: index, attempt: 1, chunkURL: chunkURL,
+            reason: reason, overlap: overlap, duration: duration)
         do {
-            _ = try await retryImportRequest(id) { try await self.waitForImportedChunk(base: base, token: token, clientID: clientID, jobID: retryJobID) }
+            _ = try await retryImportRequest(id) {
+                try await self.waitForImportedChunk(base: base, token: token, clientID: clientID, jobID: retryJobID)
+            }
         } catch let error as VoiceServerRemoteError where error.code == "pathological_repetition" {
-            try await retryImportedChunkWithContext(id, job: job, chunks: chunks, sessionID: sessionID, reason: reason, base: base, token: token, clientID: clientID)
+            try await retryImportedChunkWithContext(
+                id, job: job, chunks: chunks, sessionID: sessionID, reason: reason, base: base, token: token, clientID: clientID)
         }
     }
 
     @MainActor
-    func retryImportedChunkWithContext(_ id: UUID, job: MediaImportJob, chunks: [MediaImportChunk], sessionID: String, reason: VoiceChunkReason, base: URL, token: String, clientID: String) async throws {
+    func retryImportedChunkWithContext(
+        _ id: UUID, job: MediaImportJob, chunks: [MediaImportChunk], sessionID: String, reason: VoiceChunkReason, base: URL, token: String,
+        clientID: String
+    ) async throws {
         let index = job.nextChunkIndex
         guard index > 0 else { throw SomaError("The first media segment repeated itself excessively. Retry the import.") }
         let chunk = chunks[index]
         let contextURL = importWorkDirectory(for: job).appendingPathComponent(String(format: "chunk-%05d-context.flac", index))
         defer { try? FileManager.default.removeItem(at: contextURL) }
         let start = chunks[index - 1].startSeconds
-        try await MediaImportTools.exportChunk(sourceURL: job.sourceURL, startSeconds: start, durationSeconds: chunk.startSeconds + chunk.durationSeconds - start, to: contextURL)
-        let jobID = try await submitImportedChunkRequest(id, base: base, token: token, clientID: clientID, sessionID: sessionID, job: job, index: index, attempt: 2, chunkURL: contextURL, reason: reason, overlap: Int(chunk.overlapSeconds * 1_000), duration: Int(chunk.durationSeconds * 1_000), contextChunkIndex: index - 1)
-        _ = try await retryImportRequest(id) { try await self.waitForImportedChunk(base: base, token: token, clientID: clientID, jobID: jobID) }
+        try await MediaImportTools.exportChunk(
+            sourceURL: job.sourceURL, startSeconds: start, durationSeconds: chunk.startSeconds + chunk.durationSeconds - start,
+            to: contextURL)
+        let jobID = try await submitImportedChunkRequest(
+            id, base: base, token: token, clientID: clientID, sessionID: sessionID, job: job, index: index, attempt: 2,
+            chunkURL: contextURL, reason: reason, overlap: Int(chunk.overlapSeconds * 1_000), duration: Int(chunk.durationSeconds * 1_000),
+            contextChunkIndex: index - 1)
+        _ = try await retryImportRequest(id) {
+            try await self.waitForImportedChunk(base: base, token: token, clientID: clientID, jobID: jobID)
+        }
     }
 
     @MainActor
@@ -132,7 +177,8 @@ extension ASRManager {
             let chunkDuration = chunk.durationSeconds
             updateImport(id, phase: .converting)
             let chunkURL = importChunkURL(for: job, index: index)
-            try await MediaImportTools.exportChunk(sourceURL: job.sourceURL, startSeconds: start, durationSeconds: chunkDuration, to: chunkURL)
+            try await MediaImportTools.exportChunk(
+                sourceURL: job.sourceURL, startSeconds: start, durationSeconds: chunkDuration, to: chunkURL)
             try ensureImportActive(id)
             defer { try? FileManager.default.removeItem(at: chunkURL) }
             updateImport(id, phase: .transcribing)
@@ -146,9 +192,13 @@ extension ASRManager {
                     let contextURL = importWorkDirectory(for: job).appendingPathComponent(String(format: "chunk-%05d-context.flac", index))
                     defer { try? FileManager.default.removeItem(at: contextURL) }
                     let contextStart = chunks[index - 1].startSeconds
-                    try await MediaImportTools.exportChunk(sourceURL: job.sourceURL, startSeconds: contextStart, durationSeconds: start + chunkDuration - contextStart, to: contextURL)
+                    try await MediaImportTools.exportChunk(
+                        sourceURL: job.sourceURL, startSeconds: contextStart, durationSeconds: start + chunkDuration - contextStart,
+                        to: contextURL)
                     let combined = try await transcribeImportedChunkLocally(contextURL, port: localPort)
-                    guard !MediaImportTools.hasPathologicalRepetition(combined), let currentOnly = MediaImportTools.removingContextPrefix(previous, from: combined) else {
+                    guard !MediaImportTools.hasPathologicalRepetition(combined),
+                        let currentOnly = MediaImportTools.removingContextPrefix(previous, from: combined)
+                    else {
                         throw SomaError("A media segment could not be recovered safely. Retry the import.")
                     }
                     fragment = currentOnly
@@ -170,14 +220,15 @@ extension ASRManager {
         let textURL = importsDir.appendingPathComponent("History/\(job.id.uuidString).txt")
         try transcript.write(to: textURL, atomically: true, encoding: .utf8)
         importJobs.remove(at: index)
-        importHistory.insert(MediaImportHistory(
-            id: job.id,
-            displayName: job.displayName,
-            completedAt: Date(),
-            transcriptPath: textURL.path,
-            translatedTranscriptPath: nil,
-            durationSeconds: job.durationSeconds
-        ), at: 0)
+        importHistory.insert(
+            MediaImportHistory(
+                id: job.id,
+                displayName: job.displayName,
+                completedAt: Date(),
+                transcriptPath: textURL.path,
+                translatedTranscriptPath: nil,
+                durationSeconds: job.durationSeconds
+            ), at: 0)
         if job.shouldTranslateAfterTranscription {
             let translatedURL = importsDir.appendingPathComponent("History/\(job.id.uuidString).en.txt")
             textPriorityQueue?.enqueueBackgroundTranslation(importID: job.id, transcript: transcript, destination: translatedURL)
@@ -218,11 +269,9 @@ extension ASRManager {
         var attempt = 0
         while true {
             try ensureImportActive(id)
-            do { return try await operation() }
-            catch is ImportedSessionLost { throw ImportedSessionLost() }
-            catch let error as VoiceServerRemoteError where error.code == "pathological_repetition" { throw error }
-            catch let error as VoiceServerRemoteError where !error.retryable { throw error }
-            catch {
+            do { return try await operation() } catch is ImportedSessionLost { throw ImportedSessionLost() } catch let error
+                as VoiceServerRemoteError where error.code == "pathological_repetition"
+            { throw error } catch let error as VoiceServerRemoteError where !error.retryable { throw error } catch {
                 attempt += 1
                 guard var job = currentImport(id) else { throw CancellationError() }
                 job.phase = .waitingForNetwork

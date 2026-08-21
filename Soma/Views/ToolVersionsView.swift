@@ -79,9 +79,11 @@ struct ToolVersionsView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Global extensions update first, then Soma verifies Codex, Gemini, Antigravity, Claude, and Hermes configs across known projects.")
-                .font(.callout)
-                .foregroundColor(.secondary)
+            Text(
+                "Global extensions update first, then Soma verifies Codex, Gemini, Antigravity, Claude, and Hermes configs across known projects."
+            )
+            .font(.callout)
+            .foregroundColor(.secondary)
             HStack(spacing: 10) {
                 Button("Check for Updates") { Task { await refresh() } }
                     .disabled(busy)
@@ -218,7 +220,8 @@ struct ToolVersionsView: View {
             await MainActor.run {
                 let toolIssues = (decoded?["issues"] as? [String]) ?? []
                 let restart = (decoded?["restart_needed"] as? [String]) ?? []
-                status = "Project memory \(decoded?["status"] as? String ?? "unknown"): \(toolIssues.count) issues, restart \(restart.joined(separator: ", "))."
+                status =
+                    "Project memory \(decoded?["status"] as? String ?? "unknown"): \(toolIssues.count) issues, restart \(restart.joined(separator: ", "))."
             }
         } catch {
             await MainActor.run { status = "Project memory setup failed: \(error.localizedDescription)" }

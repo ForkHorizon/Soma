@@ -16,17 +16,22 @@ enum VoiceServerRequest {
 
     /// Non-throwing so it can run detached alongside session creation; `nil`
     /// means "could not ask", which is deliberately not the same as "no".
-    nonisolated static func health(base: URL, token: String, clientID: String, engine: String, idleSeconds: Int) async -> VoiceServerHealth? {
-        var request = build(base.appendingPathComponent("v1/health"), token: token, clientID: clientID, engine: engine, idleSeconds: idleSeconds)
+    nonisolated static func health(base: URL, token: String, clientID: String, engine: String, idleSeconds: Int) async -> VoiceServerHealth?
+    {
+        var request = build(
+            base.appendingPathComponent("v1/health"), token: token, clientID: clientID, engine: engine, idleSeconds: idleSeconds)
         request.timeoutInterval = 5
         guard let (data, response) = try? await URLSession.shared.data(for: request),
-              (response as? HTTPURLResponse)?.statusCode == 200
+            (response as? HTTPURLResponse)?.statusCode == 200
         else { return nil }
         return try? JSONDecoder().decode(VoiceServerHealth.self, from: data)
     }
 
-    nonisolated static func warm(base: URL, token: String, clientID: String, engine: String, idleSeconds: Int) async throws -> VoiceServerWarmupResponse {
-        var request = build(base.appendingPathComponent("v1/warmup"), token: token, clientID: clientID, engine: engine, idleSeconds: idleSeconds)
+    nonisolated static func warm(base: URL, token: String, clientID: String, engine: String, idleSeconds: Int) async throws
+        -> VoiceServerWarmupResponse
+    {
+        var request = build(
+            base.appendingPathComponent("v1/warmup"), token: token, clientID: clientID, engine: engine, idleSeconds: idleSeconds)
         request.httpMethod = "POST"
         request.timeoutInterval = 90
         let (data, response) = try await URLSession.shared.data(for: request)

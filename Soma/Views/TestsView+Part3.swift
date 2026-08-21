@@ -31,10 +31,13 @@ extension TestsView {
                 }
                 .help("Choose up to two local Ollama judges. Two selected local judges enable the local confidence gate.")
 
-                Picker("Online fallback", selection: Binding(
-                    get: { queueConfidenceFallbackReferee },
-                    set: { setQueueConfidenceFallbackReferee($0) }
-                )) {
+                Picker(
+                    "Online fallback",
+                    selection: Binding(
+                        get: { queueConfidenceFallbackReferee },
+                        set: { setQueueConfidenceFallbackReferee($0) }
+                    )
+                ) {
                     Text("Off").tag("off")
                     Text("Gemini").tag("gemini")
                     Text("Codex").tag("codex")
@@ -57,19 +60,22 @@ extension TestsView {
                 .disabled(queueConfidenceFallbackReferee == "off")
             }
 
-            Picker("Batch", selection: Binding(
-                get: { queueManager.settings.confidenceBatchSize },
-                set: {
-                    queueManager.updateConfidence(
-                        referee: queueManager.settings.confidenceReferee,
-                        model: queueManager.settings.confidenceModel,
-                        localModels: queueManager.settings.localConfidenceModels,
-                        hybridGeminiModel: queueManager.settings.hybridGeminiModel,
-                        hybridFallbackReferee: queueManager.settings.hybridFallbackReferee ?? queueConfidenceFallbackReferee,
-                        batchSize: $0
-                    )
-                }
-            )) {
+            Picker(
+                "Batch",
+                selection: Binding(
+                    get: { queueManager.settings.confidenceBatchSize },
+                    set: {
+                        queueManager.updateConfidence(
+                            referee: queueManager.settings.confidenceReferee,
+                            model: queueManager.settings.confidenceModel,
+                            localModels: queueManager.settings.localConfidenceModels,
+                            hybridGeminiModel: queueManager.settings.hybridGeminiModel,
+                            hybridFallbackReferee: queueManager.settings.hybridFallbackReferee ?? queueConfidenceFallbackReferee,
+                            batchSize: $0
+                        )
+                    }
+                )
+            ) {
                 Text("1").tag(1)
                 Text("5").tag(5)
                 Text("10").tag(10)
@@ -79,19 +85,19 @@ extension TestsView {
         }
     }
 
-
     var queueConfidenceFallbackReferee: String {
         let stored = queueManager.settings.hybridFallbackReferee ?? ""
         if ["off", "gemini", "codex", "deepseek"].contains(stored) {
             return stored
         }
-        if queueManager.settings.confidenceReferee == "gemini" || queueManager.settings.confidenceReferee == "codex" || queueManager.settings.confidenceReferee == "deepseek" {
+        if queueManager.settings.confidenceReferee == "gemini" || queueManager.settings.confidenceReferee == "codex"
+            || queueManager.settings.confidenceReferee == "deepseek"
+        {
             return queueManager.settings.confidenceReferee
         }
         let model = queueManager.settings.confidenceModel
         return providerForOnlineModelName(model) ?? "off"
     }
-
 
     var queueConfidenceModeLabel: String {
         let localCount = queueManager.settings.localConfidenceModels.count
@@ -108,23 +114,25 @@ extension TestsView {
         return providerDisplayName(fallback)
     }
 
-
     var queueConfidenceDescription: String {
         let locals = queueManager.settings.localConfidenceModels.prefix(2).joined(separator: " + ")
         let fallback = queueConfidenceFallbackReferee
         if queueManager.settings.localConfidenceModels.count >= 2 {
-            let fallbackText = fallback == "off" ? "no online fallback" : "\(providerDisplayName(fallback)) fallback \(queueManager.settings.confidenceModel)"
+            let fallbackText =
+                fallback == "off"
+                ? "no online fallback" : "\(providerDisplayName(fallback)) fallback \(queueManager.settings.confidenceModel)"
             return "Local gate: \(locals). If local judges fail, disagree, or score low: \(fallbackText)."
         }
         if queueManager.settings.localConfidenceModels.count == 1 && fallback == "off" {
-            return "Local-only confidence with \(queueManager.settings.localConfidenceModels[0]). Add a second local judge for safer agreement checks."
+            return
+                "Local-only confidence with \(queueManager.settings.localConfidenceModels[0]). Add a second local judge for safer agreement checks."
         }
         if fallback == "off" {
             return "Confidence is disabled. Translation gates and quality stats will not be scored."
         }
-        return "Online-only confidence with \(providerDisplayName(fallback)) \(queueManager.settings.confidenceModel). Add two local judges to use a local gate before online fallback."
+        return
+            "Online-only confidence with \(providerDisplayName(fallback)) \(queueManager.settings.confidenceModel). Add two local judges to use a local gate before online fallback."
     }
-
 
     var queueOnlineConfidencePresets: [RusToPromptModelPreset] {
         switch queueConfidenceFallbackReferee {
@@ -139,13 +147,14 @@ extension TestsView {
         }
     }
 
-
     var queueLocalConfidenceModelsPopover: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Text("Local confidence judges")
                     .font(.headline)
-                StatusChip(text: "\(queueManager.settings.localConfidenceModels.count)/2 selected", tone: queueManager.settings.localConfidenceModels.count == 2 ? .good : .warning)
+                StatusChip(
+                    text: "\(queueManager.settings.localConfidenceModels.count)/2 selected",
+                    tone: queueManager.settings.localConfidenceModels.count == 2 ? .good : .warning)
                 Spacer()
                 Button {
                     ollama.refreshInstalledModels()
@@ -155,10 +164,12 @@ extension TestsView {
                 .buttonStyle(.borderless)
             }
 
-            Text("Pick two local Ollama models for the local gate. Online fallback is configured separately and can be Gemini, Codex, DeepSeek, or Off.")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                "Pick two local Ollama models for the local gate. Online fallback is configured separately and can be Gemini, Codex, DeepSeek, or Off."
+            )
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
 
             ScrollView {
                 VStack(spacing: 6) {
@@ -172,7 +183,6 @@ extension TestsView {
         .padding(12)
         .frame(width: 500)
     }
-
 
     func queueLocalConfidenceModelRow(_ preset: RusToPromptModelPreset) -> some View {
         let selected = queueManager.settings.localConfidenceModels.contains(preset.model)

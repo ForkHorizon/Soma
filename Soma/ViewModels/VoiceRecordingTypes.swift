@@ -7,7 +7,7 @@ struct VoiceRecording: Identifiable, Hashable {
     let url: URL
     let date: Date
     let duration: Double
-    let hasTranscript: Bool   // saved alongside the audio as a sidecar .txt
+    let hasTranscript: Bool  // saved alongside the audio as a sidecar .txt
     var id: URL { url }
 }
 

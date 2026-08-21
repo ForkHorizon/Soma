@@ -54,8 +54,10 @@ enum AppRoute: String, Hashable, CaseIterable {
     var title: String { rawValue }
 
     static var visibleRoutes: [AppRoute] {
-        [.rusToPrompt, .voiceToText, .queue, .modelStats, .tests,
-         .promptCompiler, .localAI, .tokenCalculator, .logs, .systemStatus, .extensions]
+        [
+            .rusToPrompt, .voiceToText, .queue, .modelStats, .tests,
+            .promptCompiler, .localAI, .tokenCalculator, .logs, .systemStatus, .extensions,
+        ]
     }
 
     var section: String {

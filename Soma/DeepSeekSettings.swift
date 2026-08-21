@@ -5,7 +5,8 @@ import Foundation
 // A file in Application Support is signature-independent — the same way CLIs keep their own API
 // keys (~/.aws/credentials, .env). Method names kept (keychain*) so call sites don't churn.
 enum DeepSeekCredentialStore {
-    private static let store = FileAPIKeyStore(filename: "deepseek-api-key", envKeys: ["SOMA_DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY"], exportEnvKey: "SOMA_DEEPSEEK_API_KEY")
+    private static let store = FileAPIKeyStore(
+        filename: "deepseek-api-key", envKeys: ["SOMA_DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY"], exportEnvKey: "SOMA_DEEPSEEK_API_KEY")
 
     static func apply(to environment: inout [String: String]) {
         store.apply(to: &environment)
@@ -67,8 +68,9 @@ struct FileAPIKeyStore {
         }
         let url = keyFileURL
         let dir = url.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true,
-                                                attributes: [.posixPermissions: 0o700])
+        try FileManager.default.createDirectory(
+            at: dir, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700])
         try trimmed.write(to: url, atomically: true, encoding: .utf8)
         // ponytail: atomic write briefly lands at umask perms before this chmod — fine for a
         // single-user machine; tighten to a pre-created 0600 fd if this ever ships multi-user.

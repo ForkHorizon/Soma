@@ -10,7 +10,6 @@ extension TestsView {
         applyProgressEvent(event)
     }
 
-
     func updateProgressContext(from event: TestProgressEvent) {
         if runStartedAt == nil || event.event == "run_start" {
             runStartedAt = Date()
@@ -30,7 +29,6 @@ extension TestsView {
             currentModelPair = translator
         }
     }
-
 
     func applyProgressEvent(_ event: TestProgressEvent) {
         switch event.event {
@@ -56,13 +54,11 @@ extension TestsView {
         }
     }
 
-
     func applyRunStartProgress() {
         currentTestStatus = "Run queued"
         completedCases = 0
         progressValue = 0
     }
-
 
     func applyStageStartProgress(_ event: TestProgressEvent) {
         currentTestStatus = operationStatusText(for: event)
@@ -71,7 +67,6 @@ extension TestsView {
         }
         updateProgressValue(for: event)
     }
-
 
     func applyTranslationGateProgress(_ event: TestProgressEvent) {
         currentTestStatus = event.status == "rejected" ? "Translation rejected; improvers skipped" : "Translation accepted"
@@ -84,7 +79,6 @@ extension TestsView {
         updateProgressValue(for: event)
     }
 
-
     func trackRejectedTranslation(_ event: TestProgressEvent) {
         let key = "\(event.caseID ?? "-")|\(event.translatorModel ?? "-")"
         if rejectedTranslationKeys.insert(key).inserted {
@@ -92,7 +86,6 @@ extension TestsView {
             skippedImproverCount += selectedImproverModels.count
         }
     }
-
 
     func applyConfidenceBatchProgress(_ event: TestProgressEvent, isComplete: Bool) {
         if isComplete {
@@ -107,13 +100,11 @@ extension TestsView {
         updateProgressValue(for: event, extra: isComplete ? 0.04 : 0)
     }
 
-
     func applyResultWriteProgress() {
         currentTestStatus = "Saved result"
         completedCases = min(completedCases + 1, totalCasesToRun)
         progressValue = Double(completedCases)
     }
-
 
     func applyRunFinishedProgress() {
         currentTestStatus = "All tests finished"
@@ -121,25 +112,25 @@ extension TestsView {
         progressValue = Double(totalCasesToRun)
     }
 
-
     func updateProgressValue(for event: TestProgressEvent, extra: Double = 0) {
         let base = Double(max((event.operationIndex ?? 1) - 1, 0))
         progressValue = min(base + stageFraction(event.stage) + extra, Double(max(totalCasesToRun, 1)))
     }
 
-
     func updateProgress(from line: String) {
         let tokens = line.split(separator: " ").map(String.init)
         if let progressToken = tokens.first(where: { $0.contains("/") }),
-           let slashIndex = progressToken.firstIndex(of: "/"),
-           let current = Int(progressToken[..<slashIndex]),
-           let total = Int(progressToken[progressToken.index(after: slashIndex)...]) {
+            let slashIndex = progressToken.firstIndex(of: "/"),
+            let current = Int(progressToken[..<slashIndex]),
+            let total = Int(progressToken[progressToken.index(after: slashIndex)...])
+        {
             currentRunIndex = current
             totalCasesToRun = max(totalCasesToRun, total)
             let stageToken = tokens.first(where: { $0.hasPrefix("stage=") })
             if let stageToken {
                 let rawStage = String(stageToken.dropFirst("stage=".count))
-                let displayStage = rawStage
+                let displayStage =
+                    rawStage
                     .replacingOccurrences(of: "_", with: " ")
                     .capitalized
                 setCurrentStage(displayStage)
@@ -157,15 +148,15 @@ extension TestsView {
         }
 
         if let caseToken = tokens.dropFirst(2).first,
-           caseToken.hasPrefix("rtp-") || caseToken.hasPrefix("case-") {
+            caseToken.hasPrefix("rtp-") || caseToken.hasPrefix("case-")
+        {
             currentCaseID = caseToken
         }
 
         let translator = tokens.first(where: { $0.hasPrefix("translator=") })?.dropFirst("translator=".count)
-        let analyzer = (
-            tokens.first(where: { $0.hasPrefix("improver=") })?.dropFirst("improver=".count)
-            ?? tokens.first(where: { $0.hasPrefix("analyzer=") })?.dropFirst("analyzer=".count)
-        )
+        let analyzer =
+            (tokens.first(where: { $0.hasPrefix("improver=") })?.dropFirst("improver=".count)
+                ?? tokens.first(where: { $0.hasPrefix("analyzer=") })?.dropFirst("analyzer=".count))
         if let translator, let analyzer {
             currentModelPair = "\(translator) -> \(analyzer)"
         } else if let translator {
@@ -173,14 +164,12 @@ extension TestsView {
         }
     }
 
-
     func setCurrentStage(_ stage: String) {
         guard currentStage != stage else { return }
         currentStage = stage
         currentStageStartedAt = Date()
         currentStageElapsedSeconds = 0
     }
-
 
     func displayStage(for event: TestProgressEvent) -> String {
         switch event.stage {
@@ -211,14 +200,12 @@ extension TestsView {
         }
     }
 
-
     func operationStatusText(for event: TestProgressEvent) -> String {
         if let operation = event.operationIndex, let total = event.totalOperations, total > 0 {
             return "Operation \(operation)/\(total)"
         }
         return event.status?.capitalized ?? currentTestStatus
     }
-
 
     func batchStatusText(for event: TestProgressEvent, verb: String) -> String {
         let batch = {
@@ -230,7 +217,6 @@ extension TestsView {
         let size = event.batchSize.map { " with \($0) item(s)" } ?? ""
         return "\(verb)\(batch)\(size)"
     }
-
 
     func activityText(for event: TestProgressEvent) -> String {
         let modelText = {
@@ -256,9 +242,11 @@ extension TestsView {
         case "translation_gate":
             return "\(caseText)translation gate \(event.status ?? "unknown")\(confidence)\(suffix)"
         case "confidence_batch_start":
-            return "\(caseText)\(displayStage(for: event)) started \(event.batchIndex ?? 1)/\(event.batchTotal ?? 1), \(event.batchSize ?? 0) item(s)\(suffix)"
+            return
+                "\(caseText)\(displayStage(for: event)) started \(event.batchIndex ?? 1)/\(event.batchTotal ?? 1), \(event.batchSize ?? 0) item(s)\(suffix)"
         case "confidence_batch_complete":
-            return "\(caseText)\(displayStage(for: event)) finished \(event.batchIndex ?? 1)/\(event.batchTotal ?? 1): \(event.status ?? "unknown")\(suffix)"
+            return
+                "\(caseText)\(displayStage(for: event)) finished \(event.batchIndex ?? 1)/\(event.batchTotal ?? 1): \(event.status ?? "unknown")\(suffix)"
         case "result_write":
             return "\(caseText)saved result: \(event.status ?? "unknown")\(suffix)"
         case "run_finished":

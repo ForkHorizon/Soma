@@ -22,9 +22,9 @@ enum VoiceOutputMode: String, CaseIterable {
 
     nonisolated static func mode(forKeyCode keyCode: Int) -> VoiceOutputMode? {
         switch keyCode {
-        case 18, 83: return .original // 1, keypad 1
+        case 18, 83: return .original  // 1, keypad 1
         case 19, 84: return .english  // 2, keypad 2
-        case 20, 85: return .prompt   // 3, keypad 3
+        case 20, 85: return .prompt  // 3, keypad 3
         default: return nil
         }
     }
@@ -225,7 +225,10 @@ final class GlobalVoiceController: ObservableObject {
     /// (NX_DEVICERCMDKEYMASK). Reading it makes key tracking level-based.
     nonisolated static let rightCommandDeviceMask: UInt64 = 0x0000_0010
 
-    func configure(asr: ASRManager, somaViewModel: SomaViewModel, ollama: OllamaManager, prompter: RusToPromptViewModel, textPriorityQueue: VoiceTextPriorityQueue) {
+    func configure(
+        asr: ASRManager, somaViewModel: SomaViewModel, ollama: OllamaManager, prompter: RusToPromptViewModel,
+        textPriorityQueue: VoiceTextPriorityQueue
+    ) {
         self.asr = asr
         self.somaViewModel = somaViewModel
         self.ollama = ollama
@@ -319,54 +322,60 @@ final class GlobalVoiceController: ObservableObject {
             status = "Hold Right Command to record, release to paste."
             return
         }
-        let mask = (1 << CGEventType.flagsChanged.rawValue)
+        let mask =
+            (1 << CGEventType.flagsChanged.rawValue)
             | (1 << CGEventType.keyDown.rawValue)
             | (1 << CGEventType.keyUp.rawValue)
         let refcon = Unmanaged.passUnretained(self).toOpaque()
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: CGEventMask(mask),
-            callback: { _, type, event, refcon in
-                guard let refcon else { return Unmanaged.passUnretained(event) }
-                let controller = Unmanaged<GlobalVoiceController>.fromOpaque(refcon).takeUnretainedValue()
-                // Recover the tap right here on the tap thread — never depend on the
-                // main thread (which may be what stalled us) to re-enable it, and
-                // never let a timeout cancel an in-progress recording.
-                if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-                    controller.tapRunner.reenable()
-                    return nil
-                }
-                let rawType = type.rawValue
-                let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
-                // Level-based: read whether the right Command key is *actually* down
-                // from the event's device flags, instead of toggling a parity bit.
-                // A dropped flagsChanged (tap timeout / sleep) then can't invert the
-                // state and strand a phantom recording.
-                let rightCommandIsDown = (event.flags.rawValue & GlobalVoiceController.rightCommandDeviceMask) != 0
-                let consumeEvent = controller.captureEvent(type: type, keyCode: keyCode, rightCommandIsDown: rightCommandIsDown)
-
-                // The event tap sees every global keystroke. Only hop to the main
-                // actor for an event that can change Soma's state; posting a Task
-                // for ordinary typing creates needless main-queue churn all day.
-                let needsMainActor = (type == .flagsChanged && keyCode == 54)
-                    || (type == .keyDown && (consumeEvent || controller.keyCapture.isRightCommandDown()))
-                if needsMainActor {
-                    Task { @MainActor in
-                        controller.handleTapEvent(rawType: rawType, keyCode: keyCode, rightCommandIsDown: rightCommandIsDown, modeKeyWasCaptured: consumeEvent)
+        guard
+            let tap = CGEvent.tapCreate(
+                tap: .cgSessionEventTap,
+                place: .headInsertEventTap,
+                options: .defaultTap,
+                eventsOfInterest: CGEventMask(mask),
+                callback: { _, type, event, refcon in
+                    guard let refcon else { return Unmanaged.passUnretained(event) }
+                    let controller = Unmanaged<GlobalVoiceController>.fromOpaque(refcon).takeUnretainedValue()
+                    // Recover the tap right here on the tap thread — never depend on the
+                    // main thread (which may be what stalled us) to re-enable it, and
+                    // never let a timeout cancel an in-progress recording.
+                    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                        controller.tapRunner.reenable()
+                        return nil
                     }
-                }
-                return consumeEvent ? nil : Unmanaged.passUnretained(event)
-            },
-            userInfo: refcon
-        ) else {
+                    let rawType = type.rawValue
+                    let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
+                    // Level-based: read whether the right Command key is *actually* down
+                    // from the event's device flags, instead of toggling a parity bit.
+                    // A dropped flagsChanged (tap timeout / sleep) then can't invert the
+                    // state and strand a phantom recording.
+                    let rightCommandIsDown = (event.flags.rawValue & GlobalVoiceController.rightCommandDeviceMask) != 0
+                    let consumeEvent = controller.captureEvent(type: type, keyCode: keyCode, rightCommandIsDown: rightCommandIsDown)
+
+                    // The event tap sees every global keystroke. Only hop to the main
+                    // actor for an event that can change Soma's state; posting a Task
+                    // for ordinary typing creates needless main-queue churn all day.
+                    let needsMainActor =
+                        (type == .flagsChanged && keyCode == 54)
+                        || (type == .keyDown && (consumeEvent || controller.keyCapture.isRightCommandDown()))
+                    if needsMainActor {
+                        Task { @MainActor in
+                            controller.handleTapEvent(
+                                rawType: rawType, keyCode: keyCode, rightCommandIsDown: rightCommandIsDown, modeKeyWasCaptured: consumeEvent
+                            )
+                        }
+                    }
+                    return consumeEvent ? nil : Unmanaged.passUnretained(event)
+                },
+                userInfo: refcon
+            )
+        else {
             needsAccessibilityPermission = true
             show("Could not start Right Command listener. Check Accessibility access.", image: "exclamationmark.triangle")
             return
         }
         eventTap = tap
-        tapRunner.start(tap: tap)   // runs on its own thread, off the main runloop
+        tapRunner.start(tap: tap)  // runs on its own thread, off the main runloop
         overlay.prepare()
         status = "Hold Right Command to record, release to paste."
     }
@@ -476,7 +485,7 @@ final class GlobalVoiceController: ObservableObject {
     private func scheduleRecordingWatchdog() {
         watchdogTask?.cancel()
         watchdogTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 180_000_000_000)   // 3 min
+            try? await Task.sleep(nanoseconds: 180_000_000_000)  // 3 min
             guard let self, !Task.isCancelled, self.recording else { return }
             self.cancel()
         }
@@ -498,11 +507,12 @@ final class GlobalVoiceController: ObservableObject {
                 if !self.recording { overlay.hide(after: 1.4) }
                 return
             }
-            queuedJobs.enqueue(GlobalVoiceJob(
-                recording: recording,
-                mode: mode,
-                targetApplication: recordingTargetApplication
-            ))
+            queuedJobs.enqueue(
+                GlobalVoiceJob(
+                    recording: recording,
+                    mode: mode,
+                    targetApplication: recordingTargetApplication
+                ))
             recordingTargetApplication = nil
             captureTask = nil
             startNextQueuedJob()
@@ -527,9 +537,11 @@ final class GlobalVoiceController: ObservableObject {
                 finishActiveJob(message: asr?.status ?? "No speech", image: "mic.slash")
                 return
             }
-            VoiceMetrics.log("global_final_asr", [
-                "release_to_final_milliseconds": "\(Int(Date().timeIntervalSince(transcriptionStartedAt) * 1_000))",
-            ])
+            VoiceMetrics.log(
+                "global_final_asr",
+                [
+                    "release_to_final_milliseconds": "\(Int(Date().timeIntervalSince(transcriptionStartedAt) * 1_000))"
+                ])
 
             do {
                 updateActiveJob(job.id, phase: job.mode == .original ? .pasting : .translating)
@@ -574,7 +586,9 @@ final class GlobalVoiceController: ObservableObject {
         } else if let message, let image {
             show(message, image: image, busy: false)
         } else if let activeJob {
-            show(activeJob.phase.rawValue, image: activeJob.phase == .pasting ? "doc.on.clipboard" : "waveform", busy: true, mode: activeJob.mode)
+            show(
+                activeJob.phase.rawValue, image: activeJob.phase == .pasting ? "doc.on.clipboard" : "waveform", busy: true,
+                mode: activeJob.mode)
         } else if !queuedJobs.isEmpty {
             show("\(queuedJobs.count) recording\(queuedJobs.count == 1 ? "" : "s") queued", image: "clock", busy: true)
         }
@@ -583,21 +597,23 @@ final class GlobalVoiceController: ObservableObject {
     private var queueItems: [GlobalVoiceQueueItem] {
         var items: [GlobalVoiceQueueItem] = []
         if let activeJob {
-            items.append(GlobalVoiceQueueItem(
-                id: activeJob.id,
-                title: "Now · \(activeJob.mode.title)",
-                detail: activeJob.phase.rawValue,
-                isActive: true
-            ))
+            items.append(
+                GlobalVoiceQueueItem(
+                    id: activeJob.id,
+                    title: "Now · \(activeJob.mode.title)",
+                    detail: activeJob.phase.rawValue,
+                    isActive: true
+                ))
         }
-        items.append(contentsOf: queuedJobs.elements.enumerated().map { index, job in
-            GlobalVoiceQueueItem(
-                id: job.id,
-                title: "Next \(index + 1) · \(job.mode.title)",
-                detail: GlobalVoiceJobPhase.queued.rawValue,
-                isActive: false
-            )
-        })
+        items.append(
+            contentsOf: queuedJobs.elements.enumerated().map { index, job in
+                GlobalVoiceQueueItem(
+                    id: job.id,
+                    title: "Next \(index + 1) · \(job.mode.title)",
+                    detail: GlobalVoiceJobPhase.queued.rawValue,
+                    isActive: false
+                )
+            })
         return items
     }
 
@@ -642,9 +658,11 @@ final class GlobalVoiceController: ObservableObject {
         guard await prompter.applyTranslationResult(translated, translatedText: translatedText, ollama: ollama) else {
             throw SomaError(prompter.errorMessage ?? "Translation failed.")
         }
-        VoiceMetrics.log("translation_finished", [
-            "duration_milliseconds": "\(Int(Date().timeIntervalSince(translationStartedAt) * 1_000))",
-        ])
+        VoiceMetrics.log(
+            "translation_finished",
+            [
+                "duration_milliseconds": "\(Int(Date().timeIntervalSince(translationStartedAt) * 1_000))"
+            ])
         if mode == .english {
             prompter.phase = .done
             ollama.checkStatus()
@@ -656,18 +674,22 @@ final class GlobalVoiceController: ObservableObject {
         let promptStartedAt = Date()
         let improved = try await somaViewModel.runRusToPromptImprove(prompt: translatedText, analyzerModel: prompter.analyzerModel)
         await prompter.applyImprovementResult(improved, sourcePrompt: text, ollama: ollama, queueManager: nil)
-        VoiceMetrics.log("prompt_generation_finished", [
-            "duration_milliseconds": "\(Int(Date().timeIntervalSince(promptStartedAt) * 1_000))",
-        ])
+        VoiceMetrics.log(
+            "prompt_generation_finished",
+            [
+                "duration_milliseconds": "\(Int(Date().timeIntervalSince(promptStartedAt) * 1_000))"
+            ])
         return prompter.finalPromptForCopy
     }
 
     private func paste(_ text: String, into app: NSRunningApplication?) async {
         let startedAt = Date()
         defer {
-            VoiceMetrics.log("paste_finished", [
-                "duration_milliseconds": "\(Int(Date().timeIntervalSince(startedAt) * 1_000))",
-            ])
+            VoiceMetrics.log(
+                "paste_finished",
+                [
+                    "duration_milliseconds": "\(Int(Date().timeIntervalSince(startedAt) * 1_000))"
+                ])
         }
         let pasteboard = NSPasteboard.general
         let oldItems = snapshotClipboard(pasteboard)
@@ -746,7 +768,8 @@ private final class OverlayModel: ObservableObject {
 
     func update(message: String, image: String, busy: Bool, mode: VoiceOutputMode, showsModeSelector: Bool) {
         let modePrefixes = ["Recording · ", "Ready · "]
-        let isModeSwitch = self.showsModeSelector && showsModeSelector
+        let isModeSwitch =
+            self.showsModeSelector && showsModeSelector
             && self.image == image && self.busy == busy
             && modePrefixes.contains(where: {
                 self.message.hasPrefix($0) && message.hasPrefix($0)
@@ -876,9 +899,9 @@ private final class GlobalVoiceOverlay {
         model.hasNotch = inset > 0
         model.notchHeight = inset
         if let l = screen.auxiliaryTopLeftArea, let r = screen.auxiliaryTopRightArea, r.minX > l.maxX {
-            model.notchWidth = r.minX - l.maxX          // real notch (camera) width
+            model.notchWidth = r.minX - l.maxX  // real notch (camera) width
         } else {
-            model.notchWidth = 180                       // no notch: floating top pill
+            model.notchWidth = 180  // no notch: floating top pill
         }
         let full = screen.frame
         // Notch Macs: flush to the top bezel so it merges with the camera cutout.
@@ -903,11 +926,12 @@ private final class GlobalVoiceOverlay {
 /// A rounded-bottom, square-top shape so the top edge sits flush with the screen bezel
 /// and the body drops out of the camera notch like Dynamic Island.
 private struct NotchIsland: Shape {
-    var topRadius: CGFloat = 0      // 0 = square top (flush to notch); >0 = rounded pill
+    var topRadius: CGFloat = 0  // 0 = square top (flush to notch); >0 = rounded pill
     var bottomRadius: CGFloat
     func path(in rect: CGRect) -> Path {
         var p = Path()
-        let tr = topRadius, br = bottomRadius
+        let tr = topRadius
+        let br = bottomRadius
         p.move(to: CGPoint(x: rect.minX, y: rect.minY + tr))
         p.addQuadCurve(to: CGPoint(x: rect.minX + tr, y: rect.minY), control: CGPoint(x: rect.minX, y: rect.minY))
         p.addLine(to: CGPoint(x: rect.maxX - tr, y: rect.minY))
@@ -998,10 +1022,12 @@ private struct LiquidGlassSurface: View, Animatable {
     @State private var bobPhase: CGFloat = 0
     @State private var breathPhase: CGFloat = 0
 
-    var animatableData: AnimatablePair<
-        AnimatablePair<AnimatablePair<Double, Double>, AnimatablePair<Double, Double>>,
-        AnimatablePair<AnimatablePair<Double, Double>, AnimatablePair<Double, Double>>
-    > {
+    var animatableData:
+        AnimatablePair<
+            AnimatablePair<AnimatablePair<Double, Double>, AnimatablePair<Double, Double>>,
+            AnimatablePair<AnimatablePair<Double, Double>, AnimatablePair<Double, Double>>
+        >
+    {
         get {
             AnimatablePair(
                 AnimatablePair(AnimatablePair(red, green), AnimatablePair(blue, activity)),
@@ -1057,33 +1083,54 @@ private struct LiquidGlassSurface: View, Animatable {
         let echoResponse = pow(echoVoice, 0.7)
         let energy = min(voiceResponse * 0.9 + breath * 0.16, 1)
         GeometryReader { geo in
-                let w = geo.size.width, h = geo.size.height
-                ZStack {
-                    shape.fill(Color(white: 0.035 + Double(breath) * 0.006))
-                    RadialGradient(colors: [tint.opacity(0.50 + Double(energy) * 0.30),
-                                            tint.opacity(0.10 + Double(energy) * 0.09), .clear],
-                                   center: .center, startRadius: 0, endRadius: w * 0.55)
-                        .frame(width: w * (1.06 + voiceResponse * 0.18),
-                               height: h * (1.92 + voiceResponse * 0.28 + breath * 0.06))
-                        .position(x: w * 0.5 + drift * w * 0.26,
-                                  y: h * (0.8 - voiceResponse * 0.06) + bob * h * 0.12)
-                        .blur(radius: 16.5 - energy * 4)
-                    RadialGradient(colors: [echoTint.opacity(0.18 + Double(echoResponse) * 0.24),
-                                            echoTint.opacity(0.06 + Double(echoResponse) * 0.09), .clear],
-                                   center: .center, startRadius: 0, endRadius: w * 0.48)
-                        .frame(width: w * (0.78 + echoResponse * 0.17),
-                               height: h * (1.48 + echoResponse * 0.24))
-                        .position(x: w * 0.52 - drift * w * 0.2,
-                                  y: h * (0.72 - echoResponse * 0.04) - bob * h * 0.08)
-                        .blur(radius: 20 - echoResponse * 2.5)
-                        .blendMode(.screen)
-                    shape.fill(LinearGradient(colors: [.white.opacity(0.18), .white.opacity(0.03), .clear],
-                                              startPoint: .top, endPoint: .bottom))
-                    shape.stroke(LinearGradient(colors: [.white.opacity(0.28 + Double(energy) * 0.18), .white.opacity(0.04)],
-                                                startPoint: .top, endPoint: .bottom), lineWidth: 0.8)
-                }
-                .clipShape(shape)
+            let w = geo.size.width
+            let h = geo.size.height
+            ZStack {
+                shape.fill(Color(white: 0.035 + Double(breath) * 0.006))
+                RadialGradient(
+                    colors: [
+                        tint.opacity(0.50 + Double(energy) * 0.30),
+                        tint.opacity(0.10 + Double(energy) * 0.09), .clear,
+                    ],
+                    center: .center, startRadius: 0, endRadius: w * 0.55
+                )
+                .frame(
+                    width: w * (1.06 + voiceResponse * 0.18),
+                    height: h * (1.92 + voiceResponse * 0.28 + breath * 0.06)
+                )
+                .position(
+                    x: w * 0.5 + drift * w * 0.26,
+                    y: h * (0.8 - voiceResponse * 0.06) + bob * h * 0.12
+                )
+                .blur(radius: 16.5 - energy * 4)
+                RadialGradient(
+                    colors: [
+                        echoTint.opacity(0.18 + Double(echoResponse) * 0.24),
+                        echoTint.opacity(0.06 + Double(echoResponse) * 0.09), .clear,
+                    ],
+                    center: .center, startRadius: 0, endRadius: w * 0.48
+                )
+                .frame(
+                    width: w * (0.78 + echoResponse * 0.17),
+                    height: h * (1.48 + echoResponse * 0.24)
+                )
+                .position(
+                    x: w * 0.52 - drift * w * 0.2,
+                    y: h * (0.72 - echoResponse * 0.04) - bob * h * 0.08
+                )
+                .blur(radius: 20 - echoResponse * 2.5)
+                .blendMode(.screen)
+                shape.fill(
+                    LinearGradient(
+                        colors: [.white.opacity(0.18), .white.opacity(0.03), .clear],
+                        startPoint: .top, endPoint: .bottom))
+                shape.stroke(
+                    LinearGradient(
+                        colors: [.white.opacity(0.28 + Double(energy) * 0.18), .white.opacity(0.04)],
+                        startPoint: .top, endPoint: .bottom), lineWidth: 0.8)
             }
+            .clipShape(shape)
+        }
     }
 
     private func updateMotion(isActive: Bool) {
@@ -1150,9 +1197,11 @@ private struct DynamicIslandView: View {
             Color.clear
             contentBody
                 .fixedSize()
-                .background(GeometryReader { proxy in
-                    Color.clear.preference(key: IslandContentSizeKey.self, value: proxy.size)
-                })
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: IslandContentSizeKey.self, value: proxy.size)
+                    }
+                )
                 .hidden()
             content
                 .frame(width: islandWidth, height: islandHeight, alignment: .bottom)

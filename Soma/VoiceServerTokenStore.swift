@@ -11,7 +11,9 @@ enum VoiceServerTokenStore {
             UserDefaults.standard.removeObject(forKey: legacyDefaultsKey)
             return token
         }
-        guard let legacy = UserDefaults.standard.string(forKey: legacyDefaultsKey)?.trimmingCharacters(in: .whitespacesAndNewlines), !legacy.isEmpty else {
+        guard let legacy = UserDefaults.standard.string(forKey: legacyDefaultsKey)?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !legacy.isEmpty
+        else {
             return ""
         }
         saveKeychainWithoutPrompt(legacy)
@@ -38,8 +40,8 @@ enum VoiceServerTokenStore {
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?
         guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-              let data = item as? Data,
-              let token = String(data: data, encoding: .utf8)
+            let data = item as? Data,
+            let token = String(data: data, encoding: .utf8)
         else { return "" }
         return token
     }

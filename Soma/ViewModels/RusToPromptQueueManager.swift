@@ -44,9 +44,11 @@ nonisolated struct RusToPromptQueueSettings: Codable, Hashable {
             translatorCandidates: translators,
             improverCandidates: improvers,
             confidenceReferee: localJudges.count >= 2 ? "hybrid" : "gemini",
-            confidenceModel: confidenceModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "gemini-3-flash-preview" : confidenceModel,
+            confidenceModel: confidenceModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "gemini-3-flash-preview" : confidenceModel,
             localConfidenceModels: Array(localJudges.prefix(2)),
-            hybridGeminiModel: confidenceModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "gemini-3-flash-preview" : confidenceModel,
+            hybridGeminiModel: confidenceModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "gemini-3-flash-preview" : confidenceModel,
             hybridFallbackReferee: "gemini",
             confidenceBatchSize: [1, 5, 10, 20].contains(batchSize) ? batchSize : 10,
             cooldownSeconds: 0,  // was 30: keep_alive now keeps models resident; the knob stays for thermal tuning
@@ -55,20 +57,24 @@ nonisolated struct RusToPromptQueueSettings: Codable, Hashable {
     }
     static func localModelsFromDefaults(key: String, fallback: [String]) -> [String] {
         guard let data = UserDefaults.standard.data(forKey: key),
-              let decoded = try? JSONDecoder().decode([String].self, from: data) else {
+            let decoded = try? JSONDecoder().decode([String].self, from: data)
+        else {
             return fallback.filter { RusToPromptQueueManager.isLocalStageModel($0) }
         }
-        let models = decoded
+        let models =
+            decoded
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty && RusToPromptQueueManager.isLocalStageModel($0) }
         return models.isEmpty ? fallback.filter { RusToPromptQueueManager.isLocalStageModel($0) } : models
     }
     static func stageModelsFromDefaults(key: String, fallback: [String]) -> [String] {
         guard let data = UserDefaults.standard.data(forKey: key),
-              let decoded = try? JSONDecoder().decode([String].self, from: data) else {
+            let decoded = try? JSONDecoder().decode([String].self, from: data)
+        else {
             return fallback.filter { RusToPromptQueueManager.isStageCandidateModel($0) }
         }
-        let models = decoded
+        let models =
+            decoded
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty && RusToPromptQueueManager.isStageCandidateModel($0) }
         return models.isEmpty ? fallback.filter { RusToPromptQueueManager.isStageCandidateModel($0) } : models
@@ -196,16 +202,17 @@ final class RusToPromptQueueManager: ObservableObject {
     var activeControlFileURL: URL?
     var processOutputBuffer = ""
     var timer: Timer?
-    var progressTickCount = 0           // 1s ticks; housekeeping runs every 5th
+    var progressTickCount = 0  // 1s ticks; housekeeping runs every 5th
     var batteryStartOverrideItemID: String?
     // Re-attach support: the run is a detached child that survives app restarts.
-    var activeReattachedPID: Int32?     // set only when re-attached to a still-running child (no Process handle)
+    var activeReattachedPID: Int32?  // set only when re-attached to a still-running child (no Process handle)
     var reattachedExitInFlight = false  // finalization started; blocks double-entry during the async completion
-    var progressLogURL: URL?            // progress.log being tailed for the active run
-    var progressLogOffset: UInt64 = 0   // byte offset already consumed from progressLogURL
+    var progressLogURL: URL?  // progress.log being tailed for the active run
+    var progressLogOffset: UInt64 = 0  // byte offset already consumed from progressLogURL
     init() {
         let sourceURL = URL(fileURLWithPath: #filePath)
-        repoRootURL = sourceURL
+        repoRootURL =
+            sourceURL
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -221,7 +228,7 @@ final class RusToPromptQueueManager: ObservableObject {
         recoverRunningItems()
         applyPowerGate()
         saveToDisk()
-        startTimerIfNeeded()   // only poll if launch recovered active/queued work
+        startTimerIfNeeded()  // only poll if launch recovered active/queued work
     }
     deinit {
         timer?.invalidate()

@@ -9,11 +9,9 @@ extension TestsView {
         }
     }
 
-
     func saveHybridConfidence(_ enabled: Bool) {
         UserDefaults.standard.set(enabled, forKey: hybridConfidenceKey)
     }
-
 
     func toggleLocalConfidenceModel(_ model: String) {
         if let index = selectedLocalConfidenceModels.firstIndex(of: model) {
@@ -27,41 +25,41 @@ extension TestsView {
         saveLocalConfidenceModels()
     }
 
-
     func saveConfidenceBatchSize(_ size: Int) {
         UserDefaults.standard.set(size, forKey: confidenceBatchSizeKey)
     }
-
 
     func saveBenchmarkMode(_ mode: TestBenchmarkMode) {
         UserDefaults.standard.set(mode.cliValue, forKey: benchmarkModeKey)
     }
 
-
     func refreshCaseFiles() {
         try? FileManager.default.createDirectory(at: casesDirectoryURL, withIntermediateDirectories: true)
-        let files = (try? FileManager.default.contentsOfDirectory(
-            at: casesDirectoryURL,
-            includingPropertiesForKeys: [.contentModificationDateKey],
-            options: [.skipsHiddenFiles]
-        )) ?? []
+        let files =
+            (try? FileManager.default.contentsOfDirectory(
+                at: casesDirectoryURL,
+                includingPropertiesForKeys: [.contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            )) ?? []
 
-        caseFiles = files
+        caseFiles =
+            files
             .filter { $0.pathExtension.lowercased() == "txt" }
             .sorted { lhs, rhs in
                 lhs.lastPathComponent.localizedStandardCompare(rhs.lastPathComponent) == .orderedAscending
             }
     }
 
-
     func migrateLegacyCaseFilesIfNeeded() {
         let fileManager = FileManager.default
         let scriptsURL = casesDirectoryURL.deletingLastPathComponent()
-        guard let legacyFiles = try? fileManager.contentsOfDirectory(
-            at: scriptsURL,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        ) else {
+        guard
+            let legacyFiles = try? fileManager.contentsOfDirectory(
+                at: scriptsURL,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            )
+        else {
             return
         }
 
@@ -76,7 +74,6 @@ extension TestsView {
             statusText = "Could not migrate test files: \(error.localizedDescription)"
         }
     }
-
 
     func uniqueCaseFileURL(for url: URL) -> URL {
         guard FileManager.default.fileExists(atPath: url.path) else {
@@ -96,11 +93,11 @@ extension TestsView {
         return directory.appendingPathComponent("\(base)-\(UUID().uuidString).\(ext)")
     }
 
-
     func loadSelectedCasesFile() {
         let stored = UserDefaults.standard.string(forKey: casesFileKey)
         if let stored,
-           caseFiles.contains(where: { $0.lastPathComponent == stored }) {
+            caseFiles.contains(where: { $0.lastPathComponent == stored })
+        {
             selectedCasesFileName = stored
             return
         }
@@ -119,18 +116,15 @@ extension TestsView {
         createEmptyCasesFile(named: "rus_to_prompt_cases.txt", selectAfterCreate: true)
     }
 
-
     func selectCasesFile(_ file: URL) {
         selectedCasesFileName = file.lastPathComponent
         UserDefaults.standard.set(selectedCasesFileName, forKey: casesFileKey)
         loadCases()
     }
 
-
     func createEmptyCasesFile() {
         createEmptyCasesFile(named: nextEmptyCasesFileName(), selectAfterCreate: true)
     }
-
 
     func createEmptyCasesFile(named fileName: String, selectAfterCreate: Bool) {
         do {
@@ -149,7 +143,6 @@ extension TestsView {
         }
     }
 
-
     var starterCasesTemplate: String {
         """
         # Rus to Prompt test scenarios
@@ -166,7 +159,6 @@ extension TestsView {
 
         """
     }
-
 
     func nextEmptyCasesFileName() -> String {
         let existing = Set(caseFiles.map(\.lastPathComponent))
@@ -185,7 +177,6 @@ extension TestsView {
         }
         return "rus_to_prompt_cases_new.txt"
     }
-
 
     func deleteSelectedCasesFile() {
         let file = casesURL

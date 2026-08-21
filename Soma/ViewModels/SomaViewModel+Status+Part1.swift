@@ -3,9 +3,10 @@ import SwiftUI
 import AppKit
 import Combine
 extension SomaViewModel {
-func refreshSomaStatus() {
+    func refreshSomaStatus() {
         guard !selectedProjectRoot.isEmpty else { return }
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--status-json", "--project-root", selectedProjectRoot])
                 let status = try JSONDecoder().decode(SomaGatewayStatus.self, from: data)
@@ -64,8 +65,9 @@ func refreshSomaStatus() {
         let warning = mismatch ? " Warning: Nexus project differs from selected root (\(nexusProject ?? "unknown"))." : ""
         return "\(nexusText). \(graphText). Soma exposes \(toolCount) tools.\(warning)"
     }
-func fetchSystemVersions() {
-        Task { [weak self] in guard let self else { return }
+    func fetchSystemVersions() {
+        Task { [weak self] in
+            guard let self else { return }
             // Graphify
             do {
                 let uvPath = FileManager.default.homeDirectoryForCurrentUser.path + "/.local/bin/uv"
@@ -88,10 +90,11 @@ func fetchSystemVersions() {
             refreshSomaStatus()
         }
     }
-func upgradeGraphify() {
+    func upgradeGraphify() {
         systemBusy = true
         logActivity("Upgrading Graphify...")
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let uvPath = FileManager.default.homeDirectoryForCurrentUser.path + "/.local/bin/uv"
                 _ = try await runScript(path: uvPath, args: ["tool", "upgrade", "graphifyy"])
@@ -116,7 +119,8 @@ func upgradeGraphify() {
         guard !selectedProjectRoot.isEmpty else { return }
         graphifyBusy = true
         logActivity("Building managed Graphify graph for \((selectedProjectRoot as NSString).lastPathComponent)...")
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let storageData = try await runSomaHelper(args: ["--graph-storage-json", "--project-root", selectedProjectRoot])
                 let storage = try JSONDecoder().decode(GraphStorageInfo.self, from: storageData)
@@ -148,7 +152,8 @@ func upgradeGraphify() {
         graphifyBusy = true
         let label = fullRebuild ? "Rebuilding managed Graphify graph" : "Refreshing managed Graphify graph"
         logActivity("\(label) for \((selectedProjectRoot as NSString).lastPathComponent)...")
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 var args = ["--refresh-managed-graph", "--project-root", selectedProjectRoot]
                 if fullRebuild { args.append("--full-graph-rebuild") }
@@ -173,13 +178,16 @@ func upgradeGraphify() {
     func refreshAllManagedGraphifyGraphs() {
         systemBusy = true
         logActivity("Refreshing all indexed managed Graphify graphs...")
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--refresh-all-managed-graphs"])
                 let result = try JSONDecoder().decode(GraphMaintenanceResult.self, from: data)
                 await MainActor.run {
                     self.systemBusy = false
-                    self.logActivity("Graphify refresh all: \(result.refreshed ?? 0) refreshed, \(result.skipped ?? 0) skipped, \(result.failed ?? 0) failed")
+                    self.logActivity(
+                        "Graphify refresh all: \(result.refreshed ?? 0) refreshed, \(result.skipped ?? 0) skipped, \(result.failed ?? 0) failed"
+                    )
                     self.refreshSomaStatus()
                 }
             } catch {
@@ -193,7 +201,8 @@ func upgradeGraphify() {
     func checkGraphifyToolVersion() {
         systemBusy = true
         logActivity("Checking Graphify tool version...")
-        Task { [weak self] in guard let self else { return }
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 let data = try await runSomaHelper(args: ["--check-graphify-tool-json"])
                 let status = try JSONDecoder().decode(GraphifyToolStatus.self, from: data)

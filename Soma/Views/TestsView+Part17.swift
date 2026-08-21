@@ -9,7 +9,6 @@ struct TestModelStatsRunContext {
     let environment: [String: String]
 }
 
-
 struct TestModelStatsOutput {
     let tempDirectory: URL
     let stdoutURL: URL
@@ -49,7 +48,6 @@ extension TestsView {
         }
     }
 
-
     func appendProgressLine(_ line: String) {
         progressLines.append(line)
         if progressLines.count > 40 {
@@ -57,14 +55,12 @@ extension TestsView {
         }
     }
 
-
     func appendRawProgressLine(_ line: String) {
         rawProgressLines.append(line)
         if rawProgressLines.count > 160 {
             rawProgressLines.removeFirst(rawProgressLines.count - 160)
         }
     }
-
 
     func loadResultsSummary(from outDir: URL) {
         let summaryURL = outDir.appendingPathComponent("summary.json")
@@ -85,7 +81,8 @@ extension TestsView {
             loadResultRuns(from: outDir)
             let operationCount = decoded.total ?? resultRunRows.count
             let issueText = summaryIssueText(decoded)
-            resultsStatusText = issueText.isEmpty
+            resultsStatusText =
+                issueText.isEmpty
                 ? "Loaded \(operationCount) operations / \(resultRows.count) combinations"
                 : "Loaded \(operationCount) operations / \(resultRows.count) combinations · \(issueText)"
             if decoded.runStatus == "completed_with_issues" || decoded.success == false {
@@ -99,7 +96,6 @@ extension TestsView {
         }
     }
 
-
     func summaryIssueText(_ summary: TestSummaryEnvelope) -> String {
         var parts: [String] = []
         if let runStatus = summary.runStatus, !["completed", "ok"].contains(runStatus) {
@@ -109,23 +105,25 @@ extension TestsView {
             parts.append("\(confidenceFailedCount) confidence failed")
         }
         if let externalErrorCounts = summary.externalErrorCounts, !externalErrorCounts.isEmpty {
-            let text = externalErrorCounts
+            let text =
+                externalErrorCounts
                 .sorted { $0.key < $1.key }
                 .map { "\($0.key) \($0.value)" }
                 .joined(separator: ", ")
             parts.append(text)
         }
         if let issueCounts = summary.issueCounts {
-            let important = ["interrupted", "pipeline_failed", "degraded", "translation_rejected", "low_confidence", "incomplete_operations"]
-                .compactMap { key -> String? in
-                    guard let value = issueCounts[key], value > 0 else { return nil }
-                    return "\(key.replacingOccurrences(of: "_", with: " ")) \(value)"
-                }
+            let important = [
+                "interrupted", "pipeline_failed", "degraded", "translation_rejected", "low_confidence", "incomplete_operations",
+            ]
+            .compactMap { key -> String? in
+                guard let value = issueCounts[key], value > 0 else { return nil }
+                return "\(key.replacingOccurrences(of: "_", with: " ")) \(value)"
+            }
             parts.append(contentsOf: important)
         }
         return parts.joined(separator: " · ")
     }
-
 
     @discardableResult
 
@@ -145,7 +143,6 @@ extension TestsView {
         return true
     }
 
-
     func loadModelStats() {
         guard !isLoadingModelStats else { return }
         guard let context = modelStatsRunContext() else { return }
@@ -157,7 +154,6 @@ extension TestsView {
             self.runModelStatsLoad(context)
         }
     }
-
 
     func modelStatsRunContext() -> TestModelStatsRunContext? {
         let scriptURL = modelStatsScriptURL
@@ -179,7 +175,6 @@ extension TestsView {
             environment: environment
         )
     }
-
 
     func runModelStatsLoad(_ context: TestModelStatsRunContext) {
         var output: TestModelStatsOutput?
@@ -207,7 +202,6 @@ extension TestsView {
         }
     }
 
-
     func prepareModelStatsOutput() throws -> TestModelStatsOutput {
         let tempDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("soma-model-stats-\(UUID().uuidString)", isDirectory: true)
@@ -225,21 +219,19 @@ extension TestsView {
         )
     }
 
-
     func makeModelStatsProcess(context: TestModelStatsRunContext, output: TestModelStatsOutput) -> Process {
         let process = Process()
         process.currentDirectoryURL = context.rootURL
         process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
         process.arguments = [
             context.scriptURL.path,
-            "--stress-dir", context.stressURL.path
+            "--stress-dir", context.stressURL.path,
         ]
         process.environment = context.environment
         process.standardOutput = output.stdoutHandle
         process.standardError = output.stderrHandle
         return process
     }
-
 
     func applyModelStatsProcessFailure(output: TestModelStatsOutput, data: Data) {
         let stderrText = (try? String(contentsOf: output.stderrURL, encoding: .utf8)) ?? ""
@@ -254,35 +246,33 @@ extension TestsView {
         }
     }
 
-
     func applyModelStatsSuccess(_ decoded: TestModelStatsEnvelope) {
         DispatchQueue.main.async {
             self.modelStats = decoded
             self.selectedTranslationStatsID = decoded.translationModels.first?.id
             self.selectedImproverStatsID = decoded.improverModels.first?.id
-            self.modelStatsStatusText = "Loaded \(decoded.translationModels.count) translation model(s), \(decoded.improverModels.count) improver model(s)"
+            self.modelStatsStatusText =
+                "Loaded \(decoded.translationModels.count) translation model(s), \(decoded.improverModels.count) improver model(s)"
             self.isLoadingModelStats = false
         }
     }
-
 
     func applyModelStatsLoadError(_ error: Error, stderrText: String) {
         DispatchQueue.main.async {
             self.modelStats = nil
             let detail = stderrText.trimmingCharacters(in: .whitespacesAndNewlines)
-            self.modelStatsStatusText = detail.isEmpty
+            self.modelStatsStatusText =
+                detail.isEmpty
                 ? "Could not load model stats: \(error.localizedDescription)"
                 : "Could not load model stats: \(error.localizedDescription)\n\(detail)"
             self.isLoadingModelStats = false
         }
     }
 
-
     func loadModelStatsIfNeeded() {
         guard modelStats == nil, !isLoadingModelStats else { return }
         loadModelStats()
     }
-
 
     func openStressLogsFolder() {
         try? FileManager.default.createDirectory(at: stressDirectoryURL, withIntermediateDirectories: true)

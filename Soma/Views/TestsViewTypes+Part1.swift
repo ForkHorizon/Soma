@@ -243,9 +243,14 @@ struct TestRunConfidence: Decodable, Hashable {
 func testCanonicalConfidenceStatus(status: String?, verdict: String?, confidence: Double?, capReasons: [String]?) -> String {
     let raw = (status ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     let verdictText = (verdict ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    let failedStatuses: Set<String> = ["failed", "fail", "failure", "error", "exception", "rejected", "reject", "timeout", "poor_translation"]
+    let failedStatuses: Set<String> = [
+        "failed", "fail", "failure", "error", "exception", "rejected", "reject", "timeout", "poor_translation",
+    ]
     let reviewStatuses: Set<String> = ["review", "degraded", "warning", "warn", "uncertain", "low", "poor"]
-    let okStatuses: Set<String> = ["ok", "pass", "passed", "approved", "accepted", "success", "succeeded", "completed", "complete", "evaluated", "translation_only", "translated", "improved"]
+    let okStatuses: Set<String> = [
+        "ok", "pass", "passed", "approved", "accepted", "success", "succeeded", "completed", "complete", "evaluated", "translation_only",
+        "translated", "improved",
+    ]
     if testConfidenceHasHardCap(capReasons) || failedStatuses.contains(raw) || failedStatuses.contains(verdictText) {
         return "failed"
     }
