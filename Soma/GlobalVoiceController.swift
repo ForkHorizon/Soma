@@ -205,7 +205,7 @@ final class GlobalVoiceController: ObservableObject {
     private var watchdogTask: Task<Void, Never>?
     private var permissionRetryTask: Task<Void, Never>?
     private var systemStateObserversRegistered = false
-    private var audioLevelCancellable: AnyCancellable?
+
     private var rightCommandDown = false
     private var comboUsed = false
     private var recording = false
@@ -235,12 +235,7 @@ final class GlobalVoiceController: ObservableObject {
         self.prompter = prompter
         self.textPriorityQueue = textPriorityQueue
         registerSystemStateObservers()
-        audioLevelCancellable = asr.$inputLevel
-            .receive(on: RunLoop.main)
-            .sink { [weak self] level in
-                guard let self else { return }
-                overlay.updateAudioLevel(recording ? level : 0)
-            }
+
     }
 
     func setEnabled(_ enabled: Bool, promptForPermission: Bool = false) {
