@@ -9,10 +9,10 @@ final class Stage7PunctuationSuggester: ObservableObject {
 
     private let model = "qwen3:14b"
     private let prompt = """
-    Ты редактор пунктуации русского ASR. Верни только исходный текст с исправленными знаками препинания, регистром и троеточиями. Нельзя добавлять, удалять, заменять или переставлять слова, числа и термины. Без пояснений.
+        Ты редактор пунктуации русского ASR. Верни только исходный текст с исправленными знаками препинания, регистром и троеточиями. Нельзя добавлять, удалять, заменять или переставлять слова, числа и термины. Без пояснений.
 
-    Текст:
-    """
+        Текст:
+        """
 
     func suggest(for text: String) async {
         guard !text.isEmpty, !isLoading else { return }
@@ -31,8 +31,8 @@ final class Stage7PunctuationSuggester: ObservableObject {
             request.httpBody = try JSONSerialization.data(withJSONObject: payload)
             let (data, response) = try await URLSession.shared.data(for: request)
             guard (response as? HTTPURLResponse)?.statusCode == 200,
-                  let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let candidate = json["response"] as? String
+                let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let candidate = json["response"] as? String
             else { throw CocoaError(.fileReadCorruptFile) }
             guard punctuationOnly(candidate, comparedTo: text) else {
                 failure = "Suggestion changed words or numbers, so it was rejected."

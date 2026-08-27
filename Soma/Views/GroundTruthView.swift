@@ -13,7 +13,8 @@ struct GroundTruthView: View {
         SomaPage(maxWidth: 1080) {
             WorkflowHeader(
                 title: "Ground Truth",
-                subtitle: "Build a word-for-word reference set. Every final segment is confirmed by a person, never by model agreement alone.",
+                subtitle:
+                    "Build a word-for-word reference set. Every final segment is confirmed by a person, never by model agreement alone.",
                 icon: "waveform.badge.mic",
                 tone: layer1Tone,
                 trailing: AnyView(corpusSummary)
@@ -116,15 +117,18 @@ struct GroundTruthView: View {
 
     private var analysisDetail: String {
         if runner.isRunning, let fileID = runner.currentFileID,
-           let file = runner.store.file(for: fileID) {
+            let file = runner.store.file(for: fileID)
+        {
             return "Running \(file.url.lastPathComponent)"
         }
         if runner.pendingRuns > 0 { return "\(runner.pendingRuns.formatted()) model runs queued" }
         return "\(remainingAudio.formatted()) recordings not added yet"
     }
 
-    private func actionCard(title: String, value: String, detail: String, icon: String,
-                            tone: SomaStatusTone, action: @escaping () -> Void) -> some View {
+    private func actionCard(
+        title: String, value: String, detail: String, icon: String,
+        tone: SomaStatusTone, action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 7) {
@@ -198,9 +202,10 @@ func layer1Quality(models: [Layer1ModelSpec], segments: [Layer1Segment]) -> [Str
             var quality = result[model.id] ?? .init()
             if suggestion.status == .failed { quality.failed += 1 }
             if segment.decision.status == .verified,
-               let reference = segment.decision.normalizedText,
-               !reference.isEmpty,
-               suggestion.status == .completed {
+                let reference = segment.decision.normalizedText,
+                !reference.isEmpty,
+                suggestion.status == .completed
+            {
                 quality.evaluated += 1
                 if Layer1GroundTruthStore.normalize(suggestion.text ?? "") == reference { quality.exact += 1 }
                 if segment.decision.sourceModelID == model.id {

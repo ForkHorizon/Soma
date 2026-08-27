@@ -21,9 +21,11 @@ struct GroundTruthVerdict: Identifiable, Hashable {
 
     var isReview: Bool { status == "review" }
 
-    init(file: String, status: String, reason: String, edits: Int,
-         candidates: [String: String], terms: [TermPair], spots: [ClosedRange<Double>],
-         operations: [GroundTruthReviewOperation] = []) {
+    init(
+        file: String, status: String, reason: String, edits: Int,
+        candidates: [String: String], terms: [TermPair], spots: [ClosedRange<Double>],
+        operations: [GroundTruthReviewOperation] = []
+    ) {
         self.file = file
         self.status = status
         self.reason = reason
@@ -36,8 +38,8 @@ struct GroundTruthVerdict: Identifiable, Hashable {
 }
 
 struct TermPair: Identifiable, Hashable {
-    let heard: String        // what GigaAM wrote
-    let written: String      // what Whisper wrote
+    let heard: String  // what GigaAM wrote
+    let written: String  // what Whisper wrote
     var id: String { "\(heard)→\(written)" }
 }
 
@@ -75,8 +77,9 @@ final class GroundTruthRunner: ObservableObject {
     var remaining: Int { max(0, files - decided) }
 
     var reviewQueue: [GroundTruthReviewItem] {
-        Self.operationQueue(verdicts.filter(\.isReview),
-                            settled: settledFiles, decided: decidedSignatures)
+        Self.operationQueue(
+            verdicts.filter(\.isReview),
+            settled: settledFiles, decided: decidedSignatures)
     }
 
     static var outputDirectory: URL {
@@ -86,9 +89,9 @@ final class GroundTruthRunner: ObservableObject {
 
     private var repoRoot: URL {
         URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()      // ViewModels
-            .deletingLastPathComponent()      // Soma
-            .deletingLastPathComponent()      // repo root
+            .deletingLastPathComponent()  // ViewModels
+            .deletingLastPathComponent()  // Soma
+            .deletingLastPathComponent()  // repo root
     }
 
     private var pythonPath: String {
@@ -151,14 +154,15 @@ final class GroundTruthRunner: ObservableObject {
     private func launch(script: URL, asr: ASRManager, bestOf: Int, thorough: Bool, adjudicateOnly: Bool) throws {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: pythonPath)
-        task.arguments = [
-            script.path,
-            "--recordings", asr.recordingsDir.path,
-            "--out", Self.outputDirectory.path,
-            "--engines-root", asr.enginesRoot,
-            "--models-root", asr.modelsRoot,
-            "--best-of", String(bestOf),
-        ] + (adjudicateOnly ? ["--adjudicate-only"] : []) + (thorough ? ["--thorough"] : [])
+        task.arguments =
+            [
+                script.path,
+                "--recordings", asr.recordingsDir.path,
+                "--out", Self.outputDirectory.path,
+                "--engines-root", asr.enginesRoot,
+                "--models-root", asr.modelsRoot,
+                "--best-of", String(bestOf),
+            ] + (adjudicateOnly ? ["--adjudicate-only"] : []) + (thorough ? ["--thorough"] : [])
         task.currentDirectoryURL = repoRoot
         task.environment = childEnvironment()
 
@@ -168,12 +172,12 @@ final class GroundTruthRunner: ObservableObject {
         // same stream as progress. Discarding it here is what let a Python
         // syntax, path or permission failure report "Finished".
         task.standardError = pipe
-        pipe.fileHandleForReading.readabilityHandler = { handle in
+        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let chunk = String(decoding: handle.availableData, as: UTF8.self)
             guard !chunk.isEmpty else { return }
             Task { @MainActor [weak self] in self?.absorb(chunk) }
         }
-        task.terminationHandler = { finished in
+        task.terminationHandler = { [weak self] finished in
             let status = finished.terminationStatus
             Task { @MainActor [weak self] in self?.finish(status: status) }
         }
@@ -187,8 +191,10 @@ final class GroundTruthRunner: ObservableObject {
     /// torch/MPS child, and a Finder-launched app has no Homebrew on PATH.
     private func childEnvironment() -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
-        for key in ["METAL_DEVICE_WRAPPER_TYPE", "METAL_DEBUG_ERROR_MODE", "METAL_ERROR_MODE",
-                    "MTL_DEBUG_LAYER", "MTL_SHADER_VALIDATION"] {
+        for key in [
+            "METAL_DEVICE_WRAPPER_TYPE", "METAL_DEBUG_ERROR_MODE", "METAL_ERROR_MODE",
+            "MTL_DEBUG_LAYER", "MTL_SHADER_VALIDATION",
+        ] {
             environment.removeValue(forKey: key)
         }
         let base = environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
@@ -211,7 +217,7 @@ final class GroundTruthRunner: ObservableObject {
         guard isRunning else { return }
         process = nil
         isRunning = false
-        loadExistingVerdicts()   // picks up candidates and term proposals for the review queue
+        loadExistingVerdicts()  // picks up candidates and term proposals for the review queue
         if status != 0 {
             let tail = diagnostics.suffix(3).joined(separator: " | ")
             failure = "the run exited with status \(status)" + (tail.isEmpty ? "" : ": \(tail)")
@@ -234,8 +240,8 @@ final class GroundTruthRunner: ObservableObject {
 
     private func handle(_ line: String) {
         guard let data = line.data(using: .utf8),
-              let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let name = event["event"] as? String
+            let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let name = event["event"] as? String
         else {
             let text = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if !text.isEmpty { diagnostics = (diagnostics + [String(text.prefix(200))]).suffix(10) }
@@ -263,10 +269,12 @@ final class GroundTruthRunner: ObservableObject {
     private func appendVerdict(_ event: [String: Any]) {
         guard let file = event["file"] as? String, let status = event["status"] as? String else { return }
         verdicts.removeAll { $0.file == file }
-        verdicts.append(GroundTruthVerdict(file: file, status: status,
-                                           reason: event["reason"] as? String ?? "",
-                                           edits: event["edits"] as? Int ?? 0,
-                                           candidates: [:], terms: [], spots: []))
+        verdicts.append(
+            GroundTruthVerdict(
+                file: file, status: status,
+                reason: event["reason"] as? String ?? "",
+                edits: event["edits"] as? Int ?? 0,
+                candidates: [:], terms: [], spots: []))
     }
 
     private func applyTotals(_ event: [String: Any]) {

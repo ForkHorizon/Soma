@@ -42,13 +42,13 @@ enum GroundTruthReviewProgress {
         let signatures = Dictionary(uniqueKeysWithValues: verdict.operations.map { ($0.id, $0.signature) })
         return text.split(separator: "\n").reduce(into: [:]) { choices, line in
             guard let data = line.data(using: .utf8),
-                  let row = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  row["file"] as? String == verdict.file,
-                  let id = row["operation"] as? String,
-                  let signature = row["signature"] as? String,
-                  signatures[id] == signature,
-                  let choice = row["text"] as? String,
-                  let source = row["source"] as? String
+                let row = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                row["file"] as? String == verdict.file,
+                let id = row["operation"] as? String,
+                let signature = row["signature"] as? String,
+                signatures[id] == signature,
+                let choice = row["text"] as? String,
+                let source = row["source"] as? String
             else { return }
             choices[id] = GroundTruthOperationChoice(signature: signature, text: choice, source: source)
         }
@@ -61,28 +61,31 @@ enum GroundTruthReviewProgress {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [:] }
         return text.split(separator: "\n").reduce(into: [:]) { result, line in
             guard let data = line.data(using: .utf8),
-                  let row = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let file = row["file"] as? String,
-                  let id = row["operation"] as? String,
-                  let signature = row["signature"] as? String
+                let row = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let file = row["file"] as? String,
+                let id = row["operation"] as? String,
+                let signature = row["signature"] as? String
             else { return }
             result[file, default: [:]][id] = signature
         }
     }
 
     static func record(file: String, operation: GroundTruthReviewOperation, text: String, source: String) {
-        let row: [String: Any] = ["file": file, "operation": operation.id,
-                                  "signature": operation.signature, "text": text, "source": source]
+        let row: [String: Any] = [
+            "file": file, "operation": operation.id,
+            "signature": operation.signature, "text": text, "source": source,
+        ]
         append(row, to: url)
     }
 
     private static func append(_ row: [String: Any], to url: URL) {
         guard let data = try? JSONSerialization.data(withJSONObject: row),
-              var line = String(data: data, encoding: .utf8)
+            var line = String(data: data, encoding: .utf8)
         else { return }
         line += "\n"
-        try? FileManager.default.createDirectory(at: GroundTruthRunner.outputDirectory,
-                                                 withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(
+            at: GroundTruthRunner.outputDirectory,
+            withIntermediateDirectories: true)
         if let handle = try? FileHandle(forWritingTo: url) {
             defer { try? handle.close() }
             _ = try? handle.seekToEnd()
@@ -112,9 +115,10 @@ enum GroundTruthGlossary {
     /// port, so "C++"/"C#"/"C" stay distinct here too — every prior in-place
     /// copy here or in GroundTruthDiff.key stripped +/#/* unconditionally
     /// and silently hid disagreements on exactly those terms).
-    static func normalize(_ text: String) -> String {
-        let folded = Array(text.precomposedStringWithCanonicalMapping.lowercased()
-                                .replacingOccurrences(of: "ё", with: "е"))
+    nonisolated static func normalize(_ text: String) -> String {
+        let folded = Array(
+            text.precomposedStringWithCanonicalMapping.lowercased()
+                .replacingOccurrences(of: "ё", with: "е"))
         var kept: [Character] = []
         var index = 0
         while index < folded.count {
@@ -146,7 +150,7 @@ enum GroundTruthGlossary {
     /// Maps what GigaAM heard to the spellings accepted for it.
     static func load() -> [String: [String]] {
         guard let data = try? Data(contentsOf: url),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: [String]]
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: [String]]
         else { return [:] }
         return object
     }
@@ -173,10 +177,13 @@ enum GroundTruthGlossary {
     }
 
     private static func save(_ glossary: [String: [String]]) {
-        try? FileManager.default.createDirectory(at: GroundTruthRunner.outputDirectory,
-                                                 withIntermediateDirectories: true)
-        guard let data = try? JSONSerialization.data(withJSONObject: glossary,
-                                                     options: [.prettyPrinted, .sortedKeys])
+        try? FileManager.default.createDirectory(
+            at: GroundTruthRunner.outputDirectory,
+            withIntermediateDirectories: true)
+        guard
+            let data = try? JSONSerialization.data(
+                withJSONObject: glossary,
+                options: [.prettyPrinted, .sortedKeys])
         else { return }
         try? data.write(to: url, options: .atomic)
     }
@@ -191,22 +198,24 @@ enum GroundTruthGold {
 
     static func settled() -> Set<String> {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
-        return Set(text.split(separator: "\n").compactMap { line in
-            guard let data = line.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            else { return nil }
-            return object["file"] as? String
-        })
+        return Set(
+            text.split(separator: "\n").compactMap { line in
+                guard let data = line.data(using: .utf8),
+                    let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                else { return nil }
+                return object["file"] as? String
+            })
     }
 
     static func write(file: String, text: String, source: String) {
         let row: [String: Any] = ["file": file, "text": text, "source": source]
         guard let data = try? JSONSerialization.data(withJSONObject: row),
-              var line = String(data: data, encoding: .utf8)
+            var line = String(data: data, encoding: .utf8)
         else { return }
         line += "\n"
-        try? FileManager.default.createDirectory(at: GroundTruthRunner.outputDirectory,
-                                                 withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(
+            at: GroundTruthRunner.outputDirectory,
+            withIntermediateDirectories: true)
         if let handle = try? FileHandle(forWritingTo: url) {
             defer { try? handle.close() }
             _ = try? handle.seekToEnd()
@@ -218,18 +227,23 @@ enum GroundTruthGold {
 
     /// An operation left with a single reading was decided by the majority of
     /// decodes and is never shown, so it settles itself.
-    static func choice(for operation: GroundTruthReviewOperation,
-                       among choices: [String: GroundTruthOperationChoice]) -> GroundTruthOperationChoice? {
+    static func choice(
+        for operation: GroundTruthReviewOperation,
+        among choices: [String: GroundTruthOperationChoice]
+    ) -> GroundTruthOperationChoice? {
         if let recorded = choices[operation.id], recorded.signature == operation.signature { return recorded }
         guard operation.alternatives.count == 1, let only = operation.alternatives.first else { return nil }
-        return GroundTruthOperationChoice(signature: operation.signature, text: only.text,
-                                          source: only.names.joined(separator: "+"))
+        return GroundTruthOperationChoice(
+            signature: operation.signature, text: only.text,
+            source: only.names.joined(separator: "+"))
     }
 
-    static func settle(_ verdict: GroundTruthVerdict,
-                       choices: [String: GroundTruthOperationChoice]) -> Bool {
+    static func settle(
+        _ verdict: GroundTruthVerdict,
+        choices: [String: GroundTruthOperationChoice]
+    ) -> Bool {
         guard !settled().contains(verdict.file),
-              let text = assemble(verdict, choices: choices)
+            let text = assemble(verdict, choices: choices)
         else { return false }
         write(file: verdict.file, text: text, source: "operation-review")
         return true
@@ -242,13 +256,15 @@ enum GroundTruthGold {
     /// Exposed because the final review step shows this text for one last
     /// human edit before it becomes gold — the reviewer can fix words no
     /// engine disputed, which the choice-by-choice flow can never surface.
-    static func assemble(_ verdict: GroundTruthVerdict,
-                         choices: [String: GroundTruthOperationChoice]) -> String? {
+    static func assemble(
+        _ verdict: GroundTruthVerdict,
+        choices: [String: GroundTruthOperationChoice]
+    ) -> String? {
         guard var words = verdict.candidates["w-greedy"]?.split(separator: " ").map(String.init)
         else { return nil }
         for operation in verdict.operations.sorted(by: { $0.anchor.lowerBound > $1.anchor.lowerBound }) {
             guard let choice = choice(for: operation, among: choices),
-                  operation.anchor.lowerBound >= 0, operation.anchor.upperBound <= words.count
+                operation.anchor.lowerBound >= 0, operation.anchor.upperBound <= words.count
             else { return nil }
             words.replaceSubrange(operation.anchor, with: choice.text.split(separator: " ").map(String.init))
         }

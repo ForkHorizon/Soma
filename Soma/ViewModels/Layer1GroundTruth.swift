@@ -168,22 +168,25 @@ final class Layer1GroundTruthStore {
         let batchID = UUID().uuidString
         let fileIDs = selected.map { source in
             let id = source.url.standardizedFileURL.path
-            let file = Layer1AudioFile(id: id, path: source.url.path,
-                                       audioHash: Self.sha256(file: source.url), duration: source.duration,
-                                       addedAt: now, batchIDs: [batchID], lastStatus: .queued)
+            let file = Layer1AudioFile(
+                id: id, path: source.url.path,
+                audioHash: Self.sha256(file: source.url), duration: source.duration,
+                addedAt: now, batchIDs: [batchID], lastStatus: .queued)
             state.files.append(file)
             for spec in Layer1ModelSpec.catalog {
-                state.modelRuns.append(Layer1ModelRun(
-                    id: UUID().uuidString, audioID: file.id, modelID: spec.id,
-                    model: spec.title, family: spec.family, version: "unconfigured",
-                    configuration: spec.configuration, startedAt: nil, finishedAt: nil,
-                    duration: nil, attempt: 1, status: .queued, rawResponse: nil,
-                    text: nil, wordTimestamps: [], error: nil))
+                state.modelRuns.append(
+                    Layer1ModelRun(
+                        id: UUID().uuidString, audioID: file.id, modelID: spec.id,
+                        model: spec.title, family: spec.family, version: "unconfigured",
+                        configuration: spec.configuration, startedAt: nil, finishedAt: nil,
+                        duration: nil, attempt: 1, status: .queued, rawResponse: nil,
+                        text: nil, wordTimestamps: [], error: nil))
             }
             return file.id
         }
-        let batch = Layer1Batch(id: batchID, createdAt: now, requestedCount: wanted,
-                                fileIDs: fileIDs, status: .queued)
+        let batch = Layer1Batch(
+            id: batchID, createdAt: now, requestedCount: wanted,
+            fileIDs: fileIDs, status: .queued)
         state.batches.append(batch)
         appendHistory(event: "batch_added", payload: ["batchID": batchID, "count": fileIDs.count])
         refreshStatuses()
@@ -211,8 +214,10 @@ final class Layer1GroundTruthStore {
         }
     }
 
-    func markRunning(_ runs: [Layer1ModelRun], configuration: [String: String], version: String,
-                     at date: Date = Date()) {
+    func markRunning(
+        _ runs: [Layer1ModelRun], configuration: [String: String], version: String,
+        at date: Date = Date()
+    ) {
         let ids = Set(runs.map(\.id))
         for index in state.modelRuns.indices where ids.contains(state.modelRuns[index].id) {
             let old = state.modelRuns[index]
@@ -223,7 +228,8 @@ final class Layer1GroundTruthStore {
                 duration: nil, attempt: old.attempt, status: .running,
                 rawResponse: nil, text: nil, wordTimestamps: [], error: nil)
         }
-        refreshStatuses(); save()
+        refreshStatuses()
+        save()
     }
 
     func writeBatchManifest(batchID: String, modelID: String, runs: [Layer1ModelRun]) -> URL {
@@ -232,10 +238,13 @@ final class Layer1GroundTruthStore {
         let url = directoryURL.appendingPathComponent("\(batchID)-\(modelID).jsonl")
         let lines = runs.compactMap { run -> String? in
             guard let file = file(for: run.audioID) else { return nil }
-            let row: [String: Any] = ["id": run.id, "file": file.url.lastPathComponent,
-                                      "audio": file.path, "audio_hash": file.audioHash]
+            let row: [String: Any] = [
+                "id": run.id, "file": file.url.lastPathComponent,
+                "audio": file.path, "audio_hash": file.audioHash,
+            ]
             guard let data = try? JSONSerialization.data(withJSONObject: row),
-                  let line = String(data: data, encoding: .utf8) else { return nil }
+                let line = String(data: data, encoding: .utf8)
+            else { return nil }
             return line
         }
         try? (lines.joined(separator: "\n") + "\n").write(to: url, atomically: true, encoding: .utf8)
@@ -259,15 +268,17 @@ final class Layer1GroundTruthStore {
                 wordTimestamps: old.wordTimestamps, error: error)
         }
         appendHistory(event: "batch_failed", payload: ["batchID": batchID, "error": error])
-        refreshStatuses(); save()
+        refreshStatuses()
+        save()
     }
 
     func retryFailed(fileIDs: Set<String>? = nil) {
         let latest = runsForLatestAttempts()
         let failed = latest.filter { $0.status == .failed && (fileIDs == nil || fileIDs!.contains($0.audioID)) }
-        let batchIDs = Set(failed.flatMap { run in
-            state.files.first { $0.id == run.audioID }?.batchIDs ?? []
-        })
+        let batchIDs = Set(
+            failed.flatMap { run in
+                state.files.first { $0.id == run.audioID }?.batchIDs ?? []
+            })
         let runsToRetry = latest.filter { run in
             batchIDs.contains { batchID in
                 state.batches.first { $0.id == batchID }?.fileIDs.contains(run.audioID) == true
@@ -275,16 +286,18 @@ final class Layer1GroundTruthStore {
         }
         for old in runsToRetry {
             guard let spec = Layer1ModelSpec.catalog.first(where: { $0.id == old.modelID }) else { continue }
-            state.modelRuns.append(Layer1ModelRun(
-                id: UUID().uuidString, audioID: old.audioID, modelID: spec.id,
-                model: spec.title, family: spec.family, version: "unconfigured",
-                configuration: spec.configuration, startedAt: nil, finishedAt: nil,
-                duration: nil, attempt: old.attempt + 1, status: .queued,
-                rawResponse: nil, text: nil, wordTimestamps: [], error: nil))
+            state.modelRuns.append(
+                Layer1ModelRun(
+                    id: UUID().uuidString, audioID: old.audioID, modelID: spec.id,
+                    model: spec.title, family: spec.family, version: "unconfigured",
+                    configuration: spec.configuration, startedAt: nil, finishedAt: nil,
+                    duration: nil, attempt: old.attempt + 1, status: .queued,
+                    rawResponse: nil, text: nil, wordTimestamps: [], error: nil))
         }
         if !runsToRetry.isEmpty {
             appendHistory(event: "retry_failed_batches", payload: ["count": runsToRetry.count, "batches": batchIDs.count])
-            refreshStatuses(); save()
+            refreshStatuses()
+            save()
         }
     }
 
@@ -295,9 +308,10 @@ final class Layer1GroundTruthStore {
             $0.status == .failed && ($0.error ?? "").contains("ffmpeg")
         }
         guard !failed.isEmpty else { return }
-        let batchIDs = Set(failed.flatMap { run in
-            state.files.first { $0.id == run.audioID }?.batchIDs ?? []
-        })
+        let batchIDs = Set(
+            failed.flatMap { run in
+                state.files.first { $0.id == run.audioID }?.batchIDs ?? []
+            })
         requeueWholeBatches(batchIDs)
         appendHistory(event: "retry_legacy_environment_failures", payload: ["batches": batchIDs.count])
         refreshStatuses()
@@ -324,12 +338,13 @@ final class Layer1GroundTruthStore {
             state.segments.removeAll { fileIDs.contains($0.audioID) }
             for old in latest where latestRuns(for: batchID).contains(where: { $0.id == old.id }) && old.status != .queued {
                 guard let spec = Layer1ModelSpec.catalog.first(where: { $0.id == old.modelID }) else { continue }
-                state.modelRuns.append(Layer1ModelRun(
-                    id: UUID().uuidString, audioID: old.audioID, modelID: spec.id,
-                    model: spec.title, family: spec.family, version: "unconfigured",
-                    configuration: spec.configuration, startedAt: nil, finishedAt: nil,
-                    duration: nil, attempt: old.attempt + 1, status: .queued,
-                    rawResponse: nil, text: nil, wordTimestamps: [], error: nil))
+                state.modelRuns.append(
+                    Layer1ModelRun(
+                        id: UUID().uuidString, audioID: old.audioID, modelID: spec.id,
+                        model: spec.title, family: spec.family, version: "unconfigured",
+                        configuration: spec.configuration, startedAt: nil, finishedAt: nil,
+                        duration: nil, attempt: old.attempt + 1, status: .queued,
+                        rawResponse: nil, text: nil, wordTimestamps: [], error: nil))
             }
         }
     }
@@ -343,25 +358,32 @@ final class Layer1GroundTruthStore {
         save()
     }
 
-    func markRunning(_ runID: String, configuration: [String: String], version: String,
-                     at date: Date = Date()) {
+    func markRunning(
+        _ runID: String, configuration: [String: String], version: String,
+        at date: Date = Date()
+    ) {
         guard let index = state.modelRuns.firstIndex(where: { $0.id == runID }) else { return }
         state.modelRuns[index].status = .running
-        state.modelRuns[index] = Layer1ModelRun(id: state.modelRuns[index].id,
+        state.modelRuns[index] = Layer1ModelRun(
+            id: state.modelRuns[index].id,
             audioID: state.modelRuns[index].audioID, modelID: state.modelRuns[index].modelID,
             model: state.modelRuns[index].model, family: state.modelRuns[index].family,
             version: version, configuration: configuration,
             startedAt: date, finishedAt: nil, duration: nil, attempt: state.modelRuns[index].attempt,
             status: .running, rawResponse: nil, text: nil, wordTimestamps: [], error: nil)
-        refreshStatuses(); save()
+        refreshStatuses()
+        save()
     }
 
-    func finish(_ runID: String, status: Layer1ModelRunStatus, version: String,
-                rawResponse: String, text: String?, timestamps: [Layer1WordTimestamp],
-                error: String?, duration: Double, at date: Date = Date()) {
+    func finish(
+        _ runID: String, status: Layer1ModelRunStatus, version: String,
+        rawResponse: String, text: String?, timestamps: [Layer1WordTimestamp],
+        error: String?, duration: Double, at date: Date = Date()
+    ) {
         guard let index = state.modelRuns.firstIndex(where: { $0.id == runID }) else { return }
         let old = state.modelRuns[index]
-        state.modelRuns[index] = Layer1ModelRun(id: old.id, audioID: old.audioID, modelID: old.modelID,
+        state.modelRuns[index] = Layer1ModelRun(
+            id: old.id, audioID: old.audioID, modelID: old.modelID,
             model: old.model, family: old.family, version: version, configuration: old.configuration,
             startedAt: old.startedAt, finishedAt: date, duration: duration, attempt: old.attempt,
             status: status, rawResponse: rawResponse, text: text, wordTimestamps: timestamps, error: error)
@@ -373,8 +395,10 @@ final class Layer1GroundTruthStore {
         save()
     }
 
-    func saveDecision(segmentID: String, text: String?, action: Layer1HumanAction,
-                      sourceModelID: String? = nil, now: Date = Date()) {
+    func saveDecision(
+        segmentID: String, text: String?, action: Layer1HumanAction,
+        sourceModelID: String? = nil, now: Date = Date()
+    ) {
         guard let index = state.segments.firstIndex(where: { $0.id == segmentID }) else { return }
         let previous = state.segments[index].decision
         state.segments[index].decision = Layer1SegmentDecision(
@@ -386,7 +410,8 @@ final class Layer1GroundTruthStore {
         if let text { history["text"] = text }
         if let sourceModelID { history["sourceModelID"] = sourceModelID }
         appendHistory(event: "human_decision", payload: history)
-        refreshStatuses(); save()
+        refreshStatuses()
+        save()
     }
 
     func markSegmentationNeedsReview(_ segmentID: String) {
@@ -419,22 +444,26 @@ final class Layer1GroundTruthStore {
     }
 
     func fullyVerifiedFileIDs() -> Set<String> {
-        Set(state.files.filter { file in
-            let segments = state.segments.filter { $0.audioID == file.id }
-            return !segments.isEmpty && segments.allSatisfy { $0.decision.status == .verified }
-        }.map(\.id))
+        Set(
+            state.files.filter { file in
+                let segments = state.segments.filter { $0.audioID == file.id }
+                return !segments.isEmpty && segments.allSatisfy { $0.decision.status == .verified }
+            }.map(\.id))
     }
 
     var resumeSegmentID: String? {
         guard let last = state.lastReviewSegmentID,
-              let index = state.segments.firstIndex(where: { $0.id == last }) else { return nil }
+            let index = state.segments.firstIndex(where: { $0.id == last })
+        else { return nil }
         return state.segments.dropFirst(index + 1).first(where: { $0.decision.status == .pending })?.id
             ?? state.segments.first(where: { $0.decision.status == .pending })?.id
     }
     func readyFilesCount() -> Int {
-        state.files.filter { file in state.segments.contains { segment in
-            segment.audioID == file.id && segment.decision.status == .pending
-        }}.count
+        state.files.filter { file in
+            state.segments.contains { segment in
+                segment.audioID == file.id && segment.decision.status == .pending
+            }
+        }.count
     }
     func verifiedSegmentsCount() -> Int { state.segments.filter { $0.decision.status == .verified }.count }
 
@@ -452,17 +481,24 @@ final class Layer1GroundTruthStore {
     func save() {
         state.updatedAt = Date()
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601; encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         if let data = try? encoder.encode(state) { try? data.write(to: stateURL, options: .atomic) }
     }
 
     static func normalize(_ text: String) -> String {
         var output = ""
         for character in text.lowercased() {
-            if character.isWhitespace { output.append(" ") }
-            else if "+#*".contains(character) { output.append(character) }
-            else if character.unicodeScalars.allSatisfy({ CharacterSet.punctuationCharacters.contains($0) }) { continue }
-            else { output.append(character) }
+            if character.isWhitespace {
+                output.append(" ")
+            } else if "+#*".contains(character) {
+                output.append(character)
+            } else if character.unicodeScalars.allSatisfy({ CharacterSet.punctuationCharacters.contains($0) }) {
+                continue
+            } else {
+                output.append(character)
+            }
         }
         return output.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
     }
@@ -477,88 +513,118 @@ final class Layer1GroundTruthStore {
         while autoreleasepool(invoking: {
             let data = handle.readData(ofLength: 1024 * 1024)
             guard !data.isEmpty else { return false }
-            hasher.update(data: data); return true
+            hasher.update(data: data)
+            return true
         }) {}
         try? handle.close()
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
-    static func makeSegments(audioID: String, duration: Double, words: [Layer1WordTimestamp],
-                             suggestions: [String: Layer1ModelSuggestion], algorithmVersion: String = "layer1-seg-v1") -> [Layer1Segment] {
+    static func makeSegments(
+        audioID: String, duration: Double, words: [Layer1WordTimestamp],
+        suggestions: [String: Layer1ModelSuggestion], algorithmVersion: String = "layer1-seg-v1"
+    ) -> [Layer1Segment] {
         let clean = words.filter { $0.end > $0.start && !$0.word.isEmpty }
         if clean.isEmpty {
-            return [segment(audioID: audioID, start: 0, end: max(duration, 0.1), range: nil,
-                            suggestions: suggestions, needsReview: duration > 7, algorithmVersion: algorithmVersion)]
+            return [
+                segment(
+                    audioID: audioID, start: 0, end: max(duration, 0.1), range: nil,
+                    suggestions: suggestions, needsReview: duration > 7, algorithmVersion: algorithmVersion)
+            ]
         }
-        var groups: [(Int, Int)] = []; var start = 0
+        var groups: [(Int, Int)] = []
+        var start = 0
         for index in clean.indices {
             let count = index - start + 1
             let pause = index + 1 < clean.count ? clean[index + 1].start - clean[index].end : .infinity
             if count >= 7 || (count >= 3 && pause >= 0.45) {
-                groups.append((start, index + 1)); start = index + 1
+                groups.append((start, index + 1))
+                start = index + 1
             }
         }
         if start < clean.count { groups.append((start, clean.count)) }
         return groups.enumerated().map { number, group in
-            let first = clean[group.0], last = clean[group.1 - 1]
-            let left = max(0, first.start - 0.15), right = min(max(duration, last.end), last.end + 0.15)
-            return segment(audioID: audioID, start: left, end: max(left + 0.05, right),
-                           range: group.0..<group.1, suggestions: suggestions, needsReview: group.1 - group.0 > 7,
-                           algorithmVersion: algorithmVersion + ":\(number)")
+            let first = clean[group.0]
+            let last = clean[group.1 - 1]
+            let left = max(0, first.start - 0.15)
+            let right = min(max(duration, last.end), last.end + 0.15)
+            return segment(
+                audioID: audioID, start: left, end: max(left + 0.05, right),
+                range: group.0..<group.1, suggestions: suggestions, needsReview: group.1 - group.0 > 7,
+                algorithmVersion: algorithmVersion + ":\(number)")
         }
     }
 
-    private static func segment(audioID: String, start: Double, end: Double, range: Range<Int>?,
-                                suggestions: [String: Layer1ModelSuggestion], needsReview: Bool, algorithmVersion: String) -> Layer1Segment {
+    private static func segment(
+        audioID: String, start: Double, end: Double, range: Range<Int>?,
+        suggestions: [String: Layer1ModelSuggestion], needsReview: Bool, algorithmVersion: String
+    ) -> Layer1Segment {
         let ids = Layer1ModelSpec.catalog.map(\.id)
         let offset = abs(audioID.hashValue) % max(ids.count, 1)
         let order = Array(ids[offset...] + ids[..<offset])
-        return Layer1Segment(id: "\(audioID)#\(start)#\(end)", audioID: audioID, start: start, end: end,
-                             segmentationAlgorithmVersion: algorithmVersion, sourceWordRange: range,
-                             modelSuggestions: suggestions, proposalOrder: order, segmentationNeedsReview: needsReview,
-                             decision: Layer1SegmentDecision(status: .pending, text: nil, normalizedText: nil,
-                                                             action: nil, sourceModelID: nil, createdAt: nil, updatedAt: nil))
+        return Layer1Segment(
+            id: "\(audioID)#\(start)#\(end)", audioID: audioID, start: start, end: end,
+            segmentationAlgorithmVersion: algorithmVersion, sourceWordRange: range,
+            modelSuggestions: suggestions, proposalOrder: order, segmentationNeedsReview: needsReview,
+            decision: Layer1SegmentDecision(
+                status: .pending, text: nil, normalizedText: nil,
+                action: nil, sourceModelID: nil, createdAt: nil, updatedAt: nil))
     }
 
     private func buildSegmentsIfReady(audioID: String) {
         guard !state.segments.contains(where: { $0.audioID == audioID }),
-              let file = file(for: audioID) else { return }
+            let file = file(for: audioID)
+        else { return }
         let runs = runs(for: audioID)
         guard runs.count == allModelIDs.count,
-              runs.allSatisfy({ $0.status == .completed }) else { return }
+            runs.allSatisfy({ $0.status == .completed })
+        else { return }
         let hasUnmappedSuccessfulRun = runs.contains {
             $0.status == .completed && !($0.text ?? "").isEmpty && $0.wordTimestamps.isEmpty
         }
         let timed = hasUnmappedSuccessfulRun ? [] : (runs.first(where: { !$0.wordTimestamps.isEmpty })?.wordTimestamps ?? [])
-        let base = Self.makeSegments(audioID: audioID, duration: file.duration,
-                                     words: timed, suggestions: [:])
-        state.segments.append(contentsOf: base.map { segment in
-            var result = segment
-            result.modelSuggestions = Dictionary(uniqueKeysWithValues: runs.map { run in
-                let scoped: String?
-                if !run.wordTimestamps.isEmpty {
-                    let timed = run.wordTimestamps.filter { $0.end > segment.start && $0.start < segment.end }
-                        .map(\.word).joined(separator: " ")
-                    scoped = timed.isEmpty ? run.text : timed
-                } else {
-                    scoped = run.text
-                }
-                return (run.modelID, Layer1ModelSuggestion(modelID: run.modelID, model: run.model,
-                    status: run.status, text: scoped, error: run.error, runID: run.id))
+        let base = Self.makeSegments(
+            audioID: audioID, duration: file.duration,
+            words: timed, suggestions: [:])
+        state.segments.append(
+            contentsOf: base.map { segment in
+                var result = segment
+                result.modelSuggestions = Dictionary(
+                    uniqueKeysWithValues: runs.map { run in
+                        let scoped: String?
+                        if !run.wordTimestamps.isEmpty {
+                            let timed = run.wordTimestamps.filter { $0.end > segment.start && $0.start < segment.end }
+                                .map(\.word).joined(separator: " ")
+                            scoped = timed.isEmpty ? run.text : timed
+                        } else {
+                            scoped = run.text
+                        }
+                        return (
+                            run.modelID,
+                            Layer1ModelSuggestion(
+                                modelID: run.modelID, model: run.model,
+                                status: run.status, text: scoped, error: run.error, runID: run.id)
+                        )
+                    })
+                return result
             })
-            return result
-        })
     }
 
     private func refreshStatuses() {
         for index in state.files.indices { state.files[index].lastStatus = status(for: state.files[index].id) }
         for index in state.batches.indices {
             let statuses = state.batches[index].fileIDs.map { status(for: $0) }
-            if statuses.contains(.running) { state.batches[index].status = .running }
-            else if statuses.contains(.queued) { state.batches[index].status = .queued }
-            else if statuses.contains(.partial) { state.batches[index].status = .partial }
-            else if statuses.allSatisfy({ $0 == .completed }) { state.batches[index].status = .completed }
-            else { state.batches[index].status = .failed }
+            if statuses.contains(.running) {
+                state.batches[index].status = .running
+            } else if statuses.contains(.queued) {
+                state.batches[index].status = .queued
+            } else if statuses.contains(.partial) {
+                state.batches[index].status = .partial
+            } else if statuses.allSatisfy({ $0 == .completed }) {
+                state.batches[index].status = .completed
+            } else {
+                state.batches[index].status = .failed
+            }
         }
     }
 
@@ -584,23 +650,32 @@ final class Layer1GroundTruthStore {
 
     func commandConfiguration(for modelID: String) -> (command: [String], version: String) {
         guard let data = try? Data(contentsOf: commandConfigurationURL),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: [String: Any]],
-              let row = object[modelID], let raw = row["command"] as? String,
-              !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return ([], "unconfigured") }
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: [String: Any]],
+            let row = object[modelID], let raw = row["command"] as? String,
+            !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return ([], "unconfigured") }
         return (raw.split(separator: " ").map(String.init), row["version"] as? String ?? "unversioned")
     }
 
     private func appendHistory(event: String, payload: [String: Any]) {
-        var row = payload; row["event"] = event; row["at"] = ISO8601DateFormatter().string(from: Date())
+        var row = payload
+        row["event"] = event
+        row["at"] = ISO8601DateFormatter().string(from: Date())
         guard let data = try? JSONSerialization.data(withJSONObject: row), var line = String(data: data, encoding: .utf8) else { return }
         line.append("\n")
-        if let handle = try? FileHandle(forWritingTo: historyURL) { try? handle.seekToEnd(); try? handle.write(contentsOf: Data(line.utf8)); try? handle.close() }
-        else { try? Data(line.utf8).write(to: historyURL) }
+        if let handle = try? FileHandle(forWritingTo: historyURL) {
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? Data(line.utf8).write(to: historyURL)
+        }
     }
 
     private static func loadState(from directory: URL) -> Layer1State? {
         guard let data = try? Data(contentsOf: directory.appendingPathComponent("state.json")) else { return nil }
-        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
         return try? decoder.decode(Layer1State.self, from: data)
     }
 }

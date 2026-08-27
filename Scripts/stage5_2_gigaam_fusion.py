@@ -23,7 +23,7 @@ def contains_latin_or_num(text: str) -> bool:
 def fuse_whisper_and_gigaam(whisper_text: str, giga1_text: str, giga2_text: str,
                              glossary: dict[str, list[str]] | None = None) -> str:
     """Fuse Whisper candidate transcript with GigaAM RNNT and CTC transcripts.
-    
+
     Rules for Stage 5.2:
     (a) If word/pair is in confirmed glossary -> use glossary spelling.
     (b) If both GigaAM heads (RNNT & CTC) agree with each other on a purely Russian
@@ -38,7 +38,7 @@ def fuse_whisper_and_gigaam(whisper_text: str, giga1_text: str, giga2_text: str,
 
     whisper_words = whisper_text.split()
     whisper_norm_tokens = [normalize(w) for w in whisper_words]
-    
+
     giga1_words = giga1_text.split()
     giga1_norm_tokens = [normalize(w) for w in giga1_words]
 
@@ -58,14 +58,14 @@ def fuse_whisper_and_gigaam(whisper_text: str, giga1_text: str, giga2_text: str,
             w_span_norm = " ".join(whisper_norm_tokens[i1:i2])
             g1_span_raw = " ".join(giga1_words[j1:j2])
             g1_span_norm = " ".join(giga1_norm_tokens[j1:j2])
-            
+
             # Check if GigaAM heads agree on this span
             # Check if giga2 contains g1_span_norm
             giga2_has_g1 = g1_span_norm in " ".join(giga2_norm_tokens)
-            
+
             # Guard: Latin, numbers, punctuation
             is_latin_or_num = contains_latin_or_num(w_span_raw) or contains_latin_or_num(g1_span_raw)
-            
+
             if not is_latin_or_num and giga2_has_g1:
                 # Rule (b): both GigaAM heads agree on purely Russian words -> adopt GigaAM
                 result_words.append(g1_span_raw)
@@ -88,7 +88,7 @@ def main():
 
     decodes = load_decodes([args.root / "decodes.jsonl", args.candidate_file])
     fused_rows = []
-    
+
     changed_count = 0
     total_files = 0
 
@@ -99,11 +99,11 @@ def main():
         total_files += 1
         giga1 = cfgs.get("gigaam", "")
         giga2 = cfgs.get("gigaam-ctc", "")
-        
+
         fused_text = fuse_whisper_and_gigaam(whisper_text, giga1, giga2)
         if fused_text != whisper_text:
             changed_count += 1
-        
+
         fused_rows.append({"file": file, "config": "w-final-fused-v1", "text": fused_text})
 
     out_file = args.root / "experiments/decodes-stage5-fused.jsonl"

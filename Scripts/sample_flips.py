@@ -11,7 +11,7 @@ DEFAULT_AUDIO_DIR = Path.home() / "Library/Application Support/Soma/VoiceRecordi
 def sample_flips(input_file: Path, audio_dir: Path, seed: int = 42) -> list[dict]:
     random.seed(seed)
     categories = {"term": [], "filler": [], "phrasing": []}
-    
+
     with open(input_file, "r", encoding="utf-8") as f:
         for line in f:
             if not line.strip():
@@ -20,7 +20,7 @@ def sample_flips(input_file: Path, audio_dir: Path, seed: int = 42) -> list[dict
             cat = item.get("category")
             if cat in categories:
                 categories[cat].append(item)
-    
+
     # Stratified sampling: 10 term, 10 filler, 10 phrasing
     sampled = []
     for cat, items in categories.items():
@@ -32,7 +32,7 @@ def sample_flips(input_file: Path, audio_dir: Path, seed: int = 42) -> list[dict
             item_copy["audio_exists"] = wav_path.exists()
             item_copy["audio_path"] = str(wav_path)
             sampled.append(item_copy)
-            
+
     # Shuffle the combined 30 items deterministically
     random.shuffle(sampled)
     return sampled
@@ -65,15 +65,15 @@ def generate_markdown(sampled: list[dict]) -> str:
         ctx_after = item["context_after"]
         base = item["base"] if item["base"] else "∅ (пусто)"
         cand = item["candidate"] if item["candidate"] else "∅ (пусто)"
-        
+
         lines.append(f"### № {idx}. [{cat}] `{file_name}`")
         lines.append(f"- **Аудио**: `{audio_path}`")
         lines.append(f"- **Контекст**: `... {ctx_before}` **[ A vs B ]** `{ctx_after} ...`")
         lines.append(f"- **A (Base)**: `{base}`")
         lines.append(f"- **B (Candidate)**: `{cand}`")
-        lines.append(f"- **Вердикт**: [ ] **A** | [ ] **B** | [ ] **=**")
+        lines.append("- **Вердикт**: [ ] **A** | [ ] **B** | [ ] **=**")
         lines.append("")
-        
+
     return "\n".join(lines)
 
 def main():
@@ -83,10 +83,10 @@ def main():
     parser.add_argument("--out-json", type=Path)
     parser.add_argument("--out-md", type=Path)
     args = parser.parse_args()
-    
+
     sampled = sample_flips(args.input, args.audio_dir)
     md_content = generate_markdown(sampled)
-    
+
     if args.out_md:
         args.out_md.write_text(md_content, encoding="utf-8")
         print(f"Wrote markdown to {args.out_md}")

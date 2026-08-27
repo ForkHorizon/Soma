@@ -1,4 +1,5 @@
-import json, os
+import json
+import os
 
 gt = os.path.expanduser("~/Library/Application Support/Soma/GroundTruth")
 

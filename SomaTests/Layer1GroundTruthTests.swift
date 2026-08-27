@@ -3,8 +3,9 @@ import XCTest
 
 final class Layer1GroundTruthTests: XCTestCase {
     func testNormalizationKeepsSpokenWordsAndRepeats() {
-        XCTAssertEqual(Layer1GroundTruthStore.normalize("Я,  я думаю... Что это правильно!"),
-                       "я я думаю что это правильно")
+        XCTAssertEqual(
+            Layer1GroundTruthStore.normalize("Я,  я думаю... Что это правильно!"),
+            "я я думаю что это правильно")
         XCTAssertEqual(Layer1GroundTruthStore.normalize("C++  C#"), "c++ c#")
     }
 
@@ -32,16 +33,22 @@ final class Layer1GroundTruthTests: XCTestCase {
         let audio = root.appendingPathComponent("speech.wav")
         try Data("speech".utf8).write(to: audio)
         let store = Layer1GroundTruthStore(directory: root.appendingPathComponent("store"))
-        let file = try XCTUnwrap(store.addBatch(count: 1, candidates: [
-            Layer1AudioCandidate(url: audio, date: Date(), duration: 4)
-        ])?.fileIDs.first)
-        let timestamp = [Layer1WordTimestamp(word: "я", start: 0, end: 0.4),
-                         Layer1WordTimestamp(word: "я", start: 0.5, end: 0.9),
-                         Layer1WordTimestamp(word: "думаю", start: 1, end: 1.5)]
+        let file = try XCTUnwrap(
+            store.addBatch(
+                count: 1,
+                candidates: [
+                    Layer1AudioCandidate(url: audio, date: Date(), duration: 4)
+                ])?.fileIDs.first)
+        let timestamp = [
+            Layer1WordTimestamp(word: "я", start: 0, end: 0.4),
+            Layer1WordTimestamp(word: "я", start: 0.5, end: 0.9),
+            Layer1WordTimestamp(word: "думаю", start: 1, end: 1.5),
+        ]
         for (index, run) in store.queuedRuns().enumerated() {
             store.markRunning(run.id, configuration: run.configuration, version: "test", at: Date())
-            store.finish(run.id, status: .completed, version: "test", rawResponse: "{\"text\":\"я я думаю\"}",
-                         text: "я я думаю", timestamps: index == 0 ? timestamp : [], error: nil, duration: 0.1)
+            store.finish(
+                run.id, status: .completed, version: "test", rawResponse: "{\"text\":\"я я думаю\"}",
+                text: "я я думаю", timestamps: index == 0 ? timestamp : [], error: nil, duration: 0.1)
         }
         let segment = try XCTUnwrap(store.state.segments.first(where: { $0.audioID == file }))
         XCTAssertEqual(segment.decision.status, .pending)
@@ -56,35 +63,44 @@ final class Layer1GroundTruthTests: XCTestCase {
 
     func testAssemblyUsesEachSegmentOnceAndPreservesOrder() {
         let suggestions: [String: Layer1ModelSuggestion] = [:]
-        let first = Layer1Segment(id: "b", audioID: "a", start: 2, end: 3, segmentationAlgorithmVersion: "v1",
-                                  sourceWordRange: 2..<3, modelSuggestions: suggestions, proposalOrder: [],
-                                  segmentationNeedsReview: false,
-                                  decision: Layer1SegmentDecision(status: .verified, text: "это", normalizedText: "это",
-                                                                  action: .manual, sourceModelID: nil, createdAt: nil, updatedAt: nil))
-        let second = Layer1Segment(id: "a", audioID: "a", start: 0, end: 1, segmentationAlgorithmVersion: "v1",
-                                   sourceWordRange: 0..<2, modelSuggestions: suggestions, proposalOrder: [],
-                                   segmentationNeedsReview: false,
-                                   decision: Layer1SegmentDecision(status: .verified, text: "я я", normalizedText: "я я",
-                                                                   action: .manual, sourceModelID: nil, createdAt: nil, updatedAt: nil))
+        let first = Layer1Segment(
+            id: "b", audioID: "a", start: 2, end: 3, segmentationAlgorithmVersion: "v1",
+            sourceWordRange: 2..<3, modelSuggestions: suggestions, proposalOrder: [],
+            segmentationNeedsReview: false,
+            decision: Layer1SegmentDecision(
+                status: .verified, text: "это", normalizedText: "это",
+                action: .manual, sourceModelID: nil, createdAt: nil, updatedAt: nil))
+        let second = Layer1Segment(
+            id: "a", audioID: "a", start: 0, end: 1, segmentationAlgorithmVersion: "v1",
+            sourceWordRange: 0..<2, modelSuggestions: suggestions, proposalOrder: [],
+            segmentationNeedsReview: false,
+            decision: Layer1SegmentDecision(
+                status: .verified, text: "я я", normalizedText: "я я",
+                action: .manual, sourceModelID: nil, createdAt: nil, updatedAt: nil))
         XCTAssertEqual(Layer1GroundTruthStore.assemble([first, second]), "я я это")
     }
 
     func testQualityUsesOnlyVerifiedHumanReference() {
         let model = Layer1ModelSpec.catalog[0]
-        let suggestion = Layer1ModelSuggestion(modelID: model.id, model: model.title, status: .completed,
-                                               text: "Я я думаю", error: nil, runID: "run")
-        let verified = Layer1Segment(id: "verified", audioID: "audio", start: 0, end: 1,
-                                     segmentationAlgorithmVersion: "v1", sourceWordRange: nil,
-                                     modelSuggestions: [model.id: suggestion], proposalOrder: [model.id],
-                                     segmentationNeedsReview: false,
-                                     decision: .init(status: .verified, text: "я я думаю", normalizedText: "я я думаю",
-                                                     action: .selectedModel, sourceModelID: model.id, createdAt: nil, updatedAt: nil))
-        let pending = Layer1Segment(id: "pending", audioID: "audio", start: 1, end: 2,
-                                    segmentationAlgorithmVersion: "v1", sourceWordRange: nil,
-                                    modelSuggestions: [model.id: suggestion], proposalOrder: [model.id],
-                                    segmentationNeedsReview: false,
-                                    decision: .init(status: .pending, text: nil, normalizedText: nil,
-                                                    action: nil, sourceModelID: nil, createdAt: nil, updatedAt: nil))
+        let suggestion = Layer1ModelSuggestion(
+            modelID: model.id, model: model.title, status: .completed,
+            text: "Я я думаю", error: nil, runID: "run")
+        let verified = Layer1Segment(
+            id: "verified", audioID: "audio", start: 0, end: 1,
+            segmentationAlgorithmVersion: "v1", sourceWordRange: nil,
+            modelSuggestions: [model.id: suggestion], proposalOrder: [model.id],
+            segmentationNeedsReview: false,
+            decision: .init(
+                status: .verified, text: "я я думаю", normalizedText: "я я думаю",
+                action: .selectedModel, sourceModelID: model.id, createdAt: nil, updatedAt: nil))
+        let pending = Layer1Segment(
+            id: "pending", audioID: "audio", start: 1, end: 2,
+            segmentationAlgorithmVersion: "v1", sourceWordRange: nil,
+            modelSuggestions: [model.id: suggestion], proposalOrder: [model.id],
+            segmentationNeedsReview: false,
+            decision: .init(
+                status: .pending, text: nil, normalizedText: nil,
+                action: nil, sourceModelID: nil, createdAt: nil, updatedAt: nil))
 
         let quality = layer1Quality(models: [model], segments: [verified, pending])[model.id]
         XCTAssertEqual(quality?.evaluated, 1)
@@ -100,8 +116,9 @@ final class Layer1GroundTruthTests: XCTestCase {
         _ = store.addBatch(count: 1, candidates: [Layer1AudioCandidate(url: audio, date: Date(), duration: 4)])
         let run = try XCTUnwrap(store.queuedRuns().first)
         store.markRunning(run.id, configuration: run.configuration, version: "test", at: Date())
-        store.finish(run.id, status: .failed, version: "test", rawResponse: "", text: nil,
-                     timestamps: [], error: "FileNotFoundError: ffmpeg", duration: 0.1)
+        store.finish(
+            run.id, status: .failed, version: "test", rawResponse: "", text: nil,
+            timestamps: [], error: "FileNotFoundError: ffmpeg", duration: 0.1)
 
         let reloaded = Layer1GroundTruthStore(directory: root.appendingPathComponent("store"))
         let retry = reloaded.queuedRuns().first { $0.audioID == run.audioID && $0.modelID == run.modelID }
@@ -113,13 +130,17 @@ final class Layer1GroundTruthTests: XCTestCase {
         let audio = root.appendingPathComponent("speech.wav")
         try Data("speech".utf8).write(to: audio)
         let store = Layer1GroundTruthStore(directory: root.appendingPathComponent("store"))
-        let batch = try XCTUnwrap(store.addBatch(count: 1, candidates: [
-            Layer1AudioCandidate(url: audio, date: Date(), duration: 4)
-        ]))
+        let batch = try XCTUnwrap(
+            store.addBatch(
+                count: 1,
+                candidates: [
+                    Layer1AudioCandidate(url: audio, date: Date(), duration: 4)
+                ]))
         let failed = try XCTUnwrap(store.queuedRuns().first)
         store.markRunning(failed.id, configuration: failed.configuration, version: "test", at: Date())
-        store.finish(failed.id, status: .failed, version: "test", rawResponse: "", text: nil,
-                     timestamps: [], error: "model failed", duration: 0.1)
+        store.finish(
+            failed.id, status: .failed, version: "test", rawResponse: "", text: nil,
+            timestamps: [], error: "model failed", duration: 0.1)
 
         store.retryFailed()
         XCTAssertEqual(store.latestRuns(for: batch.id).count, Layer1ModelSpec.catalog.count)
@@ -131,13 +152,17 @@ final class Layer1GroundTruthTests: XCTestCase {
         let audio = root.appendingPathComponent("speech.wav")
         try Data("speech".utf8).write(to: audio)
         let store = Layer1GroundTruthStore(directory: root.appendingPathComponent("store"))
-        let batch = try XCTUnwrap(store.addBatch(count: 1, candidates: [
-            Layer1AudioCandidate(url: audio, date: Date(), duration: 4)
-        ]))
+        let batch = try XCTUnwrap(
+            store.addBatch(
+                count: 1,
+                candidates: [
+                    Layer1AudioCandidate(url: audio, date: Date(), duration: 4)
+                ]))
         for run in store.queuedRuns() {
             store.markRunning(run.id, configuration: run.configuration, version: "test", at: Date())
-            store.finish(run.id, status: .completed, version: "test", rawResponse: "{}", text: "слово",
-                         timestamps: [], error: nil, duration: 0.1)
+            store.finish(
+                run.id, status: .completed, version: "test", rawResponse: "{}", text: "слово",
+                timestamps: [], error: nil, duration: 0.1)
         }
         XCTAssertFalse(store.state.segments.isEmpty)
         store.failBatch(batch.id, error: "one model failed")
@@ -150,13 +175,17 @@ final class Layer1GroundTruthTests: XCTestCase {
         let audio = root.appendingPathComponent("speech.wav")
         try Data("speech".utf8).write(to: audio)
         let store = Layer1GroundTruthStore(directory: root.appendingPathComponent("store"))
-        let batch = try XCTUnwrap(store.addBatch(count: 1, candidates: [
-            Layer1AudioCandidate(url: audio, date: Date(), duration: 4)
-        ]))
+        let batch = try XCTUnwrap(
+            store.addBatch(
+                count: 1,
+                candidates: [
+                    Layer1AudioCandidate(url: audio, date: Date(), duration: 4)
+                ]))
         let run = try XCTUnwrap(store.queuedRuns().first)
         store.markRunning(run.id, configuration: run.configuration, version: "test", at: Date())
-        store.finish(run.id, status: .completed, version: "test", rawResponse: "{}", text: "слово",
-                     timestamps: [], error: nil, duration: 0.1)
+        store.finish(
+            run.id, status: .completed, version: "test", rawResponse: "{}", text: "слово",
+            timestamps: [], error: nil, duration: 0.1)
 
         let reloaded = Layer1GroundTruthStore(directory: root.appendingPathComponent("store"))
         XCTAssertTrue(reloaded.latestRuns(for: batch.id).allSatisfy { $0.status == .queued })

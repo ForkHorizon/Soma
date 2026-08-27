@@ -19,9 +19,12 @@ struct AppRouteDetail: View {
     var body: some View {
         switch route {
         case .rusToPrompt:
-            RusToPromptView(viewModel: rusToPromptViewModel, somaViewModel: viewModel, ollama: ollama, queueManager: rusToPromptQueueManager)
+            RusToPromptView(
+                viewModel: rusToPromptViewModel, somaViewModel: viewModel, ollama: ollama, queueManager: rusToPromptQueueManager)
         case .voiceToText:
-            VoiceToTextView(somaViewModel: viewModel, ollama: ollama, asr: voiceASR, prompter: voicePrompter, globalVoice: globalVoice, textPriorityQueue: textPriorityQueue)
+            VoiceToTextView(
+                somaViewModel: viewModel, ollama: ollama, asr: voiceASR, prompter: voicePrompter, globalVoice: globalVoice,
+                textPriorityQueue: textPriorityQueue)
         case .groundTruth:
             GroundTruthView(asr: voiceASR, runner: layer1GroundTruth)
         case .queue:

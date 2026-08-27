@@ -30,10 +30,10 @@ def apply_gigaam_veto(decodes: dict[str, dict[str, str]], no_speech_map: dict[tu
         cand_text = cfgs.get(candidate_cfg)
         if cand_text is None:
             continue
-        
+
         giga_silent = is_gigaam_silent(cfgs)
         ns_prob = no_speech_map.get((file, candidate_cfg), 0.0)
-        
+
         should_veto = False
         if giga_silent:
             if mode == "strict_consensus":
@@ -54,7 +54,7 @@ def apply_gigaam_veto(decodes: dict[str, dict[str, str]], no_speech_map: dict[tu
         else:
             new_cfg_name = f"{candidate_cfg}-{mode}"
             filtered_decodes[file][new_cfg_name] = cand_text
-            
+
     return filtered_decodes
 
 def main():
@@ -66,24 +66,24 @@ def main():
 
     baseline_file = args.root.parent / "Scripts/asr_baseline.json" if (args.root.parent / "Scripts/asr_baseline.json").exists() else Path("Scripts/asr_baseline.json")
     decodes_main = load_decodes([args.root / "decodes.jsonl", args.candidate_file])
-    
+
     rows_main = read_jsonl(args.root / "decodes.jsonl") + read_jsonl(args.candidate_file)
     no_speech_map = {}
     for r in rows_main:
         f, cfg = r.get("file"), r.get("config")
         if f and cfg and "no_speech" in r:
             no_speech_map[(f, cfg)] = r["no_speech"]
-            
+
     for mode in ["strict_consensus", "gigaam_hallucination_veto", "pure_gigaam_veto"]:
         filtered = apply_gigaam_veto(decodes_main, no_speech_map, args.candidate_config, mode)
         cfg_name = f"{args.candidate_config}-{mode}"
-        
+
         # Save filtered decodes to experiment jsonl
         out_rows = []
         for file, cfgs in filtered.items():
             if cfg_name in cfgs:
                 out_rows.append({"file": file, "config": cfg_name, "text": cfgs[cfg_name]})
-                
+
         out_file = args.root / f"experiments/decodes-stage5-veto-{mode}.jsonl"
         out_file.parent.mkdir(parents=True, exist_ok=True)
         out_file.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in out_rows) + "\n", encoding="utf-8")

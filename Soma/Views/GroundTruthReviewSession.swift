@@ -41,8 +41,10 @@ struct GroundTruthReviewSessionView: View {
     }
 
     private var pendingCount: Int {
-        items.filter { !settled.contains($0.verdict.file)
-                       && choicesByFile[$0.verdict.file]?[$0.operation.id] == nil }.count
+        items.filter {
+            !settled.contains($0.verdict.file)
+                && choicesByFile[$0.verdict.file]?[$0.operation.id] == nil
+        }.count
     }
 
     var body: some View {
@@ -64,12 +66,13 @@ struct GroundTruthReviewSessionView: View {
     // MARK: One disputed spot
 
     private func decision(_ item: GroundTruthReviewItem) -> some View {
-        let clip = item.operation.seconds
         return VStack(alignment: .leading, spacing: 14) {
             header(item)
             context(item)
             ForEach(Array(item.operation.alternatives.enumerated()), id: \.element.id) { position, option in
-                Button { decide(item, option.text, option.names.joined(separator: "+")) } label: {
+                Button {
+                    decide(item, option.text, option.names.joined(separator: "+"))
+                } label: {
                     HStack(alignment: .top, spacing: 10) {
                         Text(String(position + 1)).font(.callout).monospacedDigit().bold()
                             .frame(width: 22, height: 22)
@@ -117,8 +120,15 @@ struct GroundTruthReviewSessionView: View {
             decide(item, option.text, option.names.joined(separator: "+"))
             return .handled
         }
-        .onKeyPress(.space) { guard !typing else { return .ignored }; replay(item); return .handled }
-        .onKeyPress(.escape) { cursor += 1; return .handled }
+        .onKeyPress(.space) {
+            guard !typing else { return .ignored }
+            replay(item)
+            return .handled
+        }
+        .onKeyPress(.escape) {
+            cursor += 1
+            return .handled
+        }
     }
 
     private func header(_ item: GroundTruthReviewItem) -> some View {
@@ -126,8 +136,10 @@ struct GroundTruthReviewSessionView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(item.verdict.file) · word \(item.index) of \(item.total)")
                     .font(.caption).monospaced().foregroundStyle(.secondary)
-                Text("\(decisions) decided · \(filesDone) file(s) finished · ~\(max(1, Int(Double(pendingCount) * 5 / 60))) min left in queue")
-                    .font(.caption2).foregroundStyle(.secondary)
+                Text(
+                    "\(decisions) decided · \(filesDone) file(s) finished · ~\(max(1, Int(Double(pendingCount) * 5 / 60))) min left in queue"
+                )
+                .font(.caption2).foregroundStyle(.secondary)
             }
             Spacer()
             Button("End session") { finish() }
@@ -136,22 +148,27 @@ struct GroundTruthReviewSessionView: View {
 
     private func context(_ item: GroundTruthReviewItem) -> some View {
         let span = primarySpan(item)
-        return (Text(item.operation.contextBefore + " ")
-            .font(.callout).foregroundStyle(.secondary)
-            + Text(span.isEmpty ? "…" : "[\(span)]").font(.callout).bold().foregroundStyle(.red)
-            + Text(" " + item.operation.contextAfter)
-                .font(.callout).foregroundStyle(.secondary))
+        return Text("\(item.operation.contextBefore) \(span.isEmpty ? "…" : "[\(span)]") \(item.operation.contextAfter)")
+            .font(.callout)
+            .foregroundStyle(.secondary)
             .lineLimit(3)
             .textSelection(.enabled)
     }
 
     private func controls(_ item: GroundTruthReviewItem) -> some View {
         HStack {
-            Button { replay(item) } label: { Label("Replay (Space)", systemImage: "play.fill") }
-                .buttonStyle(.bordered).controlSize(.small)
-            Button { asr.togglePlayback(asr.recordingsDir.appendingPathComponent(item.verdict.file)) }
-                label: { Label("Whole file", systemImage: "waveform") }
-                .buttonStyle(.bordered).controlSize(.small)
+            Button {
+                replay(item)
+            } label: {
+                Label("Replay (Space)", systemImage: "play.fill")
+            }
+            .buttonStyle(.bordered).controlSize(.small)
+            Button {
+                asr.togglePlayback(asr.recordingsDir.appendingPathComponent(item.verdict.file))
+            } label: {
+                Label("Whole file", systemImage: "waveform")
+            }
+            .buttonStyle(.bordered).controlSize(.small)
             Toggle("Autoplay", isOn: $autoplay).controlSize(.mini)
             Spacer()
             Button("Skip (Esc)") { cursor += 1 }.controlSize(.small)
@@ -166,8 +183,10 @@ struct GroundTruthReviewSessionView: View {
     private var finalEditor: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("\(editing?.file ?? "") — last check").font(.callout).monospaced()
-            Text("Gold is exactly what was said, including hesitation sounds (а, э, мм) and repeated words when they were really spoken. Fix anything the engines all got wrong — punctuation and capitalisation do not matter, WER ignores them.")
-                .font(.caption).foregroundStyle(.secondary)
+            Text(
+                "Gold is exactly what was said, including hesitation sounds (а, э, мм) and repeated words when they were really spoken. Fix anything the engines all got wrong — punctuation and capitalisation do not matter, WER ignores them."
+            )
+            .font(.caption).foregroundStyle(.secondary)
             TextEditor(text: $editingText)
                 .font(.body).frame(minHeight: 160)
                 .padding(6).background(Color.primary.opacity(0.05))
@@ -230,8 +249,9 @@ struct GroundTruthReviewSessionView: View {
 
     private func decide(_ item: GroundTruthReviewItem, _ text: String, _ source: String) {
         asr.stopPlayback()
-        GroundTruthReviewProgress.record(file: item.verdict.file, operation: item.operation,
-                                         text: text, source: source)
+        GroundTruthReviewProgress.record(
+            file: item.verdict.file, operation: item.operation,
+            text: text, source: source)
         choicesByFile[item.verdict.file, default: [:]][item.operation.id] =
             GroundTruthOperationChoice(signature: item.operation.signature, text: text, source: source)
         decisions += 1
@@ -247,16 +267,18 @@ struct GroundTruthReviewSessionView: View {
         let needed = verdict.operations.filter { $0.alternatives.count > 1 }
         let done = choicesByFile[verdict.file] ?? [:]
         guard needed.allSatisfy({ done[$0.id] != nil }),
-              let text = GroundTruthGold.assemble(verdict, choices: done) else { return }
+            let text = GroundTruthGold.assemble(verdict, choices: done)
+        else { return }
         editing = verdict
         editingText = text
     }
 
     private func commitGold() {
         guard let verdict = editing else { return }
-        GroundTruthGold.write(file: verdict.file,
-                              text: editingText.trimmingCharacters(in: .whitespacesAndNewlines),
-                              source: "review-session")
+        GroundTruthGold.write(
+            file: verdict.file,
+            text: editingText.trimmingCharacters(in: .whitespacesAndNewlines),
+            source: "review-session")
         settled.insert(verdict.file)
         filesDone += 1
         editing = nil
@@ -267,7 +289,10 @@ struct GroundTruthReviewSessionView: View {
 
     private func checkTime() {
         guard let started else { return }
-        if Date().timeIntervalSince(started) > sessionMinutes * 60 { timeUp = true; asr.stopPlayback() }
+        if Date().timeIntervalSince(started) > sessionMinutes * 60 {
+            timeUp = true
+            asr.stopPlayback()
+        }
     }
 
     private func finish() {
@@ -279,8 +304,10 @@ struct GroundTruthReviewSessionView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text(timeUp ? "Time's up — nice sitting." : "Queue cleared for now.")
                 .font(.title3).bold()
-            Text("\(decisions) decision(s) · \(filesDone) file(s) added to gold · \(pendingCount) left in queue (~\(max(1, Int(Double(pendingCount) * 5 / 60))) min).")
-                .font(.callout).foregroundStyle(.secondary)
+            Text(
+                "\(decisions) decision(s) · \(filesDone) file(s) added to gold · \(pendingCount) left in queue (~\(max(1, Int(Double(pendingCount) * 5 / 60))) min)."
+            )
+            .font(.callout).foregroundStyle(.secondary)
             Text("Everything is already saved — closing now loses nothing; the next session picks up here.")
                 .font(.caption).foregroundStyle(.secondary)
             HStack {

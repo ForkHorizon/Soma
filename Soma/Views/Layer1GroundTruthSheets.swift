@@ -9,69 +9,74 @@ struct Layer1AnalysisSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Layer 1 · AI analysis").font(.title3.bold())
-                        Text("Add only new recordings, then run every configured ASR head on the original audio.")
-                            .font(.callout).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button("Done") { dismiss() }
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Layer 1 · AI analysis").font(.title3.bold())
+                    Text("Add only new recordings, then run every configured ASR head on the original audio.")
+                        .font(.callout).foregroundStyle(.secondary)
                 }
+                Spacer()
+                Button("Done") { dismiss() }
+            }
 
-                HStack(spacing: 10) {
-                    MetricTile(title: "Not added", value: max(0, asr.recordingsTotal - runner.files.count).formatted(), detail: "recordings", tone: .neutral)
-                    MetricTile(title: "Queued", value: runner.pendingRuns.formatted(), detail: queuedDetail, tone: runner.pendingRuns > 0 ? .info : .neutral)
-                    MetricTile(title: "Ready", value: runner.store.readyFilesCount().formatted(), detail: "files for human review", tone: .warning)
-                }
+            HStack(spacing: 10) {
+                MetricTile(
+                    title: "Not added", value: max(0, asr.recordingsTotal - runner.files.count).formatted(), detail: "recordings",
+                    tone: .neutral)
+                MetricTile(
+                    title: "Queued", value: runner.pendingRuns.formatted(), detail: queuedDetail,
+                    tone: runner.pendingRuns > 0 ? .info : .neutral)
+                MetricTile(
+                    title: "Ready", value: runner.store.readyFilesCount().formatted(), detail: "files for human review", tone: .warning)
+            }
 
-                HStack(spacing: 10) {
-                    Stepper("\(batchCount) new recordings", value: $batchCount, in: 1...500)
-                    Button("Add to analysis") { runner.addBatch(count: batchCount, asr: asr) }
-                        .buttonStyle(.borderedProminent)
-                    Button(runner.isRunning ? "Stop queue" : "Run queue") {
-                        runner.isRunning ? runner.stop() : runner.start()
-                    }
-                    .buttonStyle(.bordered)
-                    Button("Retry failed") { runner.retryFailed() }
-                        .disabled(runner.isRunning || !hasFailures)
+            HStack(spacing: 10) {
+                Stepper("\(batchCount) new recordings", value: $batchCount, in: 1...500)
+                Button("Add to analysis") { runner.addBatch(count: batchCount, asr: asr) }
+                    .buttonStyle(.borderedProminent)
+                Button(runner.isRunning ? "Stop queue" : "Run queue") {
+                    runner.isRunning ? runner.stop() : runner.start()
                 }
+                .buttonStyle(.bordered)
+                Button("Retry failed") { runner.retryFailed() }
+                    .disabled(runner.isRunning || !hasFailures)
+            }
 
-                if let failure = runner.failure {
-                    StatusBanner(title: "Queue needs attention", detail: failure, tone: .danger)
-                }
-                if let fileID = runner.currentFileID, let file = runner.store.file(for: fileID) {
-                    StatusBanner(
-                        title: "Processing \(file.url.lastPathComponent)",
-                        detail: runner.models.first(where: { $0.id == runner.currentModelID })?.title ?? "ASR model",
-                        tone: .info,
-                        isLoading: true
-                    )
-                }
+            if let failure = runner.failure {
+                StatusBanner(title: "Queue needs attention", detail: failure, tone: .danger)
+            }
+            if let fileID = runner.currentFileID, let file = runner.store.file(for: fileID) {
+                StatusBanner(
+                    title: "Processing \(file.url.lastPathComponent)",
+                    detail: runner.models.first(where: { $0.id == runner.currentModelID })?.title ?? "ASR model",
+                    tone: .info,
+                    isLoading: true
+                )
+            }
 
-                Divider()
-                DisclosureGroup("All model heads") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(runner.models) { model in
-                            HStack {
-                                Text(model.title).font(.callout)
-                                Spacer()
-                                Text(model.family).font(.caption).foregroundStyle(.secondary)
-                                if model.optional { StatusChip(text: "Optional", tone: .neutral) }
-                            }
-                        }
+            Divider()
+            DisclosureGroup("All model heads") {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(runner.models) { model in
                         HStack {
-                            Text("Commands are local to this Mac.").font(.caption).foregroundStyle(.secondary)
+                            Text(model.title).font(.callout)
                             Spacer()
-                            Button("Open configuration") {
-                                NSWorkspace.shared.activateFileViewerSelecting([runner.store.commandConfigurationURL])
-                            }
-                            .buttonStyle(.link)
-                            .font(.caption)
+                            Text(model.family).font(.caption).foregroundStyle(.secondary)
+                            if model.optional { StatusChip(text: "Optional", tone: .neutral) }
                         }
                     }
-                    .padding(.top, 8)
+                    HStack {
+                        Text("Commands are local to this Mac.").font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Open configuration") {
+                            NSWorkspace.shared.activateFileViewerSelecting([runner.store.commandConfigurationURL])
+                        }
+                        .buttonStyle(.link)
+                        .font(.caption)
+                    }
                 }
+                .padding(.top, 8)
+            }
         }
         .padding(22)
         .frame(width: 720, alignment: .topLeading)
@@ -114,7 +119,8 @@ struct Layer1HistorySheet: View {
             }
 
             if runner.files.isEmpty {
-                ContentUnavailableView("No analysis yet", systemImage: "tray", description: Text("Add recordings to the Layer 1 queue first."))
+                ContentUnavailableView(
+                    "No analysis yet", systemImage: "tray", description: Text("Add recordings to the Layer 1 queue first."))
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 10) {
@@ -136,7 +142,9 @@ struct Layer1HistorySheet: View {
         let segments = runner.segments.filter { $0.audioID == file.id }.sorted { $0.start < $1.start }
 
         return VStack(alignment: .leading, spacing: 10) {
-            Button { expandedFileID = open ? nil : file.id } label: {
+            Button {
+                expandedFileID = open ? nil : file.id
+            } label: {
                 HStack(spacing: 10) {
                     Image(systemName: open ? "chevron.down" : "chevron.right")
                         .font(.caption).foregroundStyle(.secondary)
@@ -168,7 +176,9 @@ struct Layer1HistorySheet: View {
                                 .font(.caption)
                                 .foregroundStyle(segment.decision.status == .verified ? .primary : .secondary)
                             Spacer()
-                            StatusChip(text: segment.decision.action?.rawValue ?? "Pending", tone: segment.decision.status == .verified ? .good : .warning)
+                            StatusChip(
+                                text: segment.decision.action?.rawValue ?? "Pending",
+                                tone: segment.decision.status == .verified ? .good : .warning)
                         }
                     }
                 }
@@ -265,7 +275,9 @@ struct Layer1QualitySheet: View {
                 Button("Done") { dismiss() }
             }
 
-            MetricTile(title: "Overall quality", value: summary.matchLabel, detail: "\(summary.exact)/\(summary.evaluated) exact matches", tone: summary.tone)
+            MetricTile(
+                title: "Overall quality", value: summary.matchLabel, detail: "\(summary.exact)/\(summary.evaluated) exact matches",
+                tone: summary.tone)
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 235), spacing: 12)], spacing: 10) {
                 ForEach(runner.models) { model in

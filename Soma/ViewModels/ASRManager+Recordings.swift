@@ -35,14 +35,15 @@ extension ASRManager {
     }
 
     nonisolated static func removeRecordingFiles(in dir: URL, olderThan cutoff: Date) {
-        let files = (try? FileManager.default.contentsOfDirectory(
-            at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles])) ?? []
+        let files =
+            (try? FileManager.default.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles])) ?? []
         for url in files where url.pathExtension.lowercased() == "wav" {
             // An unreadable date used to fall back to .distantPast, which made
             // "I don't know how old this is" mean "delete it". Unknown age is a
             // reason to keep a recording, not to destroy it.
             guard let date = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
-                  date < cutoff
+                date < cutoff
             else { continue }
             // The transcript goes only once its audio is actually gone. Removing
             // it after a failed WAV delete would leave a recording nothing can
@@ -68,7 +69,8 @@ extension ASRManager {
 
         recordingsRefreshTask = Task.detached(priority: .utility) { [weak self] in
             guard let snapshot = Self.buildRecordingLibrarySnapshot(at: dir, cache: cache),
-                  !Task.isCancelled else { return }
+                !Task.isCancelled
+            else { return }
             await MainActor.run { [weak self] in
                 guard let self, self.recordingsRefreshGeneration == generation else { return }
                 self.recordingDurationCache = snapshot.durationCache
@@ -88,13 +90,14 @@ extension ASRManager {
         let totalDuration: TimeInterval
     }
 
-    private static func buildRecordingLibrarySnapshot(
+    nonisolated private static func buildRecordingLibrarySnapshot(
         at dir: URL,
         cache: [String: RecordingDurationCacheEntry]
     ) -> RecordingLibrarySnapshot? {
         let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey]
-        let files = (try? FileManager.default.contentsOfDirectory(
-            at: dir, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
+        let files =
+            (try? FileManager.default.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
         var updatedCache: [String: RecordingDurationCacheEntry] = [:]
         var index: [RecordingIndexEntry] = []
         var totalDuration = 0.0
@@ -107,8 +110,9 @@ extension ASRManager {
             let key = url.path
             let duration: TimeInterval
             if let cached = cache[key],
-               cached.fileSize == fileSize,
-               cached.modificationDate == date {
+                cached.fileSize == fileSize,
+                cached.modificationDate == date
+            {
                 duration = cached.duration
             } else {
                 duration = audioDuration(for: url)
@@ -120,12 +124,13 @@ extension ASRManager {
             )
             totalDuration += duration
             let transcript = url.deletingPathExtension().appendingPathExtension("txt")
-            index.append(RecordingIndexEntry(
-                url: url,
-                date: date,
-                duration: duration,
-                hasTranscript: FileManager.default.fileExists(atPath: transcript.path)
-            ))
+            index.append(
+                RecordingIndexEntry(
+                    url: url,
+                    date: date,
+                    duration: duration,
+                    hasTranscript: FileManager.default.fileExists(atPath: transcript.path)
+                ))
         }
 
         index.sort { $0.date > $1.date }
@@ -136,9 +141,10 @@ extension ASRManager {
         )
     }
 
-    private static func audioDuration(for url: URL) -> TimeInterval {
+    nonisolated private static func audioDuration(for url: URL) -> TimeInterval {
         guard let audio = try? AVAudioFile(forReading: url),
-              audio.processingFormat.sampleRate > 0 else { return 0 }
+            audio.processingFormat.sampleRate > 0
+        else { return 0 }
         return Double(audio.length) / audio.processingFormat.sampleRate
     }
 
@@ -155,14 +161,15 @@ extension ASRManager {
     func loadMoreRecordings(limit: Int) {
         let nextEntries = recordingIndex.dropFirst(recordings.count).prefix(limit)
         guard !nextEntries.isEmpty else { return }
-        recordings.append(contentsOf: nextEntries.map { entry in
-            return VoiceRecording(
-                url: entry.url,
-                date: entry.date,
-                duration: entry.duration,
-                hasTranscript: entry.hasTranscript
-            )
-        })
+        recordings.append(
+            contentsOf: nextEntries.map { entry in
+                return VoiceRecording(
+                    url: entry.url,
+                    date: entry.date,
+                    duration: entry.duration,
+                    hasTranscript: entry.hasTranscript
+                )
+            })
     }
 
     func transcriptURL(for wav: URL) -> URL {
@@ -218,7 +225,10 @@ extension ASRManager {
     /// Playing a range matters for review: one wrong word in a two-minute
     /// recording otherwise costs a full listen to check.
     func togglePlayback(_ url: URL, from start: Double?, to end: Double?) {
-        if playingURL == url { stopPlayback(); return }
+        if playingURL == url {
+            stopPlayback()
+            return
+        }
         stopPlayback()
         do {
             let p = try AVAudioPlayer(contentsOf: url)

@@ -23,7 +23,11 @@ final class Layer1GroundTruthRunner: ObservableObject {
     private var process: Process?
     private var currentBatchID: String?
 
-    init(store: Layer1GroundTruthStore = Layer1GroundTruthStore()) {
+    init() {
+        self.store = Layer1GroundTruthStore()
+    }
+
+    init(store: Layer1GroundTruthStore) {
         self.store = store
     }
 
@@ -87,23 +91,26 @@ final class Layer1GroundTruthRunner: ObservableObject {
                         "batch_mode": "model_major_v1",
                     ]) { _, new in new }
                     self.store.markRunning(runs, configuration: configuration, version: command.version)
-                    let result = await self.executeBatch(batchID: batch.id, modelID: modelID,
-                                                         runs: runs, command: command)
+                    let result = await self.executeBatch(
+                        batchID: batch.id, modelID: modelID,
+                        runs: runs, command: command)
                     if Task.isCancelled { return }
                     guard result.status == 0 else {
                         batchError = result.error.isEmpty ? "Model batch failed: \(modelID)" : result.error
                         break
                     }
                     guard result.rows.count == runs.count,
-                          Set(result.rows.map(\.runID)) == Set(runs.map(\.id)) else {
+                        Set(result.rows.map(\.runID)) == Set(runs.map(\.id))
+                    else {
                         batchError = "Model batch returned incomplete or duplicate results: \(modelID)"
                         break
                     }
                     for row in result.rows {
-                        self.store.finish(row.runID, status: .completed, version: row.version,
-                                          rawResponse: row.rawResponse, text: row.text,
-                                          timestamps: row.timestamps, error: nil,
-                                          duration: row.duration)
+                        self.store.finish(
+                            row.runID, status: .completed, version: row.version,
+                            rawResponse: row.rawResponse, text: row.text,
+                            timestamps: row.timestamps, error: nil,
+                            duration: row.duration)
                     }
                 }
                 if let batchError {
@@ -169,44 +176,54 @@ final class Layer1GroundTruthRunner: ObservableObject {
         let rows: [Layer1BatchOutputRow]
     }
 
-    private func executeBatch(batchID: String, modelID: String, runs: [Layer1ModelRun],
-                              command: (command: [String], version: String)) async -> Layer1BatchExecution {
+    private func executeBatch(
+        batchID: String, modelID: String, runs: [Layer1ModelRun],
+        command: (command: [String], version: String)
+    ) async -> Layer1BatchExecution {
         let manifest = store.writeBatchManifest(batchID: batchID, modelID: modelID, runs: runs)
         let worker = repoRoot.appendingPathComponent("Scripts/layer1_batch_asr_worker.py")
         guard FileManager.default.fileExists(atPath: worker.path) else {
             return .init(status: 127, output: "", error: "Layer 1 batch worker is missing", rows: [])
         }
-        let result = await runBatchProcess(arguments: [worker.path, "--manifest", manifest.path,
-                                                         "--model", modelID,
-                                                         "--version", command.version,
-                                                         "--command", command.command.joined(separator: "\u{1f}")])
+        let result = await runBatchProcess(arguments: [
+            worker.path, "--manifest", manifest.path,
+            "--model", modelID,
+            "--version", command.version,
+            "--command", command.command.joined(separator: "\u{1f}"),
+        ])
         guard result.status == 0 else {
-            return .init(status: result.status, output: result.output,
-                         error: result.error.isEmpty ? "Model batch failed: \(modelID)" : result.error,
-                         rows: [])
+            return .init(
+                status: result.status, output: result.output,
+                error: result.error.isEmpty ? "Model batch failed: \(modelID)" : result.error,
+                rows: [])
         }
         var rows: [Layer1BatchOutputRow] = []
         var seen = Set<String>()
         for line in result.output.split(whereSeparator: \.isNewline) {
             guard let data = String(line).data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  object["error"] == nil,
-                  let runID = object["id"] as? String,
-                  !seen.contains(runID) else {
-                return .init(status: 1, output: result.output,
-                             error: "Batch produced malformed or duplicate JSON output for \(modelID)", rows: [])
+                let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                object["error"] == nil,
+                let runID = object["id"] as? String,
+                !seen.contains(runID)
+            else {
+                return .init(
+                    status: 1, output: result.output,
+                    error: "Batch produced malformed or duplicate JSON output for \(modelID)", rows: [])
             }
             seen.insert(runID)
             let timestamps = (object["words"] as? [[String: Any]] ?? []).compactMap { word -> Layer1WordTimestamp? in
                 guard let value = word["word"] as? String,
-                      let start = word["start"] as? Double,
-                      let end = word["end"] as? Double else { return nil }
+                    let start = word["start"] as? Double,
+                    let end = word["end"] as? Double
+                else { return nil }
                 return Layer1WordTimestamp(word: value, start: start, end: end)
             }
-            rows.append(Layer1BatchOutputRow(runID: runID,
-                                             version: object["version"] as? String ?? command.version,
-                                             rawResponse: String(line), text: object["text"] as? String,
-                                             timestamps: timestamps, duration: 0))
+            rows.append(
+                Layer1BatchOutputRow(
+                    runID: runID,
+                    version: object["version"] as? String ?? command.version,
+                    rawResponse: String(line), text: object["text"] as? String,
+                    timestamps: timestamps, duration: 0))
         }
         return .init(status: 0, output: result.output, error: result.error, rows: rows)
     }
@@ -220,7 +237,8 @@ final class Layer1GroundTruthRunner: ObservableObject {
             FileManager.default.createFile(atPath: outputURL.path, contents: nil)
             FileManager.default.createFile(atPath: errorURL.path, contents: nil)
             guard let outputHandle = try? FileHandle(forWritingTo: outputURL),
-                  let errorHandle = try? FileHandle(forWritingTo: errorURL) else {
+                let errorHandle = try? FileHandle(forWritingTo: errorURL)
+            else {
                 continuation.resume(returning: (127, "", "Could not create batch output files"))
                 return
             }
@@ -242,9 +260,12 @@ final class Layer1GroundTruthRunner: ObservableObject {
                 try? FileManager.default.removeItem(at: directory)
                 continuation.resume(returning: (process.terminationStatus, output, error.trimmingCharacters(in: .whitespacesAndNewlines)))
             }
-            do { try task.run(); self.process = task }
-            catch {
-                try? outputHandle.close(); try? errorHandle.close()
+            do {
+                try task.run()
+                self.process = task
+            } catch {
+                try? outputHandle.close()
+                try? errorHandle.close()
                 try? FileManager.default.removeItem(at: directory)
                 continuation.resume(returning: (127, "", error.localizedDescription))
             }
@@ -255,14 +276,17 @@ final class Layer1GroundTruthRunner: ObservableObject {
         let script = repoRoot.appendingPathComponent("Scripts/layer1_asr_worker.py")
         let audio = store.file(for: run.audioID)?.path ?? ""
         guard FileManager.default.fileExists(atPath: script.path), !audio.isEmpty else {
-            return .init(status: .failed, version: command.version, rawResponse: "",
-                         text: nil, timestamps: [], error: "Layer 1 worker or source audio is missing")
+            return .init(
+                status: .failed, version: command.version, rawResponse: "",
+                text: nil, timestamps: [], error: "Layer 1 worker or source audio is missing")
         }
-        let result = await runProcess(arguments: [script.path, "--audio", audio,
-                                                   "--model", run.modelID,
-                                                   "--version", command.version,
-                                                   "--command", command.command.joined(separator: "\u{1f}"),
-                                                   "--audio-hash", store.file(for: run.audioID)?.audioHash ?? ""])
+        let result = await runProcess(arguments: [
+            script.path, "--audio", audio,
+            "--model", run.modelID,
+            "--version", command.version,
+            "--command", command.command.joined(separator: "\u{1f}"),
+            "--audio-hash", store.file(for: run.audioID)?.audioHash ?? "",
+        ])
         return parse(result.output, status: result.status, fallbackVersion: command.version)
     }
 
@@ -275,7 +299,9 @@ final class Layer1GroundTruthRunner: ObservableObject {
             var env = ProcessInfo.processInfo.environment
             env["PYTHONUNBUFFERED"] = "1"
             task.environment = env
-            let pipe = Pipe(); task.standardOutput = pipe; task.standardError = pipe
+            let pipe = Pipe()
+            task.standardOutput = pipe
+            task.standardError = pipe
             task.terminationHandler = { [weak self] process in
                 let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
                 Task { @MainActor [weak self] in
@@ -283,31 +309,39 @@ final class Layer1GroundTruthRunner: ObservableObject {
                     continuation.resume(returning: (process.terminationStatus, output))
                 }
             }
-            do { try task.run(); process = task }
-            catch { continuation.resume(returning: (127, error.localizedDescription)) }
+            do {
+                try task.run()
+                process = task
+            } catch { continuation.resume(returning: (127, error.localizedDescription)) }
         }
     }
 
     private func parse(_ output: String, status: Int32, fallbackVersion: String) -> Layer1ASRProcessResult {
         guard status == 0 else {
-            return .init(status: .failed, version: fallbackVersion, rawResponse: output, text: nil,
-                         timestamps: [], error: output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Worker exited with status \(status)" : output)
+            return .init(
+                status: .failed, version: fallbackVersion, rawResponse: output, text: nil,
+                timestamps: [],
+                error: output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Worker exited with status \(status)" : output)
         }
         guard let data = output.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
             let text = output.trimmingCharacters(in: .whitespacesAndNewlines)
-            return .init(status: .completed, version: fallbackVersion, rawResponse: output,
-                         text: text, timestamps: [], error: nil)
+            return .init(
+                status: .completed, version: fallbackVersion, rawResponse: output,
+                text: text, timestamps: [], error: nil)
         }
         let text = object["text"] as? String
         let version = object["version"] as? String ?? fallbackVersion
         let timestamps = (object["words"] as? [[String: Any]] ?? []).compactMap { row -> Layer1WordTimestamp? in
             guard let word = row["word"] as? String,
-                  let start = row["start"] as? Double, let end = row["end"] as? Double else { return nil }
+                let start = row["start"] as? Double, let end = row["end"] as? Double
+            else { return nil }
             return Layer1WordTimestamp(word: word, start: start, end: end)
         }
-        return .init(status: .completed, version: version, rawResponse: output, text: text,
-                     timestamps: timestamps, error: nil)
+        return .init(
+            status: .completed, version: version, rawResponse: output, text: text,
+            timestamps: timestamps, error: nil)
     }
 
     private var repoRoot: URL {

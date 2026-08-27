@@ -68,8 +68,9 @@ final class Stage8AuditStore: ObservableObject {
     }
 
     func record(_ sample: Stage8AuditSample, status: String, auditedText: String, notes: String) {
-        let decision = Stage8AuditDecision(sampleID: sample.sampleID, file: sample.file, status: status,
-                                           auditedText: auditedText, notes: notes, decidedAt: Date())
+        let decision = Stage8AuditDecision(
+            sampleID: sample.sampleID, file: sample.file, status: status,
+            auditedText: auditedText, notes: notes, decidedAt: Date())
         do {
             try FileManager.default.createDirectory(at: decisionsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             let encoder = JSONEncoder()

@@ -22,7 +22,7 @@ enum GroundTruthDiff {
     /// "C#" (issue #0070/#61/#0083): this used to strip +/#/* unconditionally,
     /// so those three words looked identical here and a disagreement on a
     /// technical term never even reached the reviewer.
-    private static func key(_ word: String) -> String {
+    nonisolated private static func key(_ word: String) -> String {
         GroundTruthGlossary.normalize(word)
     }
 
@@ -45,8 +45,8 @@ enum GroundTruthDiff {
             var own: Set<Int> = []
             for change in candidate.map(key).difference(from: anchorKeys) {
                 switch change {
-                case let .insert(offset, _, _): own.insert(offset)
-                case let .remove(offset, _, _): anchorDiffering.insert(offset)
+                case .insert(let offset, _, _): own.insert(offset)
+                case .remove(let offset, _, _): anchorDiffering.insert(offset)
                 }
             }
             marked[name] = Marked(words: candidate, differing: own)

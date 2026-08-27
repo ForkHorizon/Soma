@@ -138,7 +138,9 @@ struct VoiceSettingsSection: View {
                     .foregroundStyle(.red)
             }
             HStack(spacing: 8) {
-                Button { Task { await asr.checkVoiceServer() } } label: {
+                Button {
+                    Task { await asr.checkVoiceServer() }
+                } label: {
                     Label("Test Server", systemImage: "network")
                 }
                 .disabled(asr.isRecording || asr.isTranscribing || asr.voiceServerConnectionState == .checking)

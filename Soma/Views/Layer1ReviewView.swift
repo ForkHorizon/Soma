@@ -16,18 +16,26 @@ struct Layer1ReviewView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Layer 1 human review").font(.title3.bold())
-                Spacer(); Text("\(min(cursor + 1, items.count)) / \(items.count)").font(.caption).monospacedDigit()
-                Button("Done") { asr.stopPlayback(); dismiss() }
+                Spacer()
+                Text("\(min(cursor + 1, items.count)) / \(items.count)").font(.caption).monospacedDigit()
+                Button("Done") {
+                    asr.stopPlayback()
+                    dismiss()
+                }
             }
-            if let segment = current { review(segment) }
-            else {
+            if let segment = current {
+                review(segment)
+            } else {
                 Text("All available segments are verified.").font(.headline)
                 Text("Every segment still passed through a human decision; model agreement never auto-accepted a segment.")
                     .font(.callout).foregroundStyle(.secondary)
             }
         }
         .padding(20).frame(minWidth: 820, minHeight: 620)
-        .onAppear { restoreCursor(); loadCurrent() }.onChange(of: cursor) { _, _ in loadCurrent() }
+        .onAppear {
+            restoreCursor()
+            loadCurrent()
+        }.onChange(of: cursor) { _, _ in loadCurrent() }
         .onDisappear { asr.stopPlayback() }
     }
 
@@ -43,9 +51,21 @@ struct Layer1ReviewView: View {
                 if segment.segmentationNeedsReview { Text("boundary flagged").font(.caption2).foregroundStyle(.orange) }
             }
             HStack {
-                Button { play(segment, context: false) } label: { Label("Play segment", systemImage: "play.fill") }
-                Button { play(segment, context: true) } label: { Label("Play ±1.5 s context", systemImage: "waveform") }
-                Button { playWhole(segment) } label: { Label("Whole file", systemImage: "arrow.up.right.and.arrow.down.left") }
+                Button {
+                    play(segment, context: false)
+                } label: {
+                    Label("Play segment", systemImage: "play.fill")
+                }
+                Button {
+                    play(segment, context: true)
+                } label: {
+                    Label("Play ±1.5 s context", systemImage: "waveform")
+                }
+                Button {
+                    playWhole(segment)
+                } label: {
+                    Label("Whole file", systemImage: "arrow.up.right.and.arrow.down.left")
+                }
             }.buttonStyle(.bordered).controlSize(.small)
             Text("All model proposals").font(.headline)
             ScrollView {
@@ -84,8 +104,11 @@ struct Layer1ReviewView: View {
             }
             Spacer()
             if let value = suggestion.text, suggestion.status == .completed {
-                Button("Use") { text = value; sourceModelID = suggestion.modelID }
-                    .buttonStyle(.bordered).controlSize(.small)
+                Button("Use") {
+                    text = value
+                    sourceModelID = suggestion.modelID
+                }
+                .buttonStyle(.bordered).controlSize(.small)
             }
         }
         .padding(8).background(Color.primary.opacity(0.045)).clipShape(RoundedRectangle(cornerRadius: 7))
@@ -94,14 +117,17 @@ struct Layer1ReviewView: View {
     private func loadCurrent() {
         guard let segment = current else { return }
         guard loadedSegmentID != segment.id else { return }
-        loadedSegmentID = segment.id; text = segment.decision.text ?? ""; sourceModelID = segment.decision.sourceModelID
+        loadedSegmentID = segment.id
+        text = segment.decision.text ?? ""
+        sourceModelID = segment.decision.sourceModelID
         let url = URL(fileURLWithPath: runner.store.file(for: segment.audioID)?.path ?? "")
         if FileManager.default.fileExists(atPath: url.path) { play(segment, context: false) }
     }
 
     private func restoreCursor() {
         guard let resumeID = runner.resumeSegmentID,
-              let index = items.firstIndex(where: { $0.id == resumeID }) else { return }
+            let index = items.firstIndex(where: { $0.id == resumeID })
+        else { return }
         cursor = index
     }
 
@@ -112,8 +138,9 @@ struct Layer1ReviewView: View {
     }
 
     private func save(_ segment: Layer1Segment, text: String, action: Layer1HumanAction) {
-        runner.saveDecision(segmentID: segment.id, text: text, action: action,
-                            sourceModelID: action == .noSpeech ? nil : sourceModelID)
+        runner.saveDecision(
+            segmentID: segment.id, text: text, action: action,
+            sourceModelID: action == .noSpeech ? nil : sourceModelID)
         if cursor < items.count - 1 { cursor += 1 } else { loadedSegmentID = nil }
     }
 

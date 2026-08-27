@@ -64,12 +64,12 @@ final class ASRManager: ObservableObject {
     @Published var transcript = ""
     @Published var status = "Idle"
     @Published var lastInferSeconds: Double?
-    @Published var lastRecordingURL: URL?      // persisted; survives a failed transcription
-    @Published var playingURL: URL?            // which recording is currently playing
+    @Published var lastRecordingURL: URL?  // persisted; survives a failed transcription
+    @Published var playingURL: URL?  // which recording is currently playing
     @Published var recordings: [VoiceRecording] = []
     @Published var recordingsTotal = 0
     @Published var totalAudioDuration: TimeInterval = 0
-    @Published var completedTranscriptionID = 0   // bumped when a recording is FULLY transcribed (final)
+    @Published var completedTranscriptionID = 0  // bumped when a recording is FULLY transcribed (final)
     @Published var lastTranscriptionSource: ASRTranscriptionSource = .inApp
     @Published var voiceServerConnectionState: VoiceServerConnectionState = .unknown
     @Published var voiceServerStatusDetail = "Not checked"
@@ -87,7 +87,7 @@ final class ASRManager: ObservableObject {
             UserDefaults.standard.set(engine, forKey: "asrEngine")
             remoteChunkCapability = nil
             remoteCapabilityIdentity = ""
-            teardownServer()   // next transcription relaunches with the new engine
+            teardownServer()  // next transcription relaunches with the new engine
             status = "Engine: \(engineTitle)"
         }
     }
@@ -114,7 +114,7 @@ final class ASRManager: ObservableObject {
         guard !raw.isEmpty else { return nil }
         let normalized = raw.contains("://") ? raw : "https://\(raw)"
         guard let url = URL(string: normalized.trimmingCharacters(in: CharacterSet(charactersIn: "/"))),
-              url.scheme?.lowercased() == "https"
+            url.scheme?.lowercased() == "https"
         else { return nil }
         return url
     }
@@ -132,7 +132,8 @@ final class ASRManager: ObservableObject {
     var voiceServerClientID: String {
         let key = "voiceServerClientID"
         if let existing = UserDefaults.standard.string(forKey: key),
-           existing.range(of: #"^[A-Za-z0-9-]+$"#, options: .regularExpression) != nil {
+            existing.range(of: #"^[A-Za-z0-9-]+$"#, options: .regularExpression) != nil
+        {
             return existing
         }
         let generated = UUID().uuidString
@@ -140,7 +141,7 @@ final class ASRManager: ObservableObject {
         return generated
     }
 
-    var port: Int?            // discovered at runtime (OS-assigned, no collisions)
+    var port: Int?  // discovered at runtime (OS-assigned, no collisions)
     var serverProcess: Process?
     var activeRecordingURL: URL?
     var recordingStartToken = 0
@@ -191,7 +192,8 @@ final class ASRManager: ObservableObject {
     var recordingsDir: URL {
         let configured = UserDefaults.standard.string(forKey: Self.recordingsDirectoryKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let dir = configured.flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true) }
+        let dir =
+            configured.flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true) }
             ?? Self.defaultRecordingsDirectory
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
@@ -201,7 +203,8 @@ final class ASRManager: ObservableObject {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Soma/MediaImports", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        try? FileManager.default.createDirectory(at: dir.appendingPathComponent("History", isDirectory: true), withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(
+            at: dir.appendingPathComponent("History", isDirectory: true), withIntermediateDirectories: true)
         return dir
     }()
 

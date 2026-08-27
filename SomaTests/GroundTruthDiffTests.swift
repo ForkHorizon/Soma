@@ -81,8 +81,9 @@ extension GroundTruthDiffTests {
             ("w-sample", "Хотя, с другой стороны, я не знаю."),
         ])
         XCTAssertEqual(groups.count, 1)
-        XCTAssertEqual(groups[0].text, "Хотя, с другой стороны, я не знаю.",
-                       "the most punctuated variant is the one worth keeping")
+        XCTAssertEqual(
+            groups[0].text, "Хотя, с другой стороны, я не знаю.",
+            "the most punctuated variant is the one worth keeping")
     }
 
     func testDifferentWordsStillSplit() {
@@ -95,52 +96,65 @@ extension GroundTruthDiffTests {
 
 final class GroundTruthQueueTests: XCTestCase {
     private func verdict(_ file: String, edits: Int) -> GroundTruthVerdict {
-        GroundTruthVerdict(file: file, status: "review", reason: "", edits: edits,
-                           candidates: [:], terms: [], spots: [])
+        GroundTruthVerdict(
+            file: file, status: "review", reason: "", edits: edits,
+            candidates: [:], terms: [], spots: [])
     }
 
     /// A file only becomes a gold row once all of its operations are settled, so
     /// the cheapest file goes first and its own operations stay chronological.
     func testTheCheapestRecordingComesFirstAndStaysChronological() {
-        let expensive = GroundTruthVerdict(file: "rec-100.wav", status: "review", reason: "", edits: 20,
-                                           candidates: ["w-greedy": "a b c"], terms: [], spots: [], operations: [
-                                            operation("late", 8...9), operation("early", 1...2),
-                                           ])
-        let cheap = GroundTruthVerdict(file: "rec-200.wav", status: "review", reason: "", edits: 0,
-                                       candidates: ["w-greedy": "a"], terms: [], spots: [], operations: [operation("only", 2...3)])
-        XCTAssertEqual(GroundTruthRunner.operationQueue([expensive, cheap]).map { "\($0.verdict.file):\($0.operation.id)" },
-                       ["rec-200.wav:only", "rec-100.wav:early", "rec-100.wav:late"])
+        let expensive = GroundTruthVerdict(
+            file: "rec-100.wav", status: "review", reason: "", edits: 20,
+            candidates: ["w-greedy": "a b c"], terms: [], spots: [],
+            operations: [
+                operation("late", 8...9), operation("early", 1...2),
+            ])
+        let cheap = GroundTruthVerdict(
+            file: "rec-200.wav", status: "review", reason: "", edits: 0,
+            candidates: ["w-greedy": "a"], terms: [], spots: [], operations: [operation("only", 2...3)])
+        XCTAssertEqual(
+            GroundTruthRunner.operationQueue([expensive, cheap]).map { "\($0.verdict.file):\($0.operation.id)" },
+            ["rec-200.wav:only", "rec-100.wav:early", "rec-100.wav:late"])
     }
 
     /// Cheapest-first alone would fill the corpus with short easy audio, so the
     /// expensive half is dealt in between: stopping early still spans both.
     func testCheapAndExpensiveRecordingsAlternate() {
         let files = (1...4).map { count in
-            GroundTruthVerdict(file: "rec-\(100 * count).wav", status: "review", reason: "", edits: 0,
-                               candidates: ["w-greedy": "a"], terms: [], spots: [],
-                               operations: (0..<count).map { operation("op\($0)", Double($0)...Double($0 + 1)) })
+            GroundTruthVerdict(
+                file: "rec-\(100 * count).wav", status: "review", reason: "", edits: 0,
+                candidates: ["w-greedy": "a"], terms: [], spots: [],
+                operations: (0..<count).map { operation("op\($0)", Double($0)...Double($0 + 1)) })
         }
-        XCTAssertEqual(Set(GroundTruthRunner.operationQueue(files).prefix(3).map(\.verdict.file)),
-                       ["rec-100.wav", "rec-300.wav"], "one operation from the cheapest, then a hard one")
+        XCTAssertEqual(
+            Set(GroundTruthRunner.operationQueue(files).prefix(3).map(\.verdict.file)),
+            ["rec-100.wav", "rec-300.wav"], "one operation from the cheapest, then a hard one")
     }
 
     /// One reading left means the decodes already settled it; showing it would
     /// ask the listener to confirm a unanimous vote.
     func testAnOperationWithNothingToChooseIsNotShown() {
-        let verdict = GroundTruthVerdict(file: "rec-100.wav", status: "review", reason: "", edits: 1,
-                                         candidates: ["w-greedy": "a"], terms: [], spots: [],
-                                         operations: [operation("settled", 1...2, alternatives: 1),
-                                                      operation("open", 3...4)])
+        let verdict = GroundTruthVerdict(
+            file: "rec-100.wav", status: "review", reason: "", edits: 1,
+            candidates: ["w-greedy": "a"], terms: [], spots: [],
+            operations: [
+                operation("settled", 1...2, alternatives: 1),
+                operation("open", 3...4),
+            ])
         XCTAssertEqual(GroundTruthRunner.operationQueue([verdict]).map(\.operation.id), ["open"])
     }
 
-    private func operation(_ id: String, _ seconds: ClosedRange<Double>,
-                           alternatives: Int = 2) -> GroundTruthReviewOperation {
-        GroundTruthReviewOperation(id: id, signature: id, anchor: 0..<1, seconds: seconds,
-                                   contextBefore: "", contextAfter: "",
-                                   alternatives: (0..<alternatives).map {
-                                       GroundTruthOperationAlternative(names: ["engine\($0)"], text: "text\($0)")
-                                   })
+    private func operation(
+        _ id: String, _ seconds: ClosedRange<Double>,
+        alternatives: Int = 2
+    ) -> GroundTruthReviewOperation {
+        GroundTruthReviewOperation(
+            id: id, signature: id, anchor: 0..<1, seconds: seconds,
+            contextBefore: "", contextAfter: "",
+            alternatives: (0..<alternatives).map {
+                GroundTruthOperationAlternative(names: ["engine\($0)"], text: "text\($0)")
+            })
     }
 }
 
@@ -149,8 +163,9 @@ final class GroundTruthQueueTests: XCTestCase {
 /// so this is the one place that has to match the Python side.
 final class GroundTruthGlossaryNormalizeTests: XCTestCase {
     func testBridgesTheTwoEnginesSurfaceForms() {
-        XCTAssertEqual(GroundTruthGlossary.normalize("Привет, ёжик!"),
-                       GroundTruthGlossary.normalize("привет ежик"))
+        XCTAssertEqual(
+            GroundTruthGlossary.normalize("Привет, ёжик!"),
+            GroundTruthGlossary.normalize("привет ежик"))
     }
 
     func testKeepsCPlusPlusAndCSharpApartFromC() {

@@ -13,17 +13,20 @@ struct Stage8AuditView: View {
     @State private var notes = ""
     @FocusState private var editingText: Bool
 
-    init(asr: ASRManager, title: String = "Stage-8 consensus audit",
-         manifest: String = "stage8-auto-audit-100.jsonl",
-         decisions: String = "stage8-auto-audit-decisions.jsonl",
-         showPunctuationSuggestion: Bool = false) {
+    init(
+        asr: ASRManager, title: String = "Stage-8 consensus audit",
+        manifest: String = "stage8-auto-audit-100.jsonl",
+        decisions: String = "stage8-auto-audit-decisions.jsonl",
+        showPunctuationSuggestion: Bool = false
+    ) {
         self.asr = asr
         self.title = title
         self.showPunctuationSuggestion = showPunctuationSuggestion
         let directory = Stage8AuditStore.experimentsDirectory
-        _store = StateObject(wrappedValue: Stage8AuditStore(
-            manifestURL: directory.appendingPathComponent(manifest),
-            decisionsURL: directory.appendingPathComponent(decisions)))
+        _store = StateObject(
+            wrappedValue: Stage8AuditStore(
+                manifestURL: directory.appendingPathComponent(manifest),
+                decisionsURL: directory.appendingPathComponent(decisions)))
     }
 
     private var current: Stage8AuditSample? {
@@ -39,12 +42,17 @@ struct Stage8AuditView: View {
             } else if let sample = current {
                 review(sample)
             } else {
-                ContentUnavailableView("Audit complete", systemImage: "checkmark.seal", description: Text("All \(store.reviewedCount) sampled recordings have a saved decision."))
+                ContentUnavailableView(
+                    "Audit complete", systemImage: "checkmark.seal",
+                    description: Text("All \(store.reviewedCount) sampled recordings have a saved decision."))
             }
         }
         .padding(24)
         .frame(minWidth: 680, minHeight: 440, alignment: .topLeading)
-        .onAppear { store.load(); prepareCurrent() }
+        .onAppear {
+            store.load()
+            prepareCurrent()
+        }
         .onDisappear { asr.stopPlayback() }
     }
 
@@ -82,7 +90,11 @@ struct Stage8AuditView: View {
                 Text("1 = matches · 2 = correction · Space = replay").font(.caption).foregroundStyle(.secondary)
             }
         }
-        .onAppear { heardText = sample.proposedText; notes = ""; play(sample) }
+        .onAppear {
+            heardText = sample.proposedText
+            notes = ""
+            play(sample)
+        }
         .onKeyPress(.space) {
             guard !editingText else { return .ignored }
             play(sample)
