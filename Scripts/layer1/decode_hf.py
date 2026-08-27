@@ -5,6 +5,7 @@ Usage: decode_hf.py <audio> <kind>
 kinds: parakeet, qwen3, wav2vec2, mms, vosk
 Runs inside venv-asr-eval (torch/transformers/vosk all installed there).
 """
+
 import json
 import sys
 import warnings
@@ -44,14 +45,15 @@ def decode_qwen3(path):
 
     audio = load16(path)
     proc = AutoProcessor.from_pretrained("Qwen/Qwen3-ASR-1.7B-hf")
-    model = Qwen3ASRForConditionalGeneration.from_pretrained(
-        "Qwen/Qwen3-ASR-1.7B-hf", dtype=torch.float32).eval()
-    conv = [{"role": "user", "content": [
-        {"type": "audio", "audio": audio},
-        {"type": "text", "text": "Transcribe this audio."}]}]
+    model = Qwen3ASRForConditionalGeneration.from_pretrained("Qwen/Qwen3-ASR-1.7B-hf", dtype=torch.float32).eval()
+    conv = [
+        {
+            "role": "user",
+            "content": [{"type": "audio", "audio": audio}, {"type": "text", "text": "Transcribe this audio."}],
+        }
+    ]
     text = proc.apply_chat_template(conv, add_generation_prompt=True, tokenize=False)
-    inputs = proc(text=[text], audio=[audio], sampling_rate=16000,
-                  return_tensors="pt", padding=True)
+    inputs = proc(text=[text], audio=[audio], sampling_rate=16000, return_tensors="pt", padding=True)
     with torch.no_grad():
         ids = model.generate(**inputs, max_new_tokens=768)
     raw = proc.tokenizer.batch_decode(ids, skip_special_tokens=True)[0]
@@ -78,8 +80,7 @@ def decode_mms(path):
     from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 
     proc = Wav2Vec2Processor.from_pretrained("facebook/mms-1b-all", target_lang="rus")
-    model = Wav2Vec2ForCTC.from_pretrained("facebook/mms-1b-all", target_lang="rus",
-                                           ignore_mismatched_sizes=True)
+    model = Wav2Vec2ForCTC.from_pretrained("facebook/mms-1b-all", target_lang="rus", ignore_mismatched_sizes=True)
     inputs = proc(load16(path), sampling_rate=16000, return_tensors="pt", padding=True)
     with torch.no_grad():
         logits = model(inputs.input_values).logits
@@ -100,25 +101,35 @@ def decode_vosk(path):
                 break
             recognizer.AcceptWaveform(chunk)
     final = json.loads(recognizer.FinalResult())
-    words = [{"word": w.get("word", ""), "start": round(w.get("start", 0.0), 2),
-              "end": round(w.get("end", 0.0), 2)} for w in final.get("result", [])]
+    words = [
+        {"word": w.get("word", ""), "start": round(w.get("start", 0.0), 2), "end": round(w.get("end", 0.0), 2)}
+        for w in final.get("result", [])
+    ]
     return final.get("text", ""), words, "vosk-small-ru-0.22"
 
 
-DECODERS = {"parakeet": decode_parakeet, "qwen3": decode_qwen3,
-            "wav2vec2": decode_wav2vec2, "mms": decode_mms, "vosk": decode_vosk}
+DECODERS = {
+    "parakeet": decode_parakeet,
+    "qwen3": decode_qwen3,
+    "wav2vec2": decode_wav2vec2,
+    "mms": decode_mms,
+    "vosk": decode_vosk,
+}
 
 
 def main() -> int:
     path, kind = sys.argv[1], sys.argv[2]
     try:
         text, words, version = DECODERS[kind](path)
-        print(json.dumps({"text": (text or "").strip(), "words": words,
-                          "version": version}, ensure_ascii=False))
+        print(json.dumps({"text": (text or "").strip(), "words": words, "version": version}, ensure_ascii=False))
         return 0
     except Exception as error:  # noqa: BLE001
-        print(json.dumps({"text": "", "words": [], "version": kind,
-                          "error": f"{type(error).__name__}: {error}"[:300]}, ensure_ascii=False))
+        print(
+            json.dumps(
+                {"text": "", "words": [], "version": kind, "error": f"{type(error).__name__}: {error}"[:300]},
+                ensure_ascii=False,
+            )
+        )
         return 1
 
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Whisper large-v3 MLX decoder for Layer 1 single or batch runs."""
+
 from __future__ import annotations
 
 import argparse
@@ -12,16 +13,25 @@ REPO = "mlx-community/whisper-large-v3-mlx"
 
 
 def decode(path: str) -> dict:
-    result = mlx_whisper.transcribe(path, path_or_hf_repo=REPO, language="ru",
-                                    temperature=0.0, condition_on_previous_text=False,
-                                    word_timestamps=True)
-    words = [{"word": w.get("word", "").strip(),
-              "start": round(float(w.get("start", 0.0)), 2),
-              "end": round(float(w.get("end", 0.0)), 2)}
-             for segment in (result.get("segments") or [])
-             for w in (segment.get("words") or []) if w.get("word", "").strip()]
-    return {"text": (result.get("text") or "").strip(), "words": words,
-            "version": "large-v3-mlx"}
+    result = mlx_whisper.transcribe(
+        path,
+        path_or_hf_repo=REPO,
+        language="ru",
+        temperature=0.0,
+        condition_on_previous_text=False,
+        word_timestamps=True,
+    )
+    words = [
+        {
+            "word": w.get("word", "").strip(),
+            "start": round(float(w.get("start", 0.0)), 2),
+            "end": round(float(w.get("end", 0.0)), 2),
+        }
+        for segment in (result.get("segments") or [])
+        for w in (segment.get("words") or [])
+        if w.get("word", "").strip()
+    ]
+    return {"text": (result.get("text") or "").strip(), "words": words, "version": "large-v3-mlx"}
 
 
 def main() -> int:

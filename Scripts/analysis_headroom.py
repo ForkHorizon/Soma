@@ -4,6 +4,7 @@
 Answers: is there anything left in decode settings, or do we need different
 data? Written 2026-08-20 for the 'should we keep tuning' question.
 """
+
 from __future__ import annotations
 
 import difflib
@@ -83,8 +84,23 @@ print(f"v2 is (tied-)best on {v2_best}/{len(refs)} files")
 print(f"when v2 loses, winner: {sorted(winners.items(), key=lambda x: -x[1])[:6]}")
 
 # ---- 2) Taxonomy of residual errors under v2 ------------------------------
-FILLERS = {"ну", "э", "ээ", "мм", "ага", "угу", "вот", "типа", "короче",
-           "значит", "прям", "просто", "да", "как бы", "то есть"}
+FILLERS = {
+    "ну",
+    "э",
+    "ээ",
+    "мм",
+    "ага",
+    "угу",
+    "вот",
+    "типа",
+    "короче",
+    "значит",
+    "прям",
+    "просто",
+    "да",
+    "как бы",
+    "то есть",
+}
 NORM_FILL = {w.replace(" ", "") for w in FILLERS}
 
 
@@ -92,8 +108,14 @@ def bucket(rw, hw):
     for w in (rw, hw):
         if w and re.search(r"[a-z]", w, re.I):
             return "latin/term"
-    if rw and hw and rw != hw and len(rw) > 3 and len(hw) > 3 and (
-            rw[:4] == hw[:4] or difflib.SequenceMatcher(None, rw, hw).ratio() > 0.7):
+    if (
+        rw
+        and hw
+        and rw != hw
+        and len(rw) > 3
+        and len(hw) > 3
+        and (rw[:4] == hw[:4] or difflib.SequenceMatcher(None, rw, hw).ratio() > 0.7)
+    ):
         return "morphology"
     for w in (rw, hw):
         if w and w.replace(" ", "") in NORM_FILL:
@@ -138,25 +160,28 @@ print(f"== 2) RESIDUAL ERRORS under v2 ({files_bad}/{len(refs)} files imperfect)
 print(f"aggregate WER = {tot_err}/{tot_len} = {tot_err / tot_len:.4f}")
 for b, c in sorted(berr.items(), key=lambda x: -x[1]):
     fixed = (tot_err - c) / tot_len
-    print(f"  {b:13} {c:4} err-words ({100 * c / tot_err:3.0f}%)  "
-          f"WER if fixed={fixed:.4f}  e.g. {examples[b][:6]}")
+    print(f"  {b:13} {c:4} err-words ({100 * c / tot_err:3.0f}%)  WER if fixed={fixed:.4f}  e.g. {examples[b][:6]}")
 
 # ---- 3) Statistical power: what delta can n=98 detect? -------------------
 print()
 print("== 3) POWER: minimum detectable WER delta at n gold files ==")
+
+
 # sign-test resolution: with n paired files, the smallest win/loss split that
 # reaches p<0.05 (two-sided binomial) — computed exactly.
 def sig_threshold(n):
     """Smallest wins-losses margin over n discordant pairs that reaches
     two-sided p<0.05 (exact binomial on the sign test)."""
     from math import comb
-    total = 2.0 ** n
+
+    total = 2.0**n
     for margin in range(n % 2, n + 1, 2):
         wins = (n + margin) // 2
         p = 2 * (1 - sum(comb(n, i) for i in range(0, wins)) / total)
         if p < 0.05:
             return margin
     return None
+
 
 cur_sorted = sorted(cur_wers)
 n = len(refs)
@@ -177,7 +202,6 @@ per_file = sorted(refs.keys(), key=lambda f: -W(CUR, f))
 worst10 = per_file[:10]
 w_mass = sum(min(W(CUR, f), 1.0) for f in worst10)
 tot_mass = sum(min(W(CUR, f), 1.0) for f in refs)
-print(f"worst 10 files carry {w_mass:.2f} of {tot_mass:.2f} total error mass "
-      f"({100 * w_mass / tot_mass:.0f}%)")
+print(f"worst 10 files carry {w_mass:.2f} of {tot_mass:.2f} total error mass ({100 * w_mass / tot_mass:.0f}%)")
 for f in worst10:
     print(f"  {f}: WER {W(CUR, f):.3f} | gold: {gold[f][:70]!r}")

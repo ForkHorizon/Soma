@@ -2,7 +2,12 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "Scripts"))
-from stage7_ellipsis_postprocess import compare, remove_planning_ellipsis, strip_continued_credits, strip_personal_credits  # noqa: E402
+from stage7_ellipsis_postprocess import (
+    compare,
+    remove_planning_ellipsis,
+    strip_continued_credits,
+    strip_personal_credits,
+)  # noqa: E402
 
 
 def test_removes_terminal_planning_ellipsis():

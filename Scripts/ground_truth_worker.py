@@ -14,6 +14,7 @@ Usage:
     <venv>/bin/python ground_truth_worker.py --engine whisper \
         --configs w-greedy,w-offset --list files.txt
 """
+
 from __future__ import annotations
 
 import argparse
@@ -43,8 +44,7 @@ DEV_PROMPT = (
 WHISPER_OPTIONS: dict[str, dict] = {
     "w-greedy": {"temperature": 0.0, "condition_on_previous_text": False},
     "w-fallback": {},
-    "w-prompt": {"temperature": 0.0, "condition_on_previous_text": False,
-                 "initial_prompt": DEV_PROMPT},
+    "w-prompt": {"temperature": 0.0, "condition_on_previous_text": False, "initial_prompt": DEV_PROMPT},
     "w-sample": {"temperature": 0.4, "condition_on_previous_text": False},
     # Same decode as w-greedy, but the audio is padded so Whisper's 30 s window
     # boundaries land somewhere else. Its errors cluster at those seams, so a
@@ -74,8 +74,9 @@ def load_audio(path: str, offset: float = 0.0):
         data = data.mean(axis=1)
     if rate != 16000:
         count = int(round(len(data) * 16000 / rate))
-        data = np.interp(np.linspace(0, len(data), count, endpoint=False),
-                         np.arange(len(data)), data).astype(np.float32)
+        data = np.interp(np.linspace(0, len(data), count, endpoint=False), np.arange(len(data)), data).astype(
+            np.float32
+        )
     if offset:
         data = np.concatenate([np.zeros(int(offset * 16000), dtype="float32"), data])
     return np.ascontiguousarray(data)
@@ -111,9 +112,11 @@ def whisper_decoder(config: str, repository: str, best_of: int, options_map: dic
             "compression": max((s.get("compression_ratio", 0.0) for s in segments), default=0.0),
         }
         if options["word_timestamps"]:
-            metrics["words"] = [[w.get("word", "").strip(), round(w.get("start", 0.0), 2),
-                                 round(w.get("end", 0.0), 2)]
-                                for s in segments for w in (s.get("words") or [])]
+            metrics["words"] = [
+                [w.get("word", "").strip(), round(w.get("start", 0.0), 2), round(w.get("end", 0.0), 2)]
+                for s in segments
+                for w in (s.get("words") or [])
+            ]
         return (result.get("text") or "").strip(), metrics
 
     # One warm call is not needed: mlx caches the model on first transcribe and
@@ -135,8 +138,9 @@ def faster_whisper_decoder(model_size: str, root: str, beam_size: int):
     model = WhisperModel(model_size, device="cpu", compute_type="int8", download_root=root or None)
 
     def decode(path: str) -> tuple[str, dict]:
-        segments, _ = model.transcribe(path, language="ru", beam_size=beam_size, temperature=0.0,
-                                       condition_on_previous_text=False)
+        segments, _ = model.transcribe(
+            path, language="ru", beam_size=beam_size, temperature=0.0, condition_on_previous_text=False
+        )
         collected = list(segments)
         text = " ".join(s.text.strip() for s in collected).strip()
         return text, {
@@ -151,7 +155,7 @@ def gigaam_decoder(model_name: str, root: str):
     import gigaam
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "Soma"))
-    from voice_asr_engines import transcribe_gigaam   # the app's own windowing
+    from voice_asr_engines import transcribe_gigaam  # the app's own windowing
 
     model = gigaam.load_model(model_name, device="cpu", download_root=root or None)
 
@@ -196,8 +200,10 @@ def load_config_file(path: Path | None) -> dict[str, dict]:
     custom = json.loads(path.read_text(encoding="utf-8"))
     collisions = sorted(set(custom) & set(WHISPER_OPTIONS))
     if collisions:
-        raise ValueError(f"--config-file reuses built-in config name(s): {', '.join(collisions)} "
-                         "— give experimental configs a unique name (plan hygiene rule #2)")
+        raise ValueError(
+            f"--config-file reuses built-in config name(s): {', '.join(collisions)} "
+            "— give experimental configs a unique name (plan hygiene rule #2)"
+        )
     return custom
 
 
@@ -213,7 +219,7 @@ def run_config(args, config: str, paths: list[str], options_map: dict[str, dict]
     started = time.perf_counter()
     try:
         decode = build_decoder(args, config, options_map)
-    except Exception as error:                                    # noqa: BLE001
+    except Exception as error:  # noqa: BLE001
         emit({"event": "fatal", "config": config, "error": f"{type(error).__name__}: {error}"}, out)
         return
     emit({"event": "loaded", "config": config, "seconds": round(time.perf_counter() - started, 2)}, out)
@@ -228,10 +234,20 @@ def run_config(args, config: str, paths: list[str], options_map: dict[str, dict]
         except TooShortForOffset as skipped:
             emit({"event": "skip", "file": Path(path).name, "config": config, "reason": str(skipped)}, out)
             continue
-        except Exception as failure:                              # noqa: BLE001
+        except Exception as failure:  # noqa: BLE001
             text, error = None, f"{type(failure).__name__}: {failure}"
-        emit({"event": "decode", "file": Path(path).name, "config": config, "text": text,
-              "error": error, "seconds": round(time.perf_counter() - began, 2), **metrics}, out)
+        emit(
+            {
+                "event": "decode",
+                "file": Path(path).name,
+                "config": config,
+                "text": text,
+                "error": error,
+                "seconds": round(time.perf_counter() - began, 2),
+                **metrics,
+            },
+            out,
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -248,12 +264,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--faster-model", default="large-v3")
     parser.add_argument("--faster-root", default="")
     parser.add_argument("--beam-size", type=int, default=5, help="faster-whisper beam width (stage 3.3 sweeps this)")
-    parser.add_argument("--config-file", type=Path,
-                        help="JSON {name: mlx_whisper options} merged alongside the built-in configs, "
-                             "so P2-P5 prompts / threshold grids don't need a code change")
-    parser.add_argument("--out", type=Path,
-                        help="write decodes here (default: stdout only). Written to <out>.tmp and renamed "
-                             "on completion, so a killed run never leaves a partial file at the real path")
+    parser.add_argument(
+        "--config-file",
+        type=Path,
+        help="JSON {name: mlx_whisper options} merged alongside the built-in configs, "
+        "so P2-P5 prompts / threshold grids don't need a code change",
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        help="write decodes here (default: stdout only). Written to <out>.tmp and renamed "
+        "on completion, so a killed run never leaves a partial file at the real path",
+    )
     args = parser.parse_args(argv)
 
     paths = [line.strip() for line in args.list.read_text(encoding="utf-8").splitlines() if line.strip()]

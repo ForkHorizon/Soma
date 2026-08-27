@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run a guarded local-LLM punctuation A/B on the Stage-7 human audit."""
+
 import json
 import urllib.request
 import argparse
@@ -15,18 +16,28 @@ PROMPT = """Ты редактор пунктуации русского ASR. В�
 
 
 def generate(text):
-    request = urllib.request.Request("http://127.0.0.1:11434/api/generate",
-        data=json.dumps({"model": MODEL, "prompt": PROMPT + text, "stream": False,
-                         "options": {"temperature": 0, "num_ctx": 4096, "num_predict": 1024}}).encode(),
-        headers={"Content-Type": "application/json"})
+    request = urllib.request.Request(
+        "http://127.0.0.1:11434/api/generate",
+        data=json.dumps(
+            {
+                "model": MODEL,
+                "prompt": PROMPT + text,
+                "stream": False,
+                "options": {"temperature": 0, "num_ctx": 4096, "num_predict": 1024},
+            }
+        ).encode(),
+        headers={"Content-Type": "application/json"},
+    )
     with urllib.request.urlopen(request, timeout=180) as response:
         return json.loads(response.read())["response"].strip()
 
 
 def safe(before, after, glossary):
-    return (is_subsequence(normalize(after).split(), normalize(before).split())
-            and NUMBER.findall(after) == NUMBER.findall(before)
-            and preserved_glossary_terms(before, after, glossary))
+    return (
+        is_subsequence(normalize(after).split(), normalize(before).split())
+        and NUMBER.findall(after) == NUMBER.findall(before)
+        and preserved_glossary_terms(before, after, glossary)
+    )
 
 
 def main():
@@ -37,7 +48,7 @@ def main():
     glossary = json.loads((GT / "glossary.json").read_text())
     rows = [json.loads(x) for x in (exp / "stage7-punctuation-eval-60.jsonl").read_text().splitlines() if x]
     if args.limit:
-        rows = rows[:args.limit]
+        rows = rows[: args.limit]
     out = exp / "stage7-v2-qwen3-14b-v1base-audit.jsonl"
     done = {json.loads(x)["file"] for x in out.read_text().splitlines() if x} if out.exists() else set()
     with out.open("a", encoding="utf-8") as handle:
@@ -48,9 +59,22 @@ def main():
             raw = generate(baseline) if baseline else ""
             accepted = True if not baseline else safe(baseline, raw, glossary)
             candidate = raw if accepted else baseline
-            handle.write(json.dumps({"file": row["file"], "label": row["label"], "verbatim": row["verbatim"],
-                "human_cleaned": row["human_cleaned"], "baseline": baseline, "candidate": candidate, "raw": raw,
-                "accepted": accepted}, ensure_ascii=False) + "\n")
+            handle.write(
+                json.dumps(
+                    {
+                        "file": row["file"],
+                        "label": row["label"],
+                        "verbatim": row["verbatim"],
+                        "human_cleaned": row["human_cleaned"],
+                        "baseline": baseline,
+                        "candidate": candidate,
+                        "raw": raw,
+                        "accepted": accepted,
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
             handle.flush()
             print(f"{index}/{len(rows)} accepted={accepted}", flush=True)
 

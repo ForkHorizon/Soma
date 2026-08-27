@@ -4,6 +4,7 @@
 Collects every module-level `test_` function and TestCase class, runs them,
 and exits non-zero on any failure — the property CI and humans rely on.
 """
+
 import argparse
 import importlib.util
 import sys

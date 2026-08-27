@@ -16,6 +16,7 @@ of 0.5 is wrong -- mlx_whisper.transcribe's actual default is 0.6. logprob
     ./generate_stage3_configs.py --out experiments/stage3_configs.json \
         --prompt-config w-p-p5-v1   # bake in a chosen stage-2 winner
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,9 +31,7 @@ DEFAULT_STAGE2_PROMPTS = Path(__file__).resolve().parent / "experiments" / "stag
 # 3.1: {t=0.2, t=0.4} x {best_of 3, 5, 10}. temperature is a single float here,
 # not mlx_whisper's default fallback tuple -- matching how w-sample already
 # pins one value instead of the ladder.
-BEST_OF_GRID = [(temperature, best_of)
-                for temperature in (0.2, 0.4)
-                for best_of in (3, 5, 10)]
+BEST_OF_GRID = [(temperature, best_of) for temperature in (0.2, 0.4) for best_of in (3, 5, 10)]
 
 # 3.2: one non-default value away from the REAL default at a time, not a full
 # cross product -- the plan's own examples read as independent single-factor
@@ -108,10 +107,16 @@ def build(prompt: str | None) -> dict[str, dict]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--prompt-config", help="a config name from --prompts-file, e.g. w-p-p5-v1; "
-                        "omit to run the grid with no prompt (P0)")
-    parser.add_argument("--prompts-file", type=Path, default=DEFAULT_STAGE2_PROMPTS,
-                        help="stage 2's --config-file JSON to pull --prompt-config's initial_prompt from")
+    parser.add_argument(
+        "--prompt-config",
+        help="a config name from --prompts-file, e.g. w-p-p5-v1; omit to run the grid with no prompt (P0)",
+    )
+    parser.add_argument(
+        "--prompts-file",
+        type=Path,
+        default=DEFAULT_STAGE2_PROMPTS,
+        help="stage 2's --config-file JSON to pull --prompt-config's initial_prompt from",
+    )
     args = parser.parse_args()
 
     prompt = load_prompt(args.prompt_config, args.prompts_file)

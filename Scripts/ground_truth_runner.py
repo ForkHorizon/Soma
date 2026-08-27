@@ -4,6 +4,7 @@
 Split from the run script so that "what state a run holds" stays separate from
 "what order the passes go in".
 """
+
 from __future__ import annotations
 
 import json
@@ -15,8 +16,8 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ground_truth_consensus import PRIMARY, decide   # noqa: E402
-from ground_truth_corpus import append, read_rows   # noqa: E402
+from ground_truth_consensus import PRIMARY, decide  # noqa: E402
+from ground_truth_corpus import append, read_rows  # noqa: E402
 
 TIER_ONE = "w-greedy"
 # Tier two runs only where tier one disagreed. Grouped by venv: each spawn loads
@@ -47,7 +48,7 @@ class Runner:
         self.glossary = self._glossary()
         self.fatal: str | None = None
         self.worker: subprocess.Popen | None = None
-        self.noise: list[str] = []          # last non-JSON worker output, for diagnostics
+        self.noise: list[str] = []  # last non-JSON worker output, for diagnostics
 
     def _glossary(self) -> dict[str, list[str]]:
         """Confirmed term pairs, written by the review panel once the listener
@@ -71,8 +72,7 @@ class Runner:
         A row that recorded an ERROR is treated as absent, so a rerun actually
         re-decodes it. Keeping it would make a retry cosmetic: the file would be
         re-settled to the same failure without any engine touching it again."""
-        wanted = [p for p in paths if any(
-            self.failed_or_missing(p.name, name) for name in configs.split(","))]
+        wanted = [p for p in paths if any(self.failed_or_missing(p.name, name) for name in configs.split(","))]
         if not wanted:
             return
         with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as listing:
@@ -93,27 +93,41 @@ class Runner:
         return environment
 
     def _spawn(self, engine: str, configs: str, listing_path: str) -> None:
-        command = [str(self.venv_python(engine)),
-                   str(Path(__file__).resolve().parent / "ground_truth_worker.py"),
-                   "--engine", engine, "--configs", configs, "--list", listing_path,
-                   "--best-of", str(self.args.best_of),
-                   "--gigaam-root", str(self.args.models_root / "gigaam"),
-                   "--faster-root", str(self.args.models_root / "faster")]
+        command = [
+            str(self.venv_python(engine)),
+            str(Path(__file__).resolve().parent / "ground_truth_worker.py"),
+            "--engine",
+            engine,
+            "--configs",
+            configs,
+            "--list",
+            listing_path,
+            "--best-of",
+            str(self.args.best_of),
+            "--gigaam-root",
+            str(self.args.models_root / "gigaam"),
+            "--faster-root",
+            str(self.args.models_root / "faster"),
+        ]
         # stderr is MERGED into stdout, not given its own pipe. Draining one pipe
         # while the other fills is a deadlock waiting for a noisy night: torch
         # prints warnings and huggingface prints progress bars to stderr, so 64 KB
         # of pipe buffer fills and the child blocks forever with stdout still open.
         # Non-JSON lines are kept as diagnostics instead of being read at exit.
-        self.worker = subprocess.Popen(command, stdout=subprocess.PIPE,
-                                       stderr=subprocess.STDOUT, text=True,
-                                       bufsize=1, env=self._environment())
+        self.worker = subprocess.Popen(
+            command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env=self._environment()
+        )
         try:
             for line in self.worker.stdout:
                 self._consume(line, engine)
             self.worker.wait()
             if self.worker.returncode:
-                emit({"event": "warn",
-                      "text": f"{engine} exited {self.worker.returncode}: " + " | ".join(self.noise[-4:])})
+                emit(
+                    {
+                        "event": "warn",
+                        "text": f"{engine} exited {self.worker.returncode}: " + " | ".join(self.noise[-4:]),
+                    }
+                )
         finally:
             self.worker = None
 
@@ -137,8 +151,15 @@ class Runner:
         if row.get("event") == "decode":
             self.decoded[(row["file"], row["config"])] = row
             append(self.results, row)
-            emit({"event": "decode", "file": row["file"], "config": row["config"],
-                  "seconds": row.get("seconds"), "failed": row.get("error") is not None})
+            emit(
+                {
+                    "event": "decode",
+                    "file": row["file"],
+                    "config": row["config"],
+                    "seconds": row.get("seconds"),
+                    "failed": row.get("error") is not None,
+                }
+            )
         elif row.get("event") in ("fatal", "loaded", "skip"):
             if row.get("event") == "fatal":
                 # An engine that cannot load fails identically on every
@@ -153,7 +174,7 @@ class Runner:
         with no trailing newline — a tqdm bar redraws with \r, not \n — arrives
         fused to the event that follows it. Retrying from the last opening brace
         costs nothing and stops a progress bar from hiding a `fatal`."""
-        for candidate in (line, line[line.rfind("{"):] if "{" in line else ""):
+        for candidate in (line, line[line.rfind("{") :] if "{" in line else ""):
             try:
                 parsed = json.loads(candidate)
             except (json.JSONDecodeError, ValueError):
@@ -225,7 +246,11 @@ class Runner:
                 part_end = cursor + 1
                 while part_end < anchor_end:
                     candidate_end = min(part_end, len(words) - 1)
-                    duration = float(words[candidate_end][2]) + SPOT_PADDING - max(0.0, float(words[first if cursor == anchor_start else cursor][1]) - SPOT_PADDING)
+                    duration = (
+                        float(words[candidate_end][2])
+                        + SPOT_PADDING
+                        - max(0.0, float(words[first if cursor == anchor_start else cursor][1]) - SPOT_PADDING)
+                    )
                     if duration > 6.0:
                         break
                     part_end += 1
@@ -255,7 +280,8 @@ class Runner:
                     fragment["id"] = f"{operation['id']}:{part_start}:{part_end}"
                     fragment["alternatives"] = alternatives
                     fragment["signature"] = hashlib.sha256(
-                        f"{operation['signature']}:{part_start}:{part_end}".encode()).hexdigest()[:16]
+                        f"{operation['signature']}:{part_start}:{part_end}".encode()
+                    ).hexdigest()[:16]
                 fragment["seconds"] = [round(start, 2), round(end, 2)]
                 timed.append(fragment)
         return timed or None
@@ -274,8 +300,7 @@ class Runner:
         if publish:
             append(self.verdicts, record)
         self.done[path.name] = record
-        emit({"event": "verdict", "file": path.name,
-              "status": record["status"], "reason": record["reason"]})
+        emit({"event": "verdict", "file": path.name, "status": record["status"], "reason": record["reason"]})
         return record
 
     def settle(self, path: Path, publish: bool = True) -> dict | None:

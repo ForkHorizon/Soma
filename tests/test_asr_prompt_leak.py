@@ -1,11 +1,12 @@
 """Stage 2.4: catching a prompt that poisons its own decodes, before an
 overnight run is trusted. Everything here is pure -- no engine, no audio."""
+
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "Scripts"))
 
-from asr_prompt_leak import boilerplate_rates, check_leaks, leaks_prompt, load_rows   # noqa: E402
+from asr_prompt_leak import boilerplate_rates, check_leaks, leaks_prompt, load_rows  # noqa: E402
 
 
 def test_leaks_prompt_catches_a_verbatim_run_not_said_in_this_file():
@@ -20,8 +21,7 @@ def test_leaks_prompt_does_not_flag_a_short_or_genuine_match():
     # Only two words in a row overlap with the prompt -- below the run length.
     assert not leaks_prompt(prompt, "мы используем swift xcode для этого", "мы используем swift xcode для этого")
     # All three words genuinely were said (present in this file's own gold).
-    assert not leaks_prompt(prompt, "мы пишем на swift xcode git сегодня",
-                            "мы пишем на swift xcode git сегодня")
+    assert not leaks_prompt(prompt, "мы пишем на swift xcode git сегодня", "мы пишем на swift xcode git сегодня")
 
 
 def test_leaks_prompt_flags_even_if_one_of_the_three_words_is_coincidentally_true():
@@ -33,7 +33,7 @@ def test_leaks_prompt_flags_even_if_one_of_the_three_words_is_coincidentally_tru
 
 def test_check_leaks_only_scores_files_present_in_gold():
     rows = {"a.wav": {"text": "swift xcode git собрание"}, "b.wav": {"text": "swift xcode git тоже"}}
-    gold = {"a.wav": "было какое-то другое собрание"}   # b.wav has no gold row
+    gold = {"a.wav": "было какое-то другое собрание"}  # b.wav has no gold row
     prompt = "Swift Xcode Git"
     assert check_leaks(rows, prompt, gold) == ["a.wav"]
 

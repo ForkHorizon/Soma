@@ -1,6 +1,7 @@
 """1.3: the worker gained --out, --config-file and --beam-size for stage 2-3
 experiments. Everything here is pure or mocked at the import boundary — no
 real engine, no audio file, no network — so it runs without any venv."""
+
 import json
 import sys
 import types
@@ -8,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "Scripts"))
 
-import ground_truth_worker as worker   # noqa: E402
+import ground_truth_worker as worker  # noqa: E402
 
 
 def test_load_config_file_returns_empty_dict_for_no_path():
@@ -21,8 +22,8 @@ def test_load_config_file_merges_additively_without_touching_built_ins(tmp_path)
     custom = worker.load_config_file(path)
     merged = {**worker.WHISPER_OPTIONS, **custom}
     assert merged["w-p-glos-v1"]["initial_prompt"] == "Swift, Xcode"
-    assert merged["w-greedy"] == worker.WHISPER_OPTIONS["w-greedy"]     # untouched
-    assert "w-p-glos-v1" not in worker.WHISPER_OPTIONS                 # module dict never mutated
+    assert merged["w-greedy"] == worker.WHISPER_OPTIONS["w-greedy"]  # untouched
+    assert "w-p-glos-v1" not in worker.WHISPER_OPTIONS  # module dict never mutated
 
 
 def test_load_config_file_rejects_a_name_that_shadows_a_built_in(tmp_path):
@@ -60,15 +61,14 @@ def test_whisper_decoder_builds_options_from_a_custom_config_without_touching_bu
     # import mlx_whisper is the first line of whisper_decoder(); fake it out so
     # this runs without the real (heavy, GPU-only) dependency installed.
     monkeypatch.setitem(sys.modules, "mlx_whisper", types.ModuleType("mlx_whisper"))
-    options_map = {**worker.WHISPER_OPTIONS,
-                   "w-p-glos-v1": {"temperature": 0.0, "initial_prompt": "Swift, Xcode"}}
+    options_map = {**worker.WHISPER_OPTIONS, "w-p-glos-v1": {"temperature": 0.0, "initial_prompt": "Swift, Xcode"}}
     decode = worker.whisper_decoder("w-p-glos-v1", "some/repo", 5, options_map)
     # `options` never leaves whisper_decoder except baked into decode()'s
     # closure -- recover it from there rather than reaching into mlx_whisper.
     built = dict(zip(decode.__code__.co_freevars, (cell.cell_contents for cell in decode.__closure__)))
     assert built["options"]["initial_prompt"] == "Swift, Xcode"
     assert built["options"]["path_or_hf_repo"] == "some/repo"
-    assert built["options"]["word_timestamps"] is False    # only w-greedy gets word times
+    assert built["options"]["word_timestamps"] is False  # only w-greedy gets word times
     assert worker.WHISPER_OPTIONS["w-greedy"] == {"temperature": 0.0, "condition_on_previous_text": False}
 
 

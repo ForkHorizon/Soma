@@ -5,13 +5,16 @@ This is intentionally NOT part of word-level evaluation and does not rewrite
 any gold. It removes an ASR-inserted ellipsis only when it ends a fragment
 before whitespace/end of transcript; review changes remain the acceptance set.
 """
+
 import re
 
 PLANNING_ELLIPSIS = re.compile(r"\.\.\.(?=\s|$)")
 # User-specific, human-audited hallucination: it never occurs in their speech.
 # It may be a whole silent-file transcript or an appended tail after real text.
 CONTINUED_CREDITS = re.compile(r"\s*продолжение\s+следует\s*(?:\.\.\.)?", re.IGNORECASE)
-SUBTITLE_CREDITS = re.compile(r"\s*субтитры\s+сделал(?:и)?(?:\s+(?:dimatorzok|диматорзок))?\s*(?:\.\.\.)?", re.IGNORECASE)
+SUBTITLE_CREDITS = re.compile(
+    r"\s*субтитры\s+сделал(?:и)?(?:\s+(?:dimatorzok|диматорзок))?\s*(?:\.\.\.)?", re.IGNORECASE
+)
 
 
 def remove_planning_ellipsis(text: str) -> str:

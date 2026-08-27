@@ -16,6 +16,7 @@ side (settled-equivalent spans -- glossary-confirmed pairs, spelled-out numbers
         --candidate-decodes ~/.../decodes-stage3-bo10.jsonl --candidate-config w-bo-t20-n10-v1 \\
         --out experiments/flips-final-candidate.jsonl
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,9 +27,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from asr_eval import load_decodes   # noqa: E402
-from ground_truth_consensus import PRIMARY, review_operations   # noqa: E402
-from ground_truth_text import normalize   # noqa: E402
+from asr_eval import load_decodes  # noqa: E402
+from ground_truth_consensus import PRIMARY, review_operations  # noqa: E402
+from ground_truth_text import normalize  # noqa: E402
 
 DEFAULT_ROOT = Path.home() / "Library/Application Support/Soma/GroundTruth"
 _LATIN = re.compile(r"[a-zA-Z]")
@@ -37,8 +38,7 @@ _LATIN = re.compile(r"[a-zA-Z]")
 # just puts a real wording change in the wrong stratification bucket, it
 # doesn't corrupt the transcript, so there is nothing here worth being clever
 # about. Extend by hand if 4.3's sample turns up an obvious miss.
-FILLERS = {"ну", "вот", "как бы", "типа", "короче", "это", "в общем",
-           "то есть", "значит", "получается", "собственно"}
+FILLERS = {"ну", "вот", "как бы", "типа", "короче", "это", "в общем", "то есть", "значит", "получается", "собственно"}
 
 
 def load_glossary(root: Path) -> dict[str, list[str]]:
@@ -73,23 +73,26 @@ def classify(base: str, candidate: str) -> str:
     return "phrasing"
 
 
-def flips(base_text: str, candidate_text: str, candidate_name: str,
-          glossary: dict[str, list[str]] | None) -> list[dict]:
+def flips(
+    base_text: str, candidate_text: str, candidate_name: str, glossary: dict[str, list[str]] | None
+) -> list[dict]:
     operations = review_operations({PRIMARY: base_text, candidate_name: candidate_text}, glossary)
     found = []
     for operation in operations:
         by_name = {name: option["text"] for option in operation["alternatives"] for name in option["names"]}
         base, candidate = by_name.get(PRIMARY), by_name.get(candidate_name)
         if base is None or candidate is None:
-            continue   # settled-equivalent or one-sided -- review_operations already decided this isn't a flip
-        found.append({
-            "anchor": operation["anchor"],
-            "context_before": operation["context"][0],
-            "context_after": operation["context"][1],
-            "base": base,
-            "candidate": candidate,
-            "category": classify(base, candidate),
-        })
+            continue  # settled-equivalent or one-sided -- review_operations already decided this isn't a flip
+        found.append(
+            {
+                "anchor": operation["anchor"],
+                "context_before": operation["context"][0],
+                "context_after": operation["context"][1],
+                "base": base,
+                "candidate": candidate,
+                "category": classify(base, candidate),
+            }
+        )
     return found
 
 
@@ -122,10 +125,12 @@ def main() -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8")
     listenable = counts["term"] + counts["filler"] + counts["phrasing"]
-    print(f"{len(rows)} flips across {len(files)} shared files: "
-          f"punct/case {counts['punct']} (excluded from 4.3's sample) | "
-          f"term {counts['term']} | filler {counts['filler']} | phrasing {counts['phrasing']} "
-          f"-> {listenable} listenable")
+    print(
+        f"{len(rows)} flips across {len(files)} shared files: "
+        f"punct/case {counts['punct']} (excluded from 4.3's sample) | "
+        f"term {counts['term']} | filler {counts['filler']} | phrasing {counts['phrasing']} "
+        f"-> {listenable} listenable"
+    )
     return 0
 
 

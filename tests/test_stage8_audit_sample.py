@@ -13,8 +13,9 @@ def _rows():
     rows = []
     for tier, count in (("T1", 50), ("T2", 70)):
         for index in range(count):
-            rows.append({"file": f"{tier}-{index}.wav", "text": f"text {index}",
-                         "tier": tier, "confirmed_by": "parakeet,rnnt"})
+            rows.append(
+                {"file": f"{tier}-{index}.wav", "text": f"text {index}", "tier": tier, "confirmed_by": "parakeet,rnnt"}
+            )
     return rows
 
 
@@ -38,8 +39,7 @@ def test_main_refuses_manifest_when_selected_audio_is_missing(tmp_path):
     gt = tmp_path / "GroundTruth"
     exp = gt / "experiments"
     exp.mkdir(parents=True)
-    (exp / "gold-stage8-auto.jsonl").write_text(
-        "".join(json.dumps(row) + "\n" for row in _rows()), encoding="utf-8")
+    (exp / "gold-stage8-auto.jsonl").write_text("".join(json.dumps(row) + "\n" for row in _rows()), encoding="utf-8")
     recordings = tmp_path / "recordings"
     recordings.mkdir()
     with pytest.raises(RuntimeError, match="WAV"):

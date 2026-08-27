@@ -4,6 +4,7 @@ A verdict is final — nothing reruns a file that already has one — so the rul
 about WHEN one may be written are the difference between a night that resumes
 and a corpus that is silently incomplete.
 """
+
 import sys
 import types
 import wave
@@ -11,8 +12,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "Scripts"))
 
-from ground_truth_runner import Runner   # noqa: E402
-from ground_truth_corpus import append, has_audio, read_rows, replace_atomically   # noqa: E402
+from ground_truth_runner import Runner  # noqa: E402
+from ground_truth_corpus import append, has_audio, read_rows, replace_atomically  # noqa: E402
 
 
 def _runner(tmp: Path) -> Runner:
@@ -82,7 +83,7 @@ def test_an_unreadable_header_is_left_to_the_engines(tmp_path=None):
 def test_an_interrupted_write_does_not_swallow_the_next_record(tmp_path=None):
     tmp = tmp_path or Path(__import__("tempfile").mkdtemp())
     log = tmp / "decodes.jsonl"
-    log.write_text('{"file":"killed mid-write')      # no trailing newline
+    log.write_text('{"file":"killed mid-write')  # no trailing newline
     append(log, {"file": "survivor", "config": "w-greedy"})
     rows = read_rows(log)
     # The broken record is still lost — nothing can recover it — but the one
@@ -94,10 +95,9 @@ def test_a_whole_file_rewrite_is_never_half_applied(tmp_path=None):
     tmp = tmp_path or Path(__import__("tempfile").mkdtemp())
     verdicts = tmp / "verdicts.jsonl"
     append(verdicts, {"file": "a.wav", "status": "accepted"})
-    replace_atomically(verdicts, [{"file": "a.wav", "status": "review"},
-                                  {"file": "b.wav", "status": "accepted"}])
+    replace_atomically(verdicts, [{"file": "a.wav", "status": "review"}, {"file": "b.wav", "status": "accepted"}])
     assert [r["file"] for r in read_rows(verdicts)] == ["a.wav", "b.wav"]
-    assert not (tmp / "verdicts.jsonl.new").exists()   # scratch file cleaned up
+    assert not (tmp / "verdicts.jsonl.new").exists()  # scratch file cleaned up
 
 
 def test_an_error_verdict_does_not_retire_the_recording(tmp_path=None):
@@ -106,8 +106,11 @@ def test_an_error_verdict_does_not_retire_the_recording(tmp_path=None):
     runner.done["broke.wav"] = {"file": "broke.wav", "status": "error"}
     runner.done["settled.wav"] = {"file": "settled.wav", "status": "accepted"}
     # An error reports a failure; it does not decide anything about the audio.
-    pending = [n for n in ("broke.wav", "settled.wav", "fresh.wav")
-               if (runner.done.get(n) or {}).get("status", "error") == "error"]
+    pending = [
+        n
+        for n in ("broke.wav", "settled.wav", "fresh.wav")
+        if (runner.done.get(n) or {}).get("status", "error") == "error"
+    ]
     assert pending == ["broke.wav", "fresh.wav"]
 
 

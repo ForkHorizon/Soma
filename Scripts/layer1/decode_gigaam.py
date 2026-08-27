@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """GigaAM v2/v3 decoder for single or batch Layer-1 runs."""
+
 from __future__ import annotations
 
 import argparse
@@ -8,6 +9,7 @@ import sys
 from pathlib import Path
 
 import warnings
+
 warnings.filterwarnings("ignore")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "Soma"))
@@ -34,16 +36,18 @@ def main() -> int:
 
     if args.variant.startswith("v2"):
         import gigaam
+
         model = gigaam.load_model(V2_MODELS[args.variant])
     else:
         from transformers import AutoModel
-        model = AutoModel.from_pretrained("ai-sage/GigaAM-v3", revision=V3_REVISIONS[args.variant],
-                                          trust_remote_code=True)
+
+        model = AutoModel.from_pretrained(
+            "ai-sage/GigaAM-v3", revision=V3_REVISIONS[args.variant], trust_remote_code=True
+        )
 
     for index, path in enumerate(paths):
         text = transcribe_gigaam(path, model)
-        result = {"text": (text or "").strip(), "words": [],
-                  "version": f"gigaam-{args.variant}"}
+        result = {"text": (text or "").strip(), "words": [], "version": f"gigaam-{args.variant}"}
         if rows:
             result["id"], result["file"] = rows[index]["id"], rows[index]["file"]
         print(json.dumps(result, ensure_ascii=False), flush=True)

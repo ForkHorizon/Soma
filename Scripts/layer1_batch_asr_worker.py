@@ -6,6 +6,7 @@ object per input row containing the same ``id``. Partial output is forwarded
 when the child fails, but the non-zero exit status makes the caller fail the
 whole user batch transactionally.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,15 +31,13 @@ def main() -> int:
     command = [part for part in args.command.split("\x1f") if part]
     if not command:
         return fail(f"No batch command configured for Layer 1 model {args.model}")
-    command = [part.replace("{manifest}", str(manifest)).replace("{model}", args.model)
-               for part in command]
+    command = [part.replace("{manifest}", str(manifest)).replace("{model}", args.model) for part in command]
     environment = dict(os.environ)
     environment["PATH"] = "/opt/homebrew/bin:/opt/homebrew/sbin:" + environment.get("PATH", "")
     environment["SOMA_LAYER1_MANIFEST"] = str(manifest)
     environment["SOMA_LAYER1_MODEL"] = args.model
     try:
-        completed = subprocess.run(command, capture_output=True, text=True,
-                                   env=environment, check=False)
+        completed = subprocess.run(command, capture_output=True, text=True, env=environment, check=False)
     except OSError as error:
         return fail(f"Could not start {args.model}: {error}")
     if completed.stdout:

@@ -26,6 +26,7 @@ auditing its survivors on the 956-file corpus:
 
 Outputs a NEW experiment file; the 5.1 artifacts are never rewritten.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -44,7 +45,7 @@ BOILERPLATE = re.compile(
     r"(?:субтитры|продолжение следует|продолжаю с сайта|скачиваю сайт|добавляю github|слушаю github)",
     re.IGNORECASE,
 )
-NEAR_SILENCE_WORD_SUM = 4    # < this many words across BOTH gigaam heads = silence
+NEAR_SILENCE_WORD_SUM = 4  # < this many words across BOTH gigaam heads = silence
 TAIL_SENTENCE_MAX_WORDS = 8  # hallucinated credits are short; real closings are not
 SENTENCE_END = ".!?…"
 V2_SUFFIX = "veto_v2"
@@ -59,15 +60,12 @@ def gigaam_word_sum(cfgs: dict[str, str]) -> int:
 
 def has_hallucination_trigger(text: str, no_speech: float) -> bool:
     """Same trigger set as the accepted 5.1 veto — unchanged on purpose."""
-    return (no_speech >= 0.4
-            or repeats_itself(normalize(text))
-            or bool(BOILERPLATE.search(text)))
+    return no_speech >= 0.4 or repeats_itself(normalize(text)) or bool(BOILERPLATE.search(text))
 
 
 def corroborated_by_gigaam(phrase: str, cfgs: dict[str, str]) -> bool:
     """Did GigaAM also hear this exact word sequence? Then it is real speech."""
-    return any(contains(cfgs.get(head, ""), phrase)
-               for head in ("gigaam", "gigaam-ctc"))
+    return any(contains(cfgs.get(head, ""), phrase) for head in ("gigaam", "gigaam-ctc"))
 
 
 def sentence_start_before(text: str, pos: int) -> int:
@@ -99,9 +97,9 @@ def trim_tail_credits(text: str, cfgs: dict[str, str]) -> str | None:
     return text[:start].rstrip()
 
 
-def apply_veto_v2(decodes: dict[str, dict[str, str]],
-                  no_speech_map: dict[tuple[str, str], float],
-                  candidate_cfg: str) -> dict[str, dict[str, str]]:
+def apply_veto_v2(
+    decodes: dict[str, dict[str, str]], no_speech_map: dict[tuple[str, str], float], candidate_cfg: str
+) -> dict[str, dict[str, str]]:
     """Return a copy of decodes with the `<cfg>-veto_v2` config added per file."""
     out: dict[str, dict[str, str]] = {}
     for file, cfgs in decodes.items():
@@ -133,12 +131,10 @@ def no_speech_index(rows: list[dict]) -> dict[tuple[str, str], float]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Hallucination veto v2: word-sum silence + tail-credits trim.")
+    parser = argparse.ArgumentParser(description="Hallucination veto v2: word-sum silence + tail-credits trim.")
     parser.add_argument("--root", type=Path, default=DEFAULT_ROOT)
     parser.add_argument("--candidate-config", default="w-bo-t20-n10-v1")
-    parser.add_argument("--candidate-file", type=Path,
-                        default=DEFAULT_ROOT / "experiments/decodes-stage3-bo10.jsonl")
+    parser.add_argument("--candidate-file", type=Path, default=DEFAULT_ROOT / "experiments/decodes-stage3-bo10.jsonl")
     args = parser.parse_args()
 
     sources = [args.root / "decodes.jsonl", args.candidate_file]
@@ -147,13 +143,14 @@ def main() -> int:
     filtered = apply_veto_v2(decodes, no_speech_index(rows), args.candidate_config)
     cfg_name = f"{args.candidate_config}-{V2_SUFFIX}"
 
-    out_rows = [{"file": file, "config": cfg_name, "text": cfgs[cfg_name]}
-                for file, cfgs in filtered.items() if cfg_name in cfgs]
+    out_rows = [
+        {"file": file, "config": cfg_name, "text": cfgs[cfg_name]}
+        for file, cfgs in filtered.items()
+        if cfg_name in cfgs
+    ]
     out_file = args.root / "experiments/decodes-stage5b-veto-v2.jsonl"
     out_file.parent.mkdir(parents=True, exist_ok=True)
-    out_file.write_text(
-        "\n".join(json.dumps(r, ensure_ascii=False) for r in out_rows) + "\n",
-        encoding="utf-8")
+    out_file.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in out_rows) + "\n", encoding="utf-8")
 
     vetoed = sum(1 for r in out_rows if not r["text"].strip())
     print(f"Saved {len(out_rows)} rows to {out_file.name} ({vetoed} empty)")

@@ -27,8 +27,8 @@ for line in open(f"{gt}/verdicts.jsonl"):
     if v.get("status") == "review":
         review.append(v)
 
-no_multi = []        # not settled, zero multi-alt operations (auto-assemblable)
-interrupted = []     # not settled, multi-alt ops all decided, gold write missing
+no_multi = []  # not settled, zero multi-alt operations (auto-assemblable)
+interrupted = []  # not settled, multi-alt ops all decided, gold write missing
 active = 0
 for v in review:
     f = v["file"]

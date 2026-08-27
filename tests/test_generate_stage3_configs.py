@@ -1,6 +1,7 @@
 """Stage 3: the decode-parameter grid (3.1 best_of, 3.2 filter thresholds)
 must stay unique-named and optionally carry a stage-2 prompt without
 duplicating it. Everything here is pure -- no engine, no audio."""
+
 import json
 import sys
 from pathlib import Path
@@ -31,13 +32,14 @@ def test_build_with_a_prompt_bakes_it_into_every_variant():
 
 def test_build_names_are_all_unique_and_temperature_zero_for_thresholds():
     variants = build(None)
-    assert len(variants) == len(set(variants))   # dict keys are already unique by construction,
-                                                  # this documents the intent explicitly
+    assert len(variants) == len(set(variants))  # dict keys are already unique by construction,
+    # this documents the intent explicitly
     for param, value in THRESHOLD_GRID:
-        matches = [name for name, options in variants.items()
-                   if name.startswith("w-thr-") and options.get(param) == value]
+        matches = [
+            name for name, options in variants.items() if name.startswith("w-thr-") and options.get(param) == value
+        ]
         assert len(matches) == 1
-        assert variants[matches[0]]["temperature"] == 0.0   # matches w-greedy's decode class
+        assert variants[matches[0]]["temperature"] == 0.0  # matches w-greedy's decode class
 
 
 def test_build_includes_the_two_joint_threshold_followups():
@@ -48,8 +50,7 @@ def test_build_includes_the_two_joint_threshold_followups():
 
 def test_build_of_best_of_grid_covers_every_temperature_best_of_pair():
     variants = build(None)
-    pairs = {(options["temperature"], options["best_of"])
-             for options in variants.values() if "best_of" in options}
+    pairs = {(options["temperature"], options["best_of"]) for options in variants.values() if "best_of" in options}
     assert pairs == set(BEST_OF_GRID)
 
 

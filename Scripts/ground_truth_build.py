@@ -15,6 +15,7 @@ that already have a verdict. Because a verdict is FINAL, it is only written once
 every required engine has actually had its turn — see Runner.can_settle. One
 run owns an output directory at a time; see claim_lock.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,14 +26,25 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ground_truth_consensus import PRIMARY, needs_second_tier   # noqa: E402
-from ground_truth_corpus import (claim_lock, has_audio, pick,   # noqa: E402
-                                 read_rows, release_lock, replace_atomically)
-from ground_truth_runner import (TIER_ONE, TIER_TWO, TIER_TWO_FASTER,   # noqa: E402
-                                 TIER_TWO_GIGAAM, Runner, emit)
+from ground_truth_consensus import PRIMARY, needs_second_tier  # noqa: E402
+from ground_truth_corpus import (
+    claim_lock,
+    has_audio,
+    pick,  # noqa: E402
+    read_rows,
+    release_lock,
+    replace_atomically,
+)
+from ground_truth_runner import (
+    TIER_ONE,
+    TIER_TWO,
+    TIER_TWO_FASTER,  # noqa: E402
+    TIER_TWO_GIGAAM,
+    Runner,
+    emit,
+)
 
 DEFAULT_RECORDINGS = Path.home() / "Library/Application Support/Soma/VoiceRecordings"
-
 
 
 def totals(runner: Runner, total_files: int) -> dict:
@@ -42,8 +54,6 @@ def totals(runner: Runner, total_files: int) -> dict:
     return {"event": "totals", "files": total_files, "decided": len(runner.done), **counts}
 
 
-
-
 def run_block(runner: Runner, block: list[Path], thorough: bool = False) -> None:
     runner.decode("whisper", TIER_ONE, block)
     runner.decode("gigaam", "gigaam", block)
@@ -51,9 +61,11 @@ def run_block(runner: Runner, block: list[Path], thorough: bool = False) -> None
     # agreed on. It cannot overturn those verdicts — agreement across families
     # still decides — but it grades them: a file every engine settles on is a
     # different thing from one where only the first two happened to match.
-    disputed = block if thorough else [
-        p for p in block
-        if needs_second_tier(runner.candidates(p.name, [TIER_ONE, "gigaam"]), runner.glossary)]
+    disputed = (
+        block
+        if thorough
+        else [p for p in block if needs_second_tier(runner.candidates(p.name, [TIER_ONE, "gigaam"]), runner.glossary)]
+    )
     if disputed:
         headline = "all" if thorough else f"{len(disputed)} disagreed —"
         emit({"event": "stage", "text": f"{headline} {len(disputed)} recordings: six more decodes each"})
@@ -78,9 +90,16 @@ def readjudicate(runner: Runner, files: list[Path]) -> int:
     undecodable = [row for row in previous if (row["file"], PRIMARY) not in runner.decoded]
     runner.done.update({row["file"]: row for row in undecodable})
     decided = [p for p in files if (p.name, PRIMARY) in runner.decoded]
-    emit({"event": "plan", "files": len(files), "pending": 0, "blocks": 0,
-          "tier_one": TIER_ONE,
-          "tier_two": ",".join([TIER_TWO, TIER_TWO_FASTER, TIER_TWO_GIGAAM])})
+    emit(
+        {
+            "event": "plan",
+            "files": len(files),
+            "pending": 0,
+            "blocks": 0,
+            "tier_one": TIER_ONE,
+            "tier_two": ",".join([TIER_TWO, TIER_TWO_FASTER, TIER_TWO_GIGAAM]),
+        }
+    )
     emit({"event": "stage", "text": f"Re-voting {len(decided)} decoded recordings under the glossary"})
     rebuilt = [runner.settle(path, publish=False) for path in decided]
     rows = undecodable + [row for row in rebuilt if row]
@@ -101,8 +120,9 @@ def hold_awake() -> None:
     assertion is owned by the run and released the moment it ends — no leftover
     assertion outliving the work, and nothing to remember to switch off."""
     try:
-        subprocess.Popen(["/usr/bin/caffeinate", "-i", "-w", str(os.getpid())],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.Popen(
+            ["/usr/bin/caffeinate", "-i", "-w", str(os.getpid())], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
     except OSError as error:
         emit({"event": "warn", "text": f"could not hold the machine awake: {error}"})
 
@@ -135,8 +155,7 @@ def main(argv: list[str] | None = None) -> int:
         signal.signal(received, runner.stop_worker)
     lock = args.out / "run.lock"
     if not claim_lock(lock):
-        emit({"event": "fatal", "config": "orchestrator",
-              "error": f"another run already owns {args.out}"})
+        emit({"event": "fatal", "config": "orchestrator", "error": f"another run already owns {args.out}"})
         return 2
     try:
         return _run(runner, args, files=pick(args.recordings, args.limit))
@@ -148,17 +167,22 @@ def _run(runner: Runner, args, files: list[Path]) -> int:
     if args.adjudicate_only:
         return readjudicate(runner, files)
     for path in [p for p in files if p.name not in runner.done and not has_audio(p)]:
-        runner.write(path, {"status": "empty", "text": "",
-                            "reason": "recording contains no audio (zero frames)"})
+        runner.write(path, {"status": "empty", "text": "", "reason": "recording contains no audio (zero frames)"})
     # An error verdict is a report of a failure, not a decision about the
     # recording, so it must not retire the file the way a real verdict does. A
     # rerun retries it; a permanently broken file simply fails again, visibly.
-    pending = [p for p in files
-               if (runner.done.get(p.name) or {}).get("status", "error") == "error"]
-    blocks = [pending[i:i + args.block] for i in range(0, len(pending), args.block)]
-    emit({"event": "plan", "files": len(files), "pending": len(pending), "blocks": len(blocks),
-          "tier_one": TIER_ONE,
-          "tier_two": ",".join([TIER_TWO, TIER_TWO_FASTER, TIER_TWO_GIGAAM])})
+    pending = [p for p in files if (runner.done.get(p.name) or {}).get("status", "error") == "error"]
+    blocks = [pending[i : i + args.block] for i in range(0, len(pending), args.block)]
+    emit(
+        {
+            "event": "plan",
+            "files": len(files),
+            "pending": len(pending),
+            "blocks": len(blocks),
+            "tier_one": TIER_ONE,
+            "tier_two": ",".join([TIER_TWO, TIER_TWO_FASTER, TIER_TWO_GIGAAM]),
+        }
+    )
     emit(totals(runner, len(files)))
 
     for index, block in enumerate(blocks, start=1):

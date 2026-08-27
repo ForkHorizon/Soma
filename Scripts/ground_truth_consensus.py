@@ -11,15 +11,25 @@ weights nor training data with the first.
 Pure and stdlib-only on purpose: the orchestrator imports it outside any engine
 venv, and the voting rules are the part worth unit-testing.
 """
+
 from __future__ import annotations
 
 import difflib
 import hashlib
 import math
 
-from ground_truth_text import (Glossary, agrees, canonical_numbers,   # noqa: F401
-                               cross_script, normalize, proposed_terms,
-                               repeats_itself, same_word, unforgiven_edits, wer)
+from ground_truth_text import (
+    Glossary,
+    agrees,
+    canonical_numbers,  # noqa: F401
+    cross_script,
+    normalize,
+    proposed_terms,
+    repeats_itself,
+    same_word,
+    unforgiven_edits,
+    wer,
+)
 
 # Votes are grouped by what they actually share, because agreement inside a
 # family proves much less than agreement across one.
@@ -37,6 +47,7 @@ GIGAAM = "gigaam"
 WHISPER_CONFIGS = (PRIMARY, "w-prompt", "w-fallback", "w-sample", "w-offset", "fw-beam")
 GIGAAM_CONFIGS = (GIGAAM, "gigaam-ctc")
 
+
 def _verdict(status: str, text: str, reason: str, **extra) -> dict:
     return {"status": status, "text": text, "reason": reason, **extra}
 
@@ -48,8 +59,7 @@ def _verdict(status: str, text: str, reason: str, **extra) -> dict:
 NO_SPEECH_PROB = 0.8
 
 
-def decide(candidates: dict[str, str | None], glossary: Glossary | None = None,
-           metrics: dict | None = None) -> dict:
+def decide(candidates: dict[str, str | None], glossary: Glossary | None = None, metrics: dict | None = None) -> dict:
     """candidates maps config name -> transcript, or None if that decode failed.
     metrics carries Whisper's own no_speech/peak_db readings for the file.
 
@@ -68,8 +78,15 @@ def decide(candidates: dict[str, str | None], glossary: Glossary | None = None,
     if not any(norm.values()):
         # Whisper reporting speech while returning no text is an anomaly worth
         # a listen, not a discard justified by the blank output itself.
-        return _verdict("review", "", "every engine returned nothing, but the no-speech evidence does not support it",
-                        candidates=candidates, wer=1.0, edits=0, terms=[])
+        return _verdict(
+            "review",
+            "",
+            "every engine returned nothing, but the no-speech evidence does not support it",
+            candidates=candidates,
+            wer=1.0,
+            edits=0,
+            terms=[],
+        )
     return _adjudicate(candidates, norm, glossary)
 
 
@@ -95,15 +112,13 @@ def _hallucinated_over_silence(norm: dict[str, str], metrics: dict) -> dict | No
     return _verdict("empty", "", f"whisper no_speech={no_speech:.2f}, gigaam heard nothing{level}")
 
 
-def _adjudicate(candidates: dict[str, str | None], norm: dict[str, str],
-                glossary: Glossary | None) -> dict:
+def _adjudicate(candidates: dict[str, str | None], norm: dict[str, str], glossary: Glossary | None) -> dict:
     """Pick whichever GigaAM head draws the most Whisper agreement and judge
     against that — asking the weaker head to carry the verdict would reject
     files the stronger one settles."""
     russian = [name for name in GIGAAM_CONFIGS if name in norm]
     tried = [name for name in WHISPER_CONFIGS if name in norm]
-    scored = [(len([w for w in tried if agrees(norm[name], norm[w], glossary)]), name)
-              for name in russian]
+    scored = [(len([w for w in tried if agrees(norm[name], norm[w], glossary)]), name) for name in russian]
     votes, best_russian = max(scored)
     deadlock = _deadlocked_heads(scored, norm, candidates, glossary)
     if deadlock:
@@ -119,16 +134,28 @@ def _adjudicate(candidates: dict[str, str | None], norm: dict[str, str],
 
     if not agreeing:
         unanimous = len({norm[name] for name in tried}) == 1
-        hint = "whisper unanimous but gigaam dissents" if unanimous and len(tried) > 1 \
-            else "no engine pair agrees"
-        return _verdict("review", "", f"{hint} ({edits} word(s) differ, best WER {closest[0]:.3f} via {closest[1]})",
-                        candidates=candidates, wer=round(closest[0], 4), edits=edits, terms=terms,
-                        **review_details(candidates, glossary))
+        hint = "whisper unanimous but gigaam dissents" if unanimous and len(tried) > 1 else "no engine pair agrees"
+        return _verdict(
+            "review",
+            "",
+            f"{hint} ({edits} word(s) differ, best WER {closest[0]:.3f} via {closest[1]})",
+            candidates=candidates,
+            wer=round(closest[0], 4),
+            edits=edits,
+            terms=terms,
+            **review_details(candidates, glossary),
+        )
 
     text = candidates[agreeing[0]] or ""
     if repeats_itself(norm[agreeing[0]]):
-        return _verdict("review", "", "engines agree on a repeated-token loop, which reads as a hallucination",
-                        candidates=candidates, wer=0.0, edits=0)
+        return _verdict(
+            "review",
+            "",
+            "engines agree on a repeated-token loop, which reads as a hallucination",
+            candidates=candidates,
+            wer=0.0,
+            edits=0,
+        )
     # Both GigaAM heads landing on the same text is the strongest signal
     # available: two decoders, one encoder, and a whole separate architecture
     # from every Whisper vote. A dissenting head always costs the high grade,
@@ -136,18 +163,31 @@ def _adjudicate(candidates: dict[str, str | None], norm: dict[str, str],
     heads = len([name for name in russian if agrees(reference, norm[name], glossary)])
     exact = agreeing[0] == PRIMARY and len(agreeing) == len(tried) and heads == len(russian)
     if len(agreeing) < 2 and not exact:
-        return _verdict("review", "", f"only {agreeing[0]} matches {best_russian}; the other whisper decodes disagree",
-                        candidates=candidates, wer=round(closest[0], 4), edits=edits, terms=terms,
-                        **review_details(candidates, glossary))
+        return _verdict(
+            "review",
+            "",
+            f"only {agreeing[0]} matches {best_russian}; the other whisper decodes disagree",
+            candidates=candidates,
+            wer=round(closest[0], 4),
+            edits=edits,
+            terms=terms,
+            **review_details(candidates, glossary),
+        )
     strong = exact or (len(agreeing) >= 3 and heads == len(russian))
-    return _verdict("accepted", text,
-                    f"{best_russian} matches {len(agreeing)}/{len(tried)} whisper decodes "
-                    f"({', '.join(agreeing)}); {heads}/{len(russian)} gigaam head(s) agree",
-                    confidence="high" if strong else "medium", wer=0.0, votes=votes)
+    return _verdict(
+        "accepted",
+        text,
+        f"{best_russian} matches {len(agreeing)}/{len(tried)} whisper decodes "
+        f"({', '.join(agreeing)}); {heads}/{len(russian)} gigaam head(s) agree",
+        confidence="high" if strong else "medium",
+        wer=0.0,
+        votes=votes,
+    )
 
 
-def _deadlocked_heads(scored: list[tuple[int, str]], norm: dict[str, str],
-                      candidates: dict[str, str | None], glossary: Glossary | None) -> dict | None:
+def _deadlocked_heads(
+    scored: list[tuple[int, str]], norm: dict[str, str], candidates: dict[str, str | None], glossary: Glossary | None
+) -> dict | None:
     """A review verdict when the GigaAM heads read the recording differently and
     pull the same non-zero number of Whisper decodes each; None otherwise.
 
@@ -164,11 +204,17 @@ def _deadlocked_heads(scored: list[tuple[int, str]], norm: dict[str, str],
         return None
     if all(agrees(norm[tied[0]], norm[other], glossary) for other in tied[1:]):
         return None
-    return _verdict("review", "",
-                    f"the two gigaam heads read this differently and draw {top} whisper "
-                    f"decode(s) each — the independent evidence is split, so a human decides",
-                    candidates=candidates, wer=1.0, edits=top, terms=[],
-                    **review_details(candidates, glossary))
+    return _verdict(
+        "review",
+        "",
+        f"the two gigaam heads read this differently and draw {top} whisper "
+        f"decode(s) each — the independent evidence is split, so a human decides",
+        candidates=candidates,
+        wer=1.0,
+        edits=top,
+        terms=[],
+        **review_details(candidates, glossary),
+    )
 
 
 def _token_map(text: str) -> tuple[list[str], list[int], list[str]]:
@@ -207,14 +253,12 @@ def _settled_key(text: str, glossary: Glossary | None) -> str:
     Nothing is folded by alphabet alone. An unconfirmed "аудио" against "audi"
     stays two options, because guessing there would bury a real mishearing
     under a spelling convention."""
-    written = {spelling: heard for heard, spellings in (glossary or {}).items()
-               for spelling in spellings}
+    written = {spelling: heard for heard, spellings in (glossary or {}).items() for spelling in spellings}
     words = canonical_numbers(normalize(text).split())
     return " ".join(written.get(word, word) for word in words)
 
 
-def _worth_asking(options: list[dict], primary_local: str,
-                  glossary: Glossary | None) -> list[dict] | None:
+def _worth_asking(options: list[dict], primary_local: str, glossary: Glossary | None) -> list[dict] | None:
     """Prune an operation's readings to the ones a person should adjudicate,
     or None when nobody needs to look at it.
 
@@ -234,11 +278,11 @@ def _worth_asking(options: list[dict], primary_local: str,
 
     A spot where EVERY decode differs keeps all of its options: that is a real
     seven-way split, not noise."""
+
     def is_cross_architecture(option: dict) -> bool:
         return any(name in GIGAAM_CONFIGS for name in option["names"])
 
-    supported = [option for option in options
-                 if len(option["names"]) >= 2 or is_cross_architecture(option)]
+    supported = [option for option in options if len(option["names"]) >= 2 or is_cross_architecture(option)]
     if supported:
         options = supported
     if len(options) > 1:
@@ -272,12 +316,16 @@ def review_operations(candidates: dict[str, str | None], glossary: Glossary | No
         for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(a=primary, b=other).get_opcodes():
             if tag == "equal":
                 continue
-            changes.append({"start": _boundary(owners, raw_primary, i1),
-                            "end": _boundary(owners, raw_primary, i2),
-                            "name": name,
-                            "other_start": _boundary(other_owners, raw_other, j1),
-                            "other_end": _boundary(other_owners, raw_other, j2),
-                            "other_raw": raw_other})
+            changes.append(
+                {
+                    "start": _boundary(owners, raw_primary, i1),
+                    "end": _boundary(owners, raw_primary, i2),
+                    "name": name,
+                    "other_start": _boundary(other_owners, raw_other, j1),
+                    "other_end": _boundary(other_owners, raw_other, j2),
+                    "other_raw": raw_other,
+                }
+            )
     if not changes:
         return []
     changes.sort(key=lambda change: (change["start"], change["end"], change["name"]))
@@ -301,8 +349,11 @@ def review_operations(candidates: dict[str, str | None], glossary: Glossary | No
         parts, cursor = ([(start, end)] if start == end else []), start
         while cursor < end:
             limit = min(end, cursor + 4)
-            punctuated = [index + 1 for index in range(cursor, limit)
-                           if raw_primary[index].endswith((".", ",", "!", "?", ";", ":"))]
+            punctuated = [
+                index + 1
+                for index in range(cursor, limit)
+                if raw_primary[index].endswith((".", ",", "!", "?", ";", ":"))
+            ]
             part_end = punctuated[-1] if punctuated else limit
             parts.append((cursor, part_end))
             cursor = part_end
@@ -315,7 +366,7 @@ def review_operations(candidates: dict[str, str | None], glossary: Glossary | No
                 if change is None:
                     local = " ".join(raw_primary[part_start:part_end])
                 elif change["start"] == change["end"]:
-                    local = " ".join(change["other_raw"][change["other_start"]:change["other_end"]])
+                    local = " ".join(change["other_raw"][change["other_start"] : change["other_end"]])
                 else:
                     width = max(1, change["end"] - change["start"])
                     other_width = change["other_end"] - change["other_start"]
@@ -330,17 +381,25 @@ def review_operations(candidates: dict[str, str | None], glossary: Glossary | No
                     # "issue", not the "ишью" GigaAM happened to emit first.
                     variant["text"] = local
                 variant["names"].append(name)
-            options = _worth_asking(list(variants.values()),
-                                    " ".join(raw_primary[part_start:part_end]), glossary)
+            options = _worth_asking(list(variants.values()), " ".join(raw_primary[part_start:part_end]), glossary)
             if options is None:
                 continue
-            fingerprint = "\x1f".join([str(part_start), str(part_end)] + ["+".join(option["names"]) + ":" + option["text"] for option in options])
-            operations.append({"id": f"{part_start}:{part_end}",
-                               "signature": hashlib.sha256(fingerprint.encode()).hexdigest()[:16],
-                               "anchor": [part_start, part_end],
-                               "context": [" ".join(raw_primary[max(0, part_start - 3):part_start]),
-                                           " ".join(raw_primary[part_end:part_end + 3])],
-                               "alternatives": options})
+            fingerprint = "\x1f".join(
+                [str(part_start), str(part_end)]
+                + ["+".join(option["names"]) + ":" + option["text"] for option in options]
+            )
+            operations.append(
+                {
+                    "id": f"{part_start}:{part_end}",
+                    "signature": hashlib.sha256(fingerprint.encode()).hexdigest()[:16],
+                    "anchor": [part_start, part_end],
+                    "context": [
+                        " ".join(raw_primary[max(0, part_start - 3) : part_start]),
+                        " ".join(raw_primary[part_end : part_end + 3]),
+                    ],
+                    "alternatives": options,
+                }
+            )
     return operations
 
 
@@ -348,8 +407,9 @@ def review_details(candidates: dict[str, str | None], glossary: Glossary | None)
     operations = review_operations(candidates, glossary)
     # Kept for old verdict consumers and tests. New clients use the operation
     # schema, whose half-open anchor span also represents insertions.
-    spots = [[operation["anchor"][0], max(operation["anchor"][0], operation["anchor"][1] - 1)]
-             for operation in operations]
+    spots = [
+        [operation["anchor"][0], max(operation["anchor"][0], operation["anchor"][1] - 1)] for operation in operations
+    ]
     return {"review_operations": operations, "spots": spots}
 
 

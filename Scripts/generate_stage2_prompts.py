@@ -29,6 +29,7 @@ sentence, not blindly trust that every new term still fits it.
 
     ./generate_stage2_prompts.py --out experiments/stage2_prompts.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,7 +41,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from ground_truth_text import normalize   # noqa: E402
+from ground_truth_text import normalize  # noqa: E402
 
 DEFAULT_ROOT = Path.home() / "Library/Application Support/Soma/GroundTruth"
 LATIN_WORD = re.compile(r"^[a-z0-9+#*]*[a-z][a-z0-9+#*]*$")
@@ -106,9 +107,17 @@ P5_TEMPLATE = (
 # loanwords left alone, matching how DEV_PROMPT itself writes "Git"/"API"
 # next to lowercase "модель"/"промпт".
 DISPLAY_CASE = {
-    "pr": "PR", "ui": "UI", "m1": "M1", "git": "Git", "unity": "Unity",
-    "android": "Android", "nexus": "Nexus", "housedata": "HouseData",
-    "developer": "Developer", "hermes": "Hermes", "facetime": "FaceTime",
+    "pr": "PR",
+    "ui": "UI",
+    "m1": "M1",
+    "git": "Git",
+    "unity": "Unity",
+    "android": "Android",
+    "nexus": "Nexus",
+    "housedata": "HouseData",
+    "developer": "Developer",
+    "hermes": "Hermes",
+    "facetime": "FaceTime",
     "sirena": "Sirena",
 }
 
@@ -116,8 +125,10 @@ DISPLAY_CASE = {
 def render_sentence(template: str, terms: list[str]) -> str:
     missing = [key for key in re.findall(r"\{(\w+)\}", template) if key not in terms]
     if missing:
-        raise ValueError(f"P3's term set no longer covers the P4/P5 template: missing {missing}. "
-                         "Re-read the sentence by hand before trusting a regenerated one.")
+        raise ValueError(
+            f"P3's term set no longer covers the P4/P5 template: missing {missing}. "
+            "Re-read the sentence by hand before trusting a regenerated one."
+        )
     return template.format(**{term: DISPLAY_CASE.get(term, term) for term in terms})
 
 
@@ -125,15 +136,27 @@ def build(root: Path) -> dict[str, dict]:
     glossary, top20 = glossary_terms(root), top_latin_terms(root)
     variants: dict[str, dict] = {}
     if glossary:
-        variants["w-p-p2-v1"] = {"temperature": 0.0, "condition_on_previous_text": False,
-                                 "initial_prompt": "Диктовка по разработке: " + ", ".join(glossary) + "."}
+        variants["w-p-p2-v1"] = {
+            "temperature": 0.0,
+            "condition_on_previous_text": False,
+            "initial_prompt": "Диктовка по разработке: " + ", ".join(glossary) + ".",
+        }
     if top20:
-        variants["w-p-p3-v1"] = {"temperature": 0.0, "condition_on_previous_text": False,
-                                 "initial_prompt": "Диктовка по разработке: " + ", ".join(top20) + "."}
-        variants["w-p-p4-v1"] = {"temperature": 0.0, "condition_on_previous_text": False,
-                                 "initial_prompt": render_sentence(P4_TEMPLATE, top20)}
-        variants["w-p-p5-v1"] = {"temperature": 0.0, "condition_on_previous_text": False,
-                                 "initial_prompt": render_sentence(P5_TEMPLATE, top20)}
+        variants["w-p-p3-v1"] = {
+            "temperature": 0.0,
+            "condition_on_previous_text": False,
+            "initial_prompt": "Диктовка по разработке: " + ", ".join(top20) + ".",
+        }
+        variants["w-p-p4-v1"] = {
+            "temperature": 0.0,
+            "condition_on_previous_text": False,
+            "initial_prompt": render_sentence(P4_TEMPLATE, top20),
+        }
+        variants["w-p-p5-v1"] = {
+            "temperature": 0.0,
+            "condition_on_previous_text": False,
+            "initial_prompt": render_sentence(P5_TEMPLATE, top20),
+        }
     return variants
 
 

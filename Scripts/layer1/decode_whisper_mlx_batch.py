@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run Whisper large-v3 MLX over a Layer-1 manifest in one process."""
+
 from __future__ import annotations
 
 import json

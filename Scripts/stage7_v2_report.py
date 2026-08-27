@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Summarize guarded Stage-7 v2 local-LLM A/B results."""
+
 import json
 from collections import Counter
 from pathlib import Path
@@ -15,12 +16,17 @@ def main():
         label = row["label"]
         total[label] += 1
         accepted[label] += bool(row["accepted"])
-        matched = (not row["candidate"].strip() and row["human_cleaned"].strip() in ("", ".")) \
-            if label == "no_speech" else row["candidate"] == row["human_cleaned"]
+        matched = (
+            (not row["candidate"].strip() and row["human_cleaned"].strip() in ("", "."))
+            if label == "no_speech"
+            else row["candidate"] == row["human_cleaned"]
+        )
         if matched:
             match[label] += 1
-    report = {label: {"total": total[label], "guard_accepted": accepted[label], "exact_human": match[label]}
-              for label in sorted(total)}
+    report = {
+        label: {"total": total[label], "guard_accepted": accepted[label], "exact_human": match[label]}
+        for label in sorted(total)
+    }
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
 

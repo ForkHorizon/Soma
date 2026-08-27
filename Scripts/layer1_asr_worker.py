@@ -8,6 +8,7 @@ either plain text or JSON: {"text": "...", "words": [{"word": ..., "start": 0,
 "end": 1}], "version": "..."}. Missing commands are failures, never empty
 transcripts.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -32,14 +33,15 @@ def main() -> int:
     if not Path(args.audio).is_file():
         return fail(f"Source audio does not exist: {args.audio}")
 
-    command = [part.replace("{audio}", args.audio).replace("{audio_hash}", args.audio_hash)
-               .replace("{model}", args.model) for part in command]
+    command = [
+        part.replace("{audio}", args.audio).replace("{audio_hash}", args.audio_hash).replace("{model}", args.model)
+        for part in command
+    ]
     environment = child_environment()
     environment["SOMA_LAYER1_AUDIO"] = args.audio
     environment["SOMA_LAYER1_AUDIO_HASH"] = args.audio_hash
     try:
-        completed = subprocess.run(command, capture_output=True, text=True,
-                                   env=environment, check=False)
+        completed = subprocess.run(command, capture_output=True, text=True, env=environment, check=False)
     except OSError as error:
         return fail(f"Could not start {args.model}: {error}")
     if completed.returncode != 0:

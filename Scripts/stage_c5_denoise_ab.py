@@ -5,6 +5,7 @@ Read-only on originals: denoised WAVs go to GroundTruth/experiments/denoised/<fi
 decodes to experiments/decodes-stage-c5-<filter>.jsonl. Champion baseline comes
 from the main decode cache (w-bo-t20-n10-v1); it is never re-decoded.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -77,7 +78,8 @@ def denoise_all(filter_name: str, files: list[str], out_root: Path) -> Path:
     started = time.perf_counter()
     proc = subprocess.run(
         [str(DEN_VENV / "bin" / "python"), str(script), out_dir, *files],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if proc.returncode != 0:
         raise RuntimeError(f"denoise {filter_name} failed:\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}")
@@ -85,7 +87,7 @@ def denoise_all(filter_name: str, files: list[str], out_root: Path) -> Path:
     if produced < len(files):
         raise RuntimeError(f"[{filter_name}] produced {produced}/{len(files)} files")
     done_marker.write_text(str(len(files)))
-    print(f"[{filter_name}] denoised {produced} files in {time.perf_counter()-started:.0f}s", flush=True)
+    print(f"[{filter_name}] denoised {produced} files in {time.perf_counter() - started:.0f}s", flush=True)
     return out_dir
 
 
@@ -185,16 +187,36 @@ def decode_filter(filter_name: str, denoised_dir: Path, exp: Path) -> Path:
         return out
     config_name = f"w-bo-t20-n10-v1-dn-{filter_name}"
     config_file = exp / f"c5-config-{filter_name}.json"
-    config_file.write_text(json.dumps({config_name: {
-        "temperature": 0.2, "condition_on_previous_text": False,
-        "best_of": 10, "initial_prompt": DEV_PROMPT_P5,
-    }}), encoding="utf-8")
+    config_file.write_text(
+        json.dumps(
+            {
+                config_name: {
+                    "temperature": 0.2,
+                    "condition_on_previous_text": False,
+                    "best_of": 10,
+                    "initial_prompt": DEV_PROMPT_P5,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
     lst = exp / f"c5-files-{filter_name}.txt"
     lst.write_text("\n".join(str(p) for p in sorted(denoised_dir.glob("rec-*.wav"))) + "\n", encoding="utf-8")
     log = exp / f"c5-decode-{filter_name}.log"
-    cmd = [str(VENV_ROOT / "venv-whisper/bin/python"), str(WORKER), "--engine", "whisper",
-           "--configs", config_name, "--config-file", str(config_file),
-           "--list", str(lst), "--out", str(out)]
+    cmd = [
+        str(VENV_ROOT / "venv-whisper/bin/python"),
+        str(WORKER),
+        "--engine",
+        "whisper",
+        "--configs",
+        config_name,
+        "--config-file",
+        str(config_file),
+        "--list",
+        str(lst),
+        "--out",
+        str(out),
+    ]
     print(f"[{filter_name}] decoding → {out.name}", flush=True)
     with log.open("w") as log_handle:
         proc = subprocess.run(cmd, stdout=log_handle, stderr=subprocess.STDOUT)
@@ -244,7 +266,7 @@ def main() -> int:
                 continue
             decodes = decode_filter(f, denoised_dir, exp)
             results[f] = {"status": "decoded", "decodes": str(decodes)}
-        except Exception as error:                                  # noqa: BLE001
+        except Exception as error:  # noqa: BLE001
             results[f] = {"status": "failed", "error": str(error)[:500]}
             print(f"[{f}] FAILED: {error}", flush=True)
     print(json.dumps(results, ensure_ascii=False, indent=2), flush=True)

@@ -17,6 +17,7 @@ second, different definition of the same thing.
     ./asr_prompt_leak.py --decodes experiments/decodes-stage2-p3.jsonl \
         --config w-p-p3-v1 --prompts experiments/stage2_prompts.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,8 +27,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from ground_truth_consensus import NO_SPEECH_PROB   # noqa: E402
-from ground_truth_text import normalize, repeats_itself   # noqa: E402
+from ground_truth_consensus import NO_SPEECH_PROB  # noqa: E402
+from ground_truth_text import normalize, repeats_itself  # noqa: E402
 
 DEFAULT_ROOT = Path.home() / "Library/Application Support/Soma/GroundTruth"
 LEAK_RUN = 3
@@ -66,10 +67,12 @@ def leaks_prompt(prompt: str, decode_text: str, gold_text: str, run: int = LEAK_
     """
     prompt_words, decode_words = normalize(prompt).split(), normalize(decode_text).split()
     gold_words = set(normalize(gold_text).split())
-    windows = {tuple(prompt_words[i:i + run]) for i in range(len(prompt_words) - run + 1)}
-    return any(tuple(decode_words[i:i + run]) in windows
-              and any(word not in gold_words for word in decode_words[i:i + run])
-              for i in range(len(decode_words) - run + 1))
+    windows = {tuple(prompt_words[i : i + run]) for i in range(len(prompt_words) - run + 1)}
+    return any(
+        tuple(decode_words[i : i + run]) in windows
+        and any(word not in gold_words for word in decode_words[i : i + run])
+        for i in range(len(decode_words) - run + 1)
+    )
 
 
 def boilerplate_rates(rows: dict[str, dict]) -> dict:
@@ -80,21 +83,27 @@ def boilerplate_rates(rows: dict[str, dict]) -> dict:
     if not n:
         return {"n": 0, "empty_rate": None, "low_confidence_rate": None, "looping_rate": None}
     empty = sum(1 for row in rows.values() if not (row.get("text") or "").strip())
-    low_confidence = sum(1 for row in rows.values()
-                         if isinstance(row.get("no_speech"), (int, float)) and row["no_speech"] >= NO_SPEECH_PROB)
+    low_confidence = sum(
+        1
+        for row in rows.values()
+        if isinstance(row.get("no_speech"), (int, float)) and row["no_speech"] >= NO_SPEECH_PROB
+    )
     looping = sum(1 for row in rows.values() if repeats_itself(normalize(row.get("text") or "")))
-    return {"n": n, "empty_rate": round(100 * empty / n, 1),
-            "low_confidence_rate": round(100 * low_confidence / n, 1),
-            "looping_rate": round(100 * looping / n, 1)}
+    return {
+        "n": n,
+        "empty_rate": round(100 * empty / n, 1),
+        "low_confidence_rate": round(100 * low_confidence / n, 1),
+        "looping_rate": round(100 * looping / n, 1),
+    }
 
 
 def check_leaks(rows: dict[str, dict], prompt: str, gold: dict[str, str]) -> list[str]:
-    return sorted(name for name, row in rows.items()
-                 if name in gold and leaks_prompt(prompt, row.get("text") or "", gold[name]))
+    return sorted(
+        name for name, row in rows.items() if name in gold and leaks_prompt(prompt, row.get("text") or "", gold[name])
+    )
 
 
-def report(config: str, rates: dict, leaked: list[str], checked_against_gold: int,
-          baseline_rates: dict | None) -> None:
+def report(config: str, rates: dict, leaked: list[str], checked_against_gold: int, baseline_rates: dict | None) -> None:
     print(f"config: {config}  ({rates['n']} decodes)")
     if checked_against_gold:
         pct = 100 * len(leaked) / checked_against_gold
@@ -105,8 +114,11 @@ def report(config: str, rates: dict, leaked: list[str], checked_against_gold: in
             print(f"    ... and {len(leaked) - 10} more")
     else:
         print("  prompt leak: no gold overlap to check")
-    for key, label in (("empty_rate", "empty text"), ("low_confidence_rate", f"no_speech>={NO_SPEECH_PROB}"),
-                       ("looping_rate", "repeated-phrase loop")):
+    for key, label in (
+        ("empty_rate", "empty text"),
+        ("low_confidence_rate", f"no_speech>={NO_SPEECH_PROB}"),
+        ("looping_rate", "repeated-phrase loop"),
+    ):
         now = rates[key]
         before = baseline_rates[key] if baseline_rates else None
         delta = ""
@@ -121,12 +133,18 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--decodes", required=True, type=Path, help="experiment decodes.jsonl to check")
     parser.add_argument("--config", required=True, help="config name inside --decodes to check")
-    parser.add_argument("--prompts", type=Path,
-                        help="the --config-file JSON given to the worker; --config's initial_prompt is read from it")
+    parser.add_argument(
+        "--prompts",
+        type=Path,
+        help="the --config-file JSON given to the worker; --config's initial_prompt is read from it",
+    )
     parser.add_argument("--prompt", help="prompt text directly, instead of --prompts")
     parser.add_argument("--root", type=Path, default=DEFAULT_ROOT)
-    parser.add_argument("--baseline-decodes", type=Path,
-                        help="decodes.jsonl holding --baseline-config (default: the cache under --root)")
+    parser.add_argument(
+        "--baseline-decodes",
+        type=Path,
+        help="decodes.jsonl holding --baseline-config (default: the cache under --root)",
+    )
     parser.add_argument("--baseline-config", default="w-greedy")
     args = parser.parse_args()
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Materialize Stage-7 human punctuation decisions as an evaluation dataset."""
+
 import json
 from pathlib import Path
 
@@ -10,7 +11,9 @@ GT = Path.home() / "Library/Application Support/Soma/GroundTruth"
 
 def main():
     exp = GT / "experiments"
-    manifest = {r["sample_id"]: r for r in map(json.loads, (exp / "stage7-ellipsis-audit-60.jsonl").read_text().splitlines())}
+    manifest = {
+        r["sample_id"]: r for r in map(json.loads, (exp / "stage7-ellipsis-audit-60.jsonl").read_text().splitlines())
+    }
     latest = {}
     for line in (exp / "stage7-ellipsis-audit-decisions.jsonl").read_text().splitlines():
         if line:
@@ -29,8 +32,16 @@ def main():
             label = "strip_personal_credits"
         else:
             label = "punctuation_edit"
-        output.append({"file": sample["file"], "tier": sample["tier"], "verbatim": before,
-                       "human_cleaned": after, "label": label, "audit_status": decision["status"]})
+        output.append(
+            {
+                "file": sample["file"],
+                "tier": sample["tier"],
+                "verbatim": before,
+                "human_cleaned": after,
+                "label": label,
+                "audit_status": decision["status"],
+            }
+        )
     out = exp / "stage7-punctuation-eval-60.jsonl"
     out.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in output), encoding="utf-8")
     print(f"wrote {len(output)} rows -> {out}")

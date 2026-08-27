@@ -16,6 +16,7 @@ change, run it after, and read the delta.
     ./asr_eval.py --baseline baseline.json # what moved, and which way
     ./asr_eval.py --decodes new_run.jsonl  # score an experiment
 """
+
 from __future__ import annotations
 
 import argparse
@@ -28,10 +29,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from ground_truth_text import normalize, wer   # noqa: E402
+from ground_truth_text import normalize, wer  # noqa: E402
 
 DEFAULT_ROOT = Path.home() / "Library/Application Support/Soma/GroundTruth"
-REFERENCE = "gigaam"    # the independent architecture, hence the drift anchor
+REFERENCE = "gigaam"  # the independent architecture, hence the drift anchor
 LATIN = re.compile(r"[A-Za-z]")
 PUNCT = re.compile(r"[.,!?;:]")
 
@@ -55,8 +56,7 @@ HUMAN_SOURCES = {"operation-review", "review-session"}
 def load_gold(path: Path, include_auto: bool = False) -> dict[str, str]:
     """Load only human references by default; consensus rows are circular for
     the engines that produced them and must be an explicit opt-in."""
-    return {row["file"]: row["text"] for row in read_jsonl(path)
-            if include_auto or row.get("source") in HUMAN_SOURCES}
+    return {row["file"]: row["text"] for row in read_jsonl(path) if include_auto or row.get("source") in HUMAN_SOURCES}
 
 
 def load_decodes(paths: list[Path]) -> dict[str, dict[str, str]]:
@@ -85,8 +85,7 @@ def contains(haystack: str, needle: str) -> bool:
     words, wanted = normalize(haystack).split(), normalize(needle).split()
     if not wanted:
         return True
-    return any(words[i:i + len(wanted)] == wanted
-               for i in range(len(words) - len(wanted) + 1))
+    return any(words[i : i + len(wanted)] == wanted for i in range(len(words) - len(wanted) + 1))
 
 
 def spot_answers(verdicts: list[dict], progress: list[dict]) -> list[dict]:
@@ -101,16 +100,15 @@ def spot_answers(verdicts: list[dict], progress: list[dict]) -> list[dict]:
     for verdict in verdicts:
         for operation in verdict.get("review_operations") or []:
             options[operation.get("signature")] = [
-                str(alternative.get("text", ""))
-                for alternative in operation.get("alternatives") or []]
+                str(alternative.get("text", "")) for alternative in operation.get("alternatives") or []
+            ]
     answers = []
     for row in progress:
         alternatives = options.get(row.get("signature"))
         if alternatives is None:
-            continue    # the question was re-cut since; its answer no longer maps
+            continue  # the question was re-cut since; its answer no longer maps
         chosen = row.get("text", "")
-        rejected = [text for text in alternatives
-                    if normalize(text) != normalize(chosen) and normalize(text)]
+        rejected = [text for text in alternatives if normalize(text) != normalize(chosen) and normalize(text)]
         if not chosen.strip() and not rejected:
             continue
         answers.append({"file": row["file"], "chosen": chosen, "rejected": rejected})
@@ -124,8 +122,7 @@ def spot_score(text: str, answer: dict) -> bool:
     return not any(contains(text, reading) for reading in answer["rejected"])
 
 
-def score(decodes: dict[str, dict[str, str]], gold: dict[str, str],
-          answers: list[dict]) -> dict[str, dict[str, float]]:
+def score(decodes: dict[str, dict[str, str]], gold: dict[str, str], answers: list[dict]) -> dict[str, dict[str, float]]:
     configs = sorted({config for row in decodes.values() for config in row})
     results = {}
     for config in configs:
@@ -135,16 +132,18 @@ def score(decodes: dict[str, dict[str, str]], gold: dict[str, str],
         # Kept per-file (not just averaged) so a baseline comparison can run a
         # sign test instead of eyeballing a mean delta against noise — at 94-99
         # gold files a 0.002 shift in the average is meaningless on its own.
-        wer_by_file = {name: wer(normalize(reference), normalize(texts[name]))
-                        for name, reference in gold.items()
-                        if name in texts and normalize(reference).split()}
-        drift_by_file = {name: wer(normalize(row[REFERENCE]), normalize(row[config]))
-                          for name, row in decodes.items()
-                          if REFERENCE in row and config in row and config != REFERENCE
-                          and normalize(row[REFERENCE]).split()}
+        wer_by_file = {
+            name: wer(normalize(reference), normalize(texts[name]))
+            for name, reference in gold.items()
+            if name in texts and normalize(reference).split()
+        }
+        drift_by_file = {
+            name: wer(normalize(row[REFERENCE]), normalize(row[config]))
+            for name, row in decodes.items()
+            if REFERENCE in row and config in row and config != REFERENCE and normalize(row[REFERENCE]).split()
+        }
         errors, drift = list(wer_by_file.values()), list(drift_by_file.values())
-        hits = [spot_score(texts[answer["file"]], answer)
-                for answer in answers if answer["file"] in texts]
+        hits = [spot_score(texts[answer["file"]], answer) for answer in answers if answer["file"] in texts]
         results[config] = {
             "files": float(len(texts)),
             # median, not mean, for both (issue #0086 for drift, #0088 for
@@ -170,10 +169,16 @@ def score(decodes: dict[str, dict[str, str]], gold: dict[str, str],
 # The counts are shown, not just the rates: w-offset only ever ran on the
 # second tier, so its flattering WER is drawn from a handful of files and must
 # not be read as beating a config that was scored on all of them.
-COLUMNS = [("files", "files", "{:.0f}"), ("wer_n", "gold", "{:.0f}"),
-           ("wer", "WER↓", "{:.4f}"), ("spots_n", "spot", "{:.0f}"),
-           ("spots", "spots%↑", "{:.1f}"), ("drift", "drift↓", "{:.4f}"),
-           ("latin", "latin%↑", "{:.1f}"), ("punct", "punct%↑", "{:.1f}")]
+COLUMNS = [
+    ("files", "files", "{:.0f}"),
+    ("wer_n", "gold", "{:.0f}"),
+    ("wer", "WER↓", "{:.4f}"),
+    ("spots_n", "spot", "{:.0f}"),
+    ("spots", "spots%↑", "{:.1f}"),
+    ("drift", "drift↓", "{:.4f}"),
+    ("latin", "latin%↑", "{:.1f}"),
+    ("punct", "punct%↑", "{:.1f}"),
+]
 RATES = {"wer", "spots", "drift", "latin", "punct"}
 
 
@@ -258,40 +263,56 @@ def report(results: dict, baseline: dict | None, baseline_config: str | None = N
         # a brand-new config beat w-greedy, which never shared its name).
         reference = baseline.get(baseline_config or config) if baseline else None
         if reference:
-            marks = [f"{title}{delta(key, row[key], reference.get(key))}"
-                     for key, title, _ in COLUMNS if key in RATES
-                     if delta(key, row[key], reference.get(key)).strip() not in ("", "=")]
+            marks = [
+                f"{title}{delta(key, row[key], reference.get(key))}"
+                for key, title, _ in COLUMNS
+                if key in RATES
+                if delta(key, row[key], reference.get(key)).strip() not in ("", "=")
+            ]
             if marks:
                 print(" " * 14 + "  |  ".join(marks))
-            for line in (paired_verdict("WER", row.get("wer_by_file"), reference.get("wer_by_file")),
-                         paired_verdict("drift", row.get("drift_by_file"), reference.get("drift_by_file"))):
+            for line in (
+                paired_verdict("WER", row.get("wer_by_file"), reference.get("wer_by_file")),
+                paired_verdict("drift", row.get("drift_by_file"), reference.get("drift_by_file")),
+            ):
                 if line:
                     print(" " * 14 + line)
     gold_n = max((row["wer_n"] for row in results.values()), default=0)
     spot_n = max((row["spots_n"] for row in results.values()), default=0)
-    print(f"\nup to {gold_n:.0f} gold transcripts and {spot_n:.0f} adjudicated spots; "
-          f"drift is median WER against {REFERENCE}, which needs no labels and so "
-          f"covers every recording.")
+    print(
+        f"\nup to {gold_n:.0f} gold transcripts and {spot_n:.0f} adjudicated spots; "
+        f"drift is median WER against {REFERENCE}, which needs no labels and so "
+        f"covers every recording."
+    )
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--root", type=Path, default=DEFAULT_ROOT,
-                        help="GroundTruth directory holding gold/verdicts/progress")
-    parser.add_argument("--decodes", type=Path, action="append",
-                        help="decodes.jsonl to score (default: the one under --root). Repeatable: an "
-                             "experiment file plus the main cache merges in gigaam for drift, since an "
-                             "experiment's own file never has it (hygiene rule 1).")
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument(
+        "--root", type=Path, default=DEFAULT_ROOT, help="GroundTruth directory holding gold/verdicts/progress"
+    )
+    parser.add_argument(
+        "--decodes",
+        type=Path,
+        action="append",
+        help="decodes.jsonl to score (default: the one under --root). Repeatable: an "
+        "experiment file plus the main cache merges in gigaam for drift, since an "
+        "experiment's own file never has it (hygiene rule 1).",
+    )
     parser.add_argument("--baseline", type=Path, help="compare against these saved numbers")
-    parser.add_argument("--baseline-config",
-                        help="compare every config in --decodes against this ONE baseline config's frozen "
-                             "stats, instead of matching by identical name -- e.g. does a new prompt "
-                             "variant beat w-greedy, not 'has w-greedy itself changed since it was frozen'")
+    parser.add_argument(
+        "--baseline-config",
+        help="compare every config in --decodes against this ONE baseline config's frozen "
+        "stats, instead of matching by identical name -- e.g. does a new prompt "
+        "variant beat w-greedy, not 'has w-greedy itself changed since it was frozen'",
+    )
     parser.add_argument("--save", type=Path, help="write the numbers for a later comparison")
     parser.add_argument("--json", action="store_true", help="emit the numbers instead of a table")
-    parser.add_argument("--include-auto-gold", action="store_true",
-                        help="include consensus-derived rows in WER (not valid for comparing engines that voted)")
+    parser.add_argument(
+        "--include-auto-gold",
+        action="store_true",
+        help="include consensus-derived rows in WER (not valid for comparing engines that voted)",
+    )
     args = parser.parse_args()
 
     sources = args.decodes or [args.root / "decodes.jsonl"]
@@ -300,8 +321,7 @@ def main() -> int:
         print(f"no decodes found in {', '.join(str(p) for p in sources)}", file=sys.stderr)
         return 1
     gold = load_gold(args.root / "gold.jsonl", include_auto=args.include_auto_gold)
-    answers = spot_answers(read_jsonl(args.root / "verdicts.jsonl"),
-                           read_jsonl(args.root / "review_progress.jsonl"))
+    answers = spot_answers(read_jsonl(args.root / "verdicts.jsonl"), read_jsonl(args.root / "review_progress.jsonl"))
     results = score(decodes, gold, answers)
 
     if args.save:

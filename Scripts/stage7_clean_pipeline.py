@@ -5,6 +5,7 @@ The verbatim decode is immutable. This pipeline writes a separate JSONL with a
 cleaned projection and refuses transformations that add words, alter numbers,
 or remove configured glossary spellings.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -49,8 +50,16 @@ def process(rows, glossary):
         }
         if not all(checks.values()):
             raise ValueError(f"unsafe Stage-7 transformation for {row['file']}: {checks}")
-        output.append({"file": row["file"], "config": row["config"], "verbatim": verbatim,
-                       "cleaned": cleaned, "rules": rules, "checks": checks})
+        output.append(
+            {
+                "file": row["file"],
+                "config": row["config"],
+                "verbatim": verbatim,
+                "cleaned": cleaned,
+                "rules": rules,
+                "checks": checks,
+            }
+        )
     return output
 
 

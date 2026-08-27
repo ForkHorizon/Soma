@@ -22,8 +22,7 @@ class TestGigaamWordSum(unittest.TestCase):
         self.assertEqual(gigaam_word_sum({"gigaam": "", "gigaam-ctc": "увеличиватся"}), 1)
 
     def test_real_speech_counts_across_heads(self):
-        self.assertEqual(
-            gigaam_word_sum({"gigaam": "привет мир", "gigaam-ctc": "привет"}), 3)
+        self.assertEqual(gigaam_word_sum({"gigaam": "привет мир", "gigaam-ctc": "привет"}), 3)
 
 
 class TestHasHallucinationTrigger(unittest.TestCase):
@@ -64,10 +63,11 @@ class TestTrimTailCredits(unittest.TestCase):
     def test_keeps_middle_boilerplate_that_is_real_speech(self):
         # rec-1785595726562: the user really says "продолжение следует" while
         # talking ABOUT whisper hallucinations; gigaam hears every word.
-        cfgs = {"gigaam": "возвращает спасибо либо продолжение следует мне не нравится",
-                "gigaam-ctc": "возвращает спасибо либо продолжение следует"}
-        text = ("…возвращает спасибо, либо продолжение следует. "
-                "Мне не нравится эта идея.")
+        cfgs = {
+            "gigaam": "возвращает спасибо либо продолжение следует мне не нравится",
+            "gigaam-ctc": "возвращает спасибо либо продолжение следует",
+        }
+        text = "…возвращает спасибо, либо продолжение следует. Мне не нравится эта идея."
         self.assertIsNone(trim_tail_credits(text, cfgs))
 
     def test_keeps_when_boilerplate_spans_long_tail(self):
@@ -87,52 +87,60 @@ class TestApplyVetoV2(unittest.TestCase):
     def test_rule_a_zeroes_loop_hallucination_on_near_silence(self):
         # rec-1784763272 shape: a loop that runs past repeats_itself's span,
         # gigaam heads nearly empty.
-        decodes = {"rec-1.wav": {
-            "gigaam": "",
-            "gigaam-ctc": "увеличиватся",
-            CAND: "Включаю сетевую сетевую сетевую сетевую сетевую сетевую сетевая сетевая",
-        }}
+        decodes = {
+            "rec-1.wav": {
+                "gigaam": "",
+                "gigaam-ctc": "увеличиватся",
+                CAND: "Включаю сетевую сетевую сетевую сетевую сетевую сетевую сетевая сетевая",
+            }
+        }
         out = apply_veto_v2(decodes, {("rec-1.wav", CAND): 0.08}, CAND)
         self.assertEqual(out["rec-1.wav"][OUT], "")
 
     def test_rule_a_keeps_short_real_speech(self):
         # "Открытка." files: gigaam sum is 2 < 4, but no trigger fires.
-        decodes = {"rec-2.wav": {
-            "gigaam": "открытка",
-            "gigaam-ctc": "",
-            CAND: "Открытка.",
-        }}
+        decodes = {
+            "rec-2.wav": {
+                "gigaam": "открытка",
+                "gigaam-ctc": "",
+                CAND: "Открытка.",
+            }
+        }
         out = apply_veto_v2(decodes, {("rec-2.wav", CAND): 0.1}, CAND)
         self.assertEqual(out["rec-2.wav"][OUT], "Открытка.")
 
     def test_rule_a_suppresses_classic_credits_on_full_silence(self):
-        decodes = {"rec-3.wav": {
-            "gigaam": "",
-            "gigaam-ctc": "",
-            CAND: "Субтитры делал DimaTorzok",
-        }}
+        decodes = {
+            "rec-3.wav": {
+                "gigaam": "",
+                "gigaam-ctc": "",
+                CAND: "Субтитры делал DimaTorzok",
+            }
+        }
         out = apply_veto_v2(decodes, {("rec-3.wav", CAND): 0.2}, CAND)
         self.assertEqual(out["rec-3.wav"][OUT], "")
 
     def test_rule_b_trims_credits_after_real_speech(self):
-        decodes = {"rec-4.wav": {
-            "gigaam": "хотя с другой стороны",
-            "gigaam-ctc": "хотя с другой стороны",
-            CAND: "Хотя, с другой стороны, я не знаю, как это сделать. Субтитры сделал DimaTorzok",
-        }}
+        decodes = {
+            "rec-4.wav": {
+                "gigaam": "хотя с другой стороны",
+                "gigaam-ctc": "хотя с другой стороны",
+                CAND: "Хотя, с другой стороны, я не знаю, как это сделать. Субтитры сделал DimaTorzok",
+            }
+        }
         out = apply_veto_v2(decodes, {("rec-4.wav", CAND): 0.12}, CAND)
-        self.assertEqual(out["rec-4.wav"][OUT],
-                         "Хотя, с другой стороны, я не знаю, как это сделать.")
+        self.assertEqual(out["rec-4.wav"][OUT], "Хотя, с другой стороны, я не знаю, как это сделать.")
 
     def test_real_speech_untouched_when_clean(self):
-        decodes = {"rec-5.wav": {
-            "gigaam": "смотри новая логика",
-            "gigaam-ctc": "смотри новая логика",
-            CAND: "Смотри, новая логика: партиклы появляются примерно плюс-минус 27%.",
-        }}
+        decodes = {
+            "rec-5.wav": {
+                "gigaam": "смотри новая логика",
+                "gigaam-ctc": "смотри новая логика",
+                CAND: "Смотри, новая логика: партиклы появляются примерно плюс-минус 27%.",
+            }
+        }
         out = apply_veto_v2(decodes, {("rec-5.wav", CAND): 0.03}, CAND)
-        self.assertEqual(out["rec-5.wav"][OUT],
-                         "Смотри, новая логика: партиклы появляются примерно плюс-минус 27%.")
+        self.assertEqual(out["rec-5.wav"][OUT], "Смотри, новая логика: партиклы появляются примерно плюс-минус 27%.")
 
     def test_missing_candidate_config_is_skipped(self):
         decodes = {"rec-6.wav": {"gigaam": "", "gigaam-ctc": ""}}
@@ -140,11 +148,13 @@ class TestApplyVetoV2(unittest.TestCase):
         self.assertNotIn(OUT, out["rec-6.wav"])
 
     def test_input_decodes_not_mutated(self):
-        decodes = {"rec-7.wav": {
-            "gigaam": "",
-            "gigaam-ctc": "",
-            CAND: "Субтитры делал DimaTorzok",
-        }}
+        decodes = {
+            "rec-7.wav": {
+                "gigaam": "",
+                "gigaam-ctc": "",
+                CAND: "Субтитры делал DimaTorzok",
+            }
+        }
         apply_veto_v2(decodes, {}, CAND)
         self.assertNotIn(OUT, decodes["rec-7.wav"])
 

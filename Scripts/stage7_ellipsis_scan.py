@@ -3,6 +3,7 @@
 
 Read-only: this produces a report only and never changes decodes, gold, or UI.
 """
+
 import argparse
 import json
 from collections import Counter
@@ -39,10 +40,15 @@ def scan(paths, examples=20):
             config = row.get("config", path.stem)
             by_config[config] += 1
             if len(sample) < examples:
-                sample.append({"file": row["file"], "config": config,
-                               "before": before, "after": after, "artifact": path.name})
-    return {"rows_scanned": total, "rows_changed": changed,
-            "by_config": dict(sorted(by_config.items())), "examples": sample}
+                sample.append(
+                    {"file": row["file"], "config": config, "before": before, "after": after, "artifact": path.name}
+                )
+    return {
+        "rows_scanned": total,
+        "rows_changed": changed,
+        "by_config": dict(sorted(by_config.items())),
+        "examples": sample,
+    }
 
 
 def main(argv=None):

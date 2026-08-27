@@ -5,6 +5,7 @@ Separated from the voting rules because these are different questions: this
 module decides whether two strings say the same thing, `ground_truth_consensus`
 decides whether that is enough to call one of them ground truth.
 """
+
 from __future__ import annotations
 
 import difflib
@@ -70,16 +71,49 @@ def same_word(reference_word: str, hypothesis_word: str, glossary: Glossary | No
     return hypothesis_word in (glossary or {}).get(reference_word, ())
 
 
-_UNITS = {"ноль": 0, "один": 1, "одна": 1, "одну": 1, "два": 2, "две": 2, "три": 3, "четыре": 4,
-          "пять": 5, "шесть": 6, "семь": 7, "восемь": 8, "девять": 9, "десять": 10,
-          "одиннадцать": 11, "двенадцать": 12, "тринадцать": 13, "четырнадцать": 14,
-          "пятнадцать": 15, "шестнадцать": 16, "семнадцать": 17, "восемнадцать": 18,
-          "девятнадцать": 19, "двадцать": 20, "тридцать": 30, "сорок": 40, "пятьдесят": 50,
-          "шестьдесят": 60, "семьдесят": 70, "восемьдесят": 80, "девяносто": 90, "сто": 100,
-          "двести": 200, "триста": 300, "четыреста": 400, "пятьсот": 500, "шестьсот": 600,
-          "семьсот": 700, "восемьсот": 800, "девятьсот": 900}
-_SCALE = {"тысяча": 1000, "тысячи": 1000, "тысяч": 1000,
-          "миллион": 10 ** 6, "миллиона": 10 ** 6, "миллионов": 10 ** 6}
+_UNITS = {
+    "ноль": 0,
+    "один": 1,
+    "одна": 1,
+    "одну": 1,
+    "два": 2,
+    "две": 2,
+    "три": 3,
+    "четыре": 4,
+    "пять": 5,
+    "шесть": 6,
+    "семь": 7,
+    "восемь": 8,
+    "девять": 9,
+    "десять": 10,
+    "одиннадцать": 11,
+    "двенадцать": 12,
+    "тринадцать": 13,
+    "четырнадцать": 14,
+    "пятнадцать": 15,
+    "шестнадцать": 16,
+    "семнадцать": 17,
+    "восемнадцать": 18,
+    "девятнадцать": 19,
+    "двадцать": 20,
+    "тридцать": 30,
+    "сорок": 40,
+    "пятьдесят": 50,
+    "шестьдесят": 60,
+    "семьдесят": 70,
+    "восемьдесят": 80,
+    "девяносто": 90,
+    "сто": 100,
+    "двести": 200,
+    "триста": 300,
+    "четыреста": 400,
+    "пятьсот": 500,
+    "шестьсот": 600,
+    "семьсот": 700,
+    "восемьсот": 800,
+    "девятьсот": 900,
+}
+_SCALE = {"тысяча": 1000, "тысячи": 1000, "тысяч": 1000, "миллион": 10**6, "миллиона": 10**6, "миллионов": 10**6}
 
 
 def canonical_numbers(words: list[str]) -> list[str]:
@@ -130,8 +164,7 @@ def unforgiven_edits(reference: str, hypothesis: str, glossary: Glossary | None 
         current = [i]
         for j, hyp_word in enumerate(hyp, start=1):
             same = same_word(ref_word, hyp_word, glossary)
-            current.append(min(previous[j] + 1, current[j - 1] + 1,
-                               previous[j - 1] + (0 if same else 1)))
+            current.append(min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (0 if same else 1)))
         previous = current
     return previous[-1]
 
@@ -163,8 +196,7 @@ def wer(reference: str, hypothesis: str) -> float:
     for i, ref_word in enumerate(ref, start=1):
         current = [i]
         for j, hyp_word in enumerate(hyp, start=1):
-            current.append(min(previous[j] + 1, current[j - 1] + 1,
-                               previous[j - 1] + (ref_word != hyp_word)))
+            current.append(min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (ref_word != hyp_word)))
         previous = current
     return previous[-1] / len(ref)
 
@@ -183,14 +215,12 @@ def repeats_itself(text: str, span: int = 6, longest: int = 4) -> bool:
     words = text.split()
     for size in range(1, longest + 1):
         for start in range(len(words)):
-            phrase = words[start:start + size]
+            phrase = words[start : start + size]
             if len(phrase) < size:
                 break
             repeats = 1
-            while words[start + repeats * size:start + (repeats + 1) * size] == phrase:
+            while words[start + repeats * size : start + (repeats + 1) * size] == phrase:
                 repeats += 1
             if repeats >= 3 and repeats * size >= span:
                 return True
     return False
-
-

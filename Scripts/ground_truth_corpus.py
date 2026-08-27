@@ -4,6 +4,7 @@
 Split out from the orchestrator only to keep that file under the length gate;
 everything here is stdlib and side-effect free apart from the appends.
 """
+
 from __future__ import annotations
 
 import json
@@ -24,9 +25,9 @@ def claim_lock(path: Path) -> bool:
         try:
             owner = int(path.read_text(encoding="utf-8").strip())
             os.kill(owner, 0)
-            return False                      # a live process holds it
+            return False  # a live process holds it
         except (ValueError, OSError):
-            pass                              # unreadable or dead: ours to take
+            pass  # unreadable or dead: ours to take
     path.write_text(str(os.getpid()), encoding="utf-8")
     return True
 
@@ -48,7 +49,7 @@ def read_rows(path: Path) -> list[dict]:
             try:
                 rows.append(json.loads(line))
             except json.JSONDecodeError:
-                continue          # a half-written last line after a kill, not a reason to stop
+                continue  # a half-written last line after a kill, not a reason to stop
     return rows
 
 
@@ -95,4 +96,4 @@ def has_audio(path: Path) -> bool:
         with wave.open(str(path)) as handle:
             return handle.getnframes() > 0
     except (wave.Error, OSError):
-        return True          # unreadable header: let the engines say why
+        return True  # unreadable header: let the engines say why

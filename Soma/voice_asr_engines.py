@@ -90,9 +90,11 @@ def transcription_text(result) -> str:
     """Normalize string and GigaAM TranscriptionResult outputs."""
     if isinstance(result, str):
         return result
-    return getattr(result, "text", None) or " ".join(
-        getattr(piece, "text", "") for piece in getattr(result, "pieces", [])
-    ) or str(result)
+    return (
+        getattr(result, "text", None)
+        or " ".join(getattr(piece, "text", "") for piece in getattr(result, "pieces", []))
+        or str(result)
+    )
 
 
 def join_parts(parts: list[str]) -> str:

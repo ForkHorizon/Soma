@@ -2,12 +2,13 @@
 sees them: punctuation-only flips must never reach the listening sample (4.3
 can't judge punctuation by ear), and the other three categories only need to
 be roughly right, not exact -- they drive stratified sampling, not scoring."""
+
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "Scripts"))
 
-from flip_diff import classify, flips   # noqa: E402
+from flip_diff import classify, flips  # noqa: E402
 
 
 def test_classify_punct_only_when_normalize_erases_the_difference():

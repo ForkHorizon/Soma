@@ -24,6 +24,7 @@ Output files (all under experiments/):
     review-queue-stage8.jsonl   {"file","tier":"hard"|"easy","edits",...}
     empty-stage8.jsonl           recordings with no usable speech in any voice
 """
+
 from __future__ import annotations
 
 import argparse
@@ -118,9 +119,15 @@ def build(out_dir: Path, exp: Path, with_qwen=False) -> int:
         if pair_ok and confirmations:
             tier = "T1" if hits == 4 else "T2"
             tiers[f"accept:{tier}"] += 1
-            gold_rows.append({"file": f, "text": texts["w-greedy"],
-                              "source": "stage8-consensus", "tier": tier,
-                              "confirmed_by": ",".join(confirmations)})
+            gold_rows.append(
+                {
+                    "file": f,
+                    "text": texts["w-greedy"],
+                    "source": "stage8-consensus",
+                    "tier": tier,
+                    "confirmed_by": ",".join(confirmations),
+                }
+            )
         elif hits >= 3:
             pair_intact = pair_ok  # 3-majority with prod pair both inside
             tier = "easy" if pair_intact else "hard"
@@ -145,15 +152,9 @@ def build(out_dir: Path, exp: Path, with_qwen=False) -> int:
     gold_path = out_dir / "gold-stage8-auto.jsonl"
     queue_path = out_dir / "review-queue-stage8.jsonl"
     empty_path = out_dir / "empty-stage8.jsonl"
-    gold_path.write_text(
-        "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in gold_rows),
-        encoding="utf-8")
-    queue_path.write_text(
-        "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in queue_rows),
-        encoding="utf-8")
-    empty_path.write_text(
-        "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in empty_rows),
-        encoding="utf-8")
+    gold_path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in gold_rows), encoding="utf-8")
+    queue_path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in queue_rows), encoding="utf-8")
+    empty_path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in empty_rows), encoding="utf-8")
     print(f"\nwrote {len(gold_rows)} auto-gold rows -> {gold_path}")
     print(f"wrote {len(queue_rows)} review rows -> {queue_path}")
     print(f"wrote {len(empty_rows)} empty rows -> {empty_path}")
@@ -166,13 +167,13 @@ def _queue_row(f, texts, tier, voices, exp):
     ref = norms.get("w-greedy", "")
     edits = {}
     import difflib
+
     for k, n in norms.items():
         if k == "w-greedy":
             continue
         sm = difflib.SequenceMatcher(None, ref, n)
         edits[k] = sum(1 for tag, *___ in sm.get_opcodes() if tag != "equal")
-    return {"file": f, "tier": tier, "edits": edits,
-            "texts": {k: t[:300] for k, t in texts.items()}}
+    return {"file": f, "tier": tier, "edits": edits, "texts": {k: t[:300] for k, t in texts.items()}}
 
 
 def load_corpus_a_voices(gt: Path):
@@ -181,8 +182,7 @@ def load_corpus_a_voices(gt: Path):
     files (corpus-A runs, not holdout)."""
     voices = {"parakeet": {}, "rnnt": {}}
     exp = gt / "experiments"
-    for cfg, fname in (("parakeet", "decodes-stage8-parakeet.jsonl"),
-                       ("rnnt", "decodes-stage8-gigaam-v3-rnnt.jsonl")):
+    for cfg, fname in (("parakeet", "decodes-stage8-parakeet.jsonl"), ("rnnt", "decodes-stage8-gigaam-v3-rnnt.jsonl")):
         for row in read_jsonl(exp / fname):
             if row.get("event") == "decode" and not row.get("error"):
                 voices[cfg][row["file"]] = (row.get("text") or "").strip()
@@ -200,7 +200,7 @@ def binom_p(wins: int, losses: int) -> float:
     if n == 0:
         return 1.0
     p = 0.5
-    tail = sum(math.comb(n, k) * p**k * p**(n-k) for k in range(min(wins, losses) + 1)) * 2
+    tail = sum(math.comb(n, k) * p**k * p ** (n - k) for k in range(min(wins, losses) + 1)) * 2
     return min(1.0, tail)
 
 
@@ -208,11 +208,20 @@ def sign_tests(human_gold: dict[str, str], voices, corpus_files):
     """Engine-vs-engine sign tests on HUMAN gold only (no circularity)."""
     import math  # noqa: F401  (kept for callers; binom_p is module-level now)
 
-    files = [f for f in corpus_files
-             if f in human_gold and all(f in voices.get(k, {}) for k in ("w-greedy", "gigaam", "parakeet", "rnnt"))]
+    files = [
+        f
+        for f in corpus_files
+        if f in human_gold and all(f in voices.get(k, {}) for k in ("w-greedy", "gigaam", "parakeet", "rnnt"))
+    ]
     print(f"\nsign-test files (human gold, all voices): {len(files)}")
-    pairs = [("w-greedy", "gigaam"), ("w-greedy", "parakeet"), ("w-greedy", "rnnt"),
-             ("gigaam", "parakeet"), ("gigaam", "rnnt"), ("parakeet", "rnnt")]
+    pairs = [
+        ("w-greedy", "gigaam"),
+        ("w-greedy", "parakeet"),
+        ("w-greedy", "rnnt"),
+        ("gigaam", "parakeet"),
+        ("gigaam", "rnnt"),
+        ("parakeet", "rnnt"),
+    ]
     print(f"{'pair':28s} {'wins-l':8s} {'wins-r':8s} {'ties':>5s} {'p':>8s}")
     for left, right in pairs:
         wl = wr = ties = 0
@@ -232,14 +241,10 @@ def sign_tests(human_gold: dict[str, str], voices, corpus_files):
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--gt", type=Path, default=DEFAULT_GT,
-                        help="GroundTruth root (gold.jsonl is read-only input)")
-    parser.add_argument("--exp", type=Path, default=None,
-                        help="experiments dir (default: <gt>/experiments)")
-    parser.add_argument("--out", type=Path, default=None,
-                        help="output dir (default: <gt>/experiments)")
-    parser.add_argument("--with-qwen", action="store_true",
-                        help="include the qwen3 holdout voice if it has finished")
+    parser.add_argument("--gt", type=Path, default=DEFAULT_GT, help="GroundTruth root (gold.jsonl is read-only input)")
+    parser.add_argument("--exp", type=Path, default=None, help="experiments dir (default: <gt>/experiments)")
+    parser.add_argument("--out", type=Path, default=None, help="output dir (default: <gt>/experiments)")
+    parser.add_argument("--with-qwen", action="store_true", help="include the qwen3 holdout voice if it has finished")
     args = parser.parse_args()
     exp = args.exp or args.gt / "experiments"
     out = args.out or exp
@@ -250,8 +255,8 @@ def main() -> int:
     print(f"human gold (input, read-only): {len(human)}")
     corpus_voices = load_corpus_a_voices(args.gt)
     corpus_files = sorted(
-        set.intersection(*[set(corpus_voices[k]) for k in ("w-greedy", "gigaam", "parakeet", "rnnt")])
-        & set(human))
+        set.intersection(*[set(corpus_voices[k]) for k in ("w-greedy", "gigaam", "parakeet", "rnnt")]) & set(human)
+    )
     sign_tests(human, corpus_voices, corpus_files)
     return build(out, exp, args.with_qwen)
 

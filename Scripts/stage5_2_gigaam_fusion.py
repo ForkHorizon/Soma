@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Stage 5.2: GigaAM fusion on disputed Russian words."""
+
 from __future__ import annotations
 
 import argparse
@@ -17,11 +18,14 @@ from ground_truth_text import normalize, agrees
 
 _LATIN_OR_NUM = re.compile(r"[a-zA-Z0-9+#*]")
 
+
 def contains_latin_or_num(text: str) -> bool:
     return bool(_LATIN_OR_NUM.search(text))
 
-def fuse_whisper_and_gigaam(whisper_text: str, giga1_text: str, giga2_text: str,
-                             glossary: dict[str, list[str]] | None = None) -> str:
+
+def fuse_whisper_and_gigaam(
+    whisper_text: str, giga1_text: str, giga2_text: str, glossary: dict[str, list[str]] | None = None
+) -> str:
     """Fuse Whisper candidate transcript with GigaAM RNNT and CTC transcripts.
 
     Rules for Stage 5.2:
@@ -79,10 +83,15 @@ def fuse_whisper_and_gigaam(whisper_text: str, giga1_text: str, giga2_text: str,
 
     return " ".join(result_words)
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=DEFAULT_ROOT)
-    parser.add_argument("--candidate-file", type=Path, default=DEFAULT_ROOT / "experiments/decodes-stage5-veto-gigaam_hallucination_veto.jsonl")
+    parser.add_argument(
+        "--candidate-file",
+        type=Path,
+        default=DEFAULT_ROOT / "experiments/decodes-stage5-veto-gigaam_hallucination_veto.jsonl",
+    )
     parser.add_argument("--candidate-config", default="w-bo-t20-n10-v1-gigaam_hallucination_veto")
     args = parser.parse_args()
 
@@ -110,6 +119,7 @@ def main():
     out_file.parent.mkdir(parents=True, exist_ok=True)
     out_file.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in fused_rows) + "\n", encoding="utf-8")
     print(f"Fused {total_files} files (changed {changed_count} files). Saved to {out_file.name}")
+
 
 if __name__ == "__main__":
     main()

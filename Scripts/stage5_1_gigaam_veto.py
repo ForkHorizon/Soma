@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Stage 5.1: GigaAM as a hallucination detector (silence veto post-filter)."""
+
 import argparse
 import json
 import re
@@ -13,17 +14,19 @@ from ground_truth_consensus import repeats_itself
 from ground_truth_text import normalize
 
 BOILERPLATE = re.compile(
-    r"(?:субтитры|продолжение следует|продолжаю с сайта|скачиваю сайт|добавляю github|слушаю github)",
-    re.IGNORECASE
+    r"(?:субтитры|продолжение следует|продолжаю с сайта|скачиваю сайт|добавляю github|слушаю github)", re.IGNORECASE
 )
+
 
 def is_gigaam_silent(cfgs: dict[str, str]) -> bool:
     giga1 = cfgs.get("gigaam", "").strip()
     giga2 = cfgs.get("gigaam-ctc", "").strip()
     return not giga1 and not giga2
 
-def apply_gigaam_veto(decodes: dict[str, dict[str, str]], no_speech_map: dict[tuple[str, str], float],
-                       candidate_cfg: str, mode: str) -> dict[str, dict[str, str]]:
+
+def apply_gigaam_veto(
+    decodes: dict[str, dict[str, str]], no_speech_map: dict[tuple[str, str], float], candidate_cfg: str, mode: str
+) -> dict[str, dict[str, str]]:
     filtered_decodes = {}
     for file, cfgs in decodes.items():
         filtered_decodes[file] = dict(cfgs)
@@ -57,6 +60,7 @@ def apply_gigaam_veto(decodes: dict[str, dict[str, str]], no_speech_map: dict[tu
 
     return filtered_decodes
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=DEFAULT_ROOT)
@@ -64,7 +68,11 @@ def main():
     parser.add_argument("--candidate-file", type=Path, default=DEFAULT_ROOT / "experiments/decodes-stage3-bo10.jsonl")
     args = parser.parse_args()
 
-    baseline_file = args.root.parent / "Scripts/asr_baseline.json" if (args.root.parent / "Scripts/asr_baseline.json").exists() else Path("Scripts/asr_baseline.json")
+    baseline_file = (
+        args.root.parent / "Scripts/asr_baseline.json"
+        if (args.root.parent / "Scripts/asr_baseline.json").exists()
+        else Path("Scripts/asr_baseline.json")
+    )
     decodes_main = load_decodes([args.root / "decodes.jsonl", args.candidate_file])
 
     rows_main = read_jsonl(args.root / "decodes.jsonl") + read_jsonl(args.candidate_file)
@@ -88,6 +96,7 @@ def main():
         out_file.parent.mkdir(parents=True, exist_ok=True)
         out_file.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in out_rows) + "\n", encoding="utf-8")
         print(f"Saved {len(out_rows)} decodes to {out_file.name}")
+
 
 if __name__ == "__main__":
     main()
