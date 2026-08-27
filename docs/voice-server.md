@@ -39,8 +39,9 @@ tailscale serve --https=443 --bg http://127.0.0.1:18765
 ```
 
 Use the resulting `https://<machine>.<tailnet>.ts.net` URL in Soma. The app
-rejects remote HTTP URLs. The bearer token remains required; it is stored in
-the macOS Keychain, never in Git/docs or UserDefaults.
+rejects remote HTTP URLs. The bearer token remains required; Soma stores it in
+its per-user Application Support directory with `0600` permissions, never in
+Git/docs or UserDefaults.
 
 ## Autolaunch
 

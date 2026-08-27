@@ -1,5 +1,0 @@
-# #0013 Current review found remote ASR idle handling, global hotkey retry, health concurrency, launch agent config, and upload-size weak spots.
-
-- 2026-07-08T18:44:27Z `issue`: Current review found remote ASR idle handling, global hotkey retry, health concurrency, launch agent config, and upload-size weak spots. [Soma/voice_server.py; Soma/voice_asr_backend.py; Soma/GlobalVoiceController.swift; Soma/ViewModels/ASRManager.swift]
-- 2026-07-09T06:04:03Z `attempt`: Fixed remote ASR idle-zero handling, hotkey retry cancellation, health snapshot locking, launch-agent config propagation, upload-size rejection, token-save surfacing, and GigaAM overlap joins; validation passed. [Soma/voice_server.py, Soma/voice_asr_backend.py, Soma/GlobalVoiceController.swift, Soma/Views/VoiceToTextView.swift, tests/test_soma_voice_server.py] (worked)
-- 2026-07-09T06:04:07Z `fix`: Closed review issues with server/client hardening and regression tests; diff check, Python unittest suite, and Xcode Debug build all pass. [Soma/voice_server.py, Soma/voice_asr_backend.py, Soma/GlobalVoiceController.swift, Soma/Views/VoiceToTextView.swift, tests/test_soma_voice_server.py]

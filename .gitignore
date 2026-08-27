@@ -60,14 +60,16 @@ DerivedData/
 
 # Project-specific transients
 graphify-out/
+.codex/
+.projectmem/
+.soma/
+.claude/
+.gemini/
+.jules/
+.mcp.json
+.stress/
+.pytest_cache/
+.ruff_cache/
 ollama_*.txt
 hater_critique_report.md
 Prompt.txt
-.stress/
-.soma/
-
-.projectmem/events.jsonl
-.projectmem/watch.pid
-.projectmem/watch.log
-
-.projectmem/structure.json

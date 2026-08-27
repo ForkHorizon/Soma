@@ -8,7 +8,14 @@ import SwiftUI
 struct RecordingIndexEntry: Sendable {
     let url: URL
     let date: Date
+    let duration: TimeInterval
     let hasTranscript: Bool
+}
+
+struct RecordingDurationCacheEntry: Sendable {
+    let fileSize: Int64
+    let modificationDate: Date
+    let duration: TimeInterval
 }
 
 struct QueuedTranscription {
@@ -61,11 +68,11 @@ final class ASRManager: ObservableObject {
     @Published var playingURL: URL?  // which recording is currently playing
     @Published var recordings: [VoiceRecording] = []
     @Published var recordingsTotal = 0
+    @Published var totalAudioDuration: TimeInterval = 0
     @Published var completedTranscriptionID = 0  // bumped when a recording is FULLY transcribed (final)
     @Published var lastTranscriptionSource: ASRTranscriptionSource = .inApp
     @Published var voiceServerConnectionState: VoiceServerConnectionState = .unknown
     @Published var voiceServerStatusDetail = "Not checked"
-    @Published var inputLevel: Double = 0
     @Published var importJobs: [MediaImportJob] = []
     @Published var importHistory: [MediaImportHistory] = []
 
@@ -155,13 +162,16 @@ final class ASRManager: ObservableObject {
     var remoteCapabilityIdentity = ""
     var recordingBeganAt: Date?
     var receivedAudioSignal = false
-    var smoothedInputLevel = 0.0
-    var lastInputLevelPublishTime = 0.0
     let audioQueue = DispatchQueue(label: "soma.asr.audio")
     let targetSampleRate = 16000.0
     let initialRecordingsLimit = 5
     let recordingsPageSize = 20
+    static let recordingsDirectoryKey = "voiceRecordingsDirectory"
     var recordingIndex: [RecordingIndexEntry] = []
+    var recordingsRefreshTask: Task<Void, Never>?
+    var recordingsRefreshGeneration = 0
+    var recordingDurationCache: [String: RecordingDurationCacheEntry] = [:]
+    var recordingDurationCacheDirectory: URL?
     var importQueueTask: Task<Void, Never>?
     var activeImportID: UUID?
     var cancelledImportIDs = Set<UUID>()
@@ -172,12 +182,22 @@ final class ASRManager: ObservableObject {
     let connectivityMonitorQueue = DispatchQueue(label: "soma.media-import.connectivity")
 
     // Recordings persist here (not /tmp) so a failed transcription never loses the take.
-    lazy var recordingsDir: URL = {
+    static var defaultRecordingsDirectory: URL {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Soma/VoiceRecordings", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
-    }()
+    }
+
+    var recordingsDir: URL {
+        let configured = UserDefaults.standard.string(forKey: Self.recordingsDirectoryKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let dir =
+            configured.flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? Self.defaultRecordingsDirectory
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
 
     lazy var importsDir: URL = {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -200,6 +220,7 @@ final class ASRManager: ObservableObject {
     }
 
     deinit {
+        recordingsRefreshTask?.cancel()
         connectivityMonitor.cancel()
         memoryPressureSource?.cancel()
     }
