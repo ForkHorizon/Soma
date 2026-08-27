@@ -1,132 +1,215 @@
+import AppKit
 import SwiftUI
 
-/// Panel for the overnight ground-truth build: start it, watch it, and see what
-/// is left to adjudicate by hand.
 struct GroundTruthView: View {
     @ObservedObject var asr: ASRManager
-    @ObservedObject var runner: GroundTruthRunner
-    @AppStorage("groundTruthBestOf") private var bestOf = 5
-    @AppStorage("groundTruthThorough") private var thorough = true
-    @State private var glossaryDirty = false
+    @ObservedObject var runner: Layer1GroundTruthRunner
+    @State private var analysisPresented = false
+    @State private var reviewPresented = false
+    @State private var historyPresented = false
+    @State private var qualityPresented = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                header
-                controls
-                progressCard
-                counters
-                GroundTruthMethodCard(bestOf: bestOf)
-                GroundTruthReviewList(asr: asr, items: runner.reviewQueue,
-                                      onGlossaryChanged: { glossaryDirty = true })
-            }
-            .padding(24)
-            .frame(maxWidth: 820, alignment: .leading)
-        }
-        .onAppear { runner.loadExistingVerdicts() }
-    }
+        SomaPage(maxWidth: 1080) {
+            WorkflowHeader(
+                title: "Ground Truth",
+                subtitle: "Build a word-for-word reference set. Every final segment is confirmed by a person, never by model agreement alone.",
+                icon: "waveform.badge.mic",
+                tone: layer1Tone,
+                trailing: AnyView(corpusSummary)
+            )
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Ground Truth").font(.title2).bold()
-            Text("Builds a reference transcript for every saved recording by making two different ASR architectures agree. Runs for hours; safe to leave overnight.")
-                .font(.callout).foregroundStyle(.secondary)
-            // Naming honesty: what comes out of here is a consensus, not a
-            // transcription. Two engines agreeing rules out a lot, but both can
-            // be wrong the same way, and nothing here has heard the audio.
-            Text("What this produces is a **consensus**, not a verified transcript. Accepted means no available engine disagreed — not that anyone listened. Only the entries you settle by ear in the review queue are verified.")
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private var controls: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
-                if runner.isRunning {
-                    Button(role: .destructive) { runner.stop() } label: {
-                        Label("Stop", systemImage: "stop.fill")
-                    }
-                } else {
-                    Button { runner.start(asr: asr, bestOf: bestOf, thorough: thorough) } label: {
-                        Label("Start run", systemImage: "play.fill")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    // Both would hold a Whisper model at once, and this machine
-                    // does not have the memory to spare for that.
-                    .disabled(asr.isRecording || asr.isTranscribing)
+            SomaPanel(
+                title: "Layer 1 · Verbatim recognition",
+                subtitle: "Run local ASR heads on the original audio, then settle every segment by ear.",
+                icon: "text.word.spacing",
+                tone: layer1Tone
+            ) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 205), spacing: 12)], spacing: 12) {
+                    actionCard(
+                        title: "Finished",
+                        value: "\(finishedFiles.formatted()) / \(asr.recordingsTotal.formatted())",
+                        detail: "\(finishedPercent)% of the whole corpus · open history",
+                        icon: "checkmark.seal.fill",
+                        tone: .good,
+                        action: { historyPresented = true }
+                    )
+                    actionCard(
+                        title: "AI analysis",
+                        value: "\(analysedFiles.formatted()) / \(asr.recordingsTotal.formatted())",
+                        detail: analysisDetail,
+                        icon: runner.isRunning ? "waveform.path.ecg" : "cpu",
+                        tone: runner.isRunning ? .info : .neutral,
+                        action: { analysisPresented = true }
+                    )
+                    actionCard(
+                        title: "Human review",
+                        value: "\(readyFiles.formatted()) files",
+                        detail: "\(runner.reviewSegments.count.formatted()) segments waiting for a decision",
+                        icon: "person.crop.circle.badge.checkmark",
+                        tone: readyFiles > 0 ? .warning : .neutral,
+                        action: { reviewPresented = true }
+                    )
+                    actionCard(
+                        title: "AI quality",
+                        value: qualitySummary.matchLabel,
+                        detail: qualitySummary.detail,
+                        icon: "chart.bar.xaxis",
+                        tone: qualitySummary.tone,
+                        action: { qualityPresented = true }
+                    )
                 }
-                if glossaryDirty && !runner.isRunning {
-                    Button {
-                        glossaryDirty = false
-                        runner.reAdjudicate(asr: asr)
-                    } label: {
-                        Label("Apply glossary", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                    .help(Text(verbatim: "Re-vote every cached decode under the confirmed terms. No model time."))
+            }
+
+            SomaPanel(
+                title: "Layer 2",
+                subtitle: "AI quality will appear here when this layer is configured.",
+                icon: "square.2.layers.3d",
+                tone: .neutral
+            ) {
+                Text("No work has been added to this layer yet.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .sheet(isPresented: $analysisPresented) {
+            Layer1AnalysisSheet(asr: asr, runner: runner)
+        }
+        .sheet(isPresented: $reviewPresented) {
+            Layer1ReviewView(asr: asr, runner: runner)
+        }
+        .sheet(isPresented: $historyPresented) {
+            Layer1HistorySheet(runner: runner)
+        }
+        .sheet(isPresented: $qualityPresented) {
+            Layer1QualitySheet(runner: runner)
+        }
+        .onAppear { asr.refreshRecordings() }
+    }
+
+    private var corpusSummary: some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            Text("\(asr.recordingsTotal.formatted()) files · \(asr.totalAudioDuration / 3600, specifier: "%.1f") h")
+                .font(.system(.subheadline, design: .monospaced).weight(.semibold))
+            Button("Open recordings folder") {
+                NSWorkspace.shared.activateFileViewerSelecting([asr.recordingsDir])
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+    }
+
+    private var layer1Tone: SomaStatusTone {
+        if runner.isRunning { return .info }
+        if readyFiles > 0 { return .warning }
+        return finishedFiles > 0 ? .good : .neutral
+    }
+
+    private var finishedFiles: Int { runner.store.fullyVerifiedFilesCount() }
+    private var analysedFiles: Int { runner.store.completeFilesCount() }
+    private var readyFiles: Int { runner.store.readyFilesCount() }
+    private var remainingAudio: Int { max(0, asr.recordingsTotal - runner.files.count) }
+    private var finishedPercent: Int {
+        guard asr.recordingsTotal > 0 else { return 0 }
+        return Int((Double(finishedFiles) / Double(asr.recordingsTotal) * 100).rounded())
+    }
+
+    private var analysisDetail: String {
+        if runner.isRunning, let fileID = runner.currentFileID,
+           let file = runner.store.file(for: fileID) {
+            return "Running \(file.url.lastPathComponent)"
+        }
+        if runner.pendingRuns > 0 { return "\(runner.pendingRuns.formatted()) model runs queued" }
+        return "\(remainingAudio.formatted()) recordings not added yet"
+    }
+
+    private func actionCard(title: String, value: String, detail: String, icon: String,
+                            tone: SomaStatusTone, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 7) {
+                    Image(systemName: icon).foregroundStyle(tone.color)
+                    Text(title).font(.caption.bold()).foregroundStyle(.secondary)
+                    Spacer()
+                    Image(systemName: "arrow.up.right").font(.caption2).foregroundStyle(.tertiary)
                 }
-                Stepper(value: $bestOf, in: 1...25) {
-                    Text("Sampled decodes per window: **\(bestOf)**")
+                Text(value)
+                    .font(.system(.title3, design: .monospaced).bold())
+                    .foregroundStyle(tone.color)
+                    .lineLimit(1)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading)
+            .background(SomaDesign.elevatedBackground)
+            .clipShape(RoundedRectangle(cornerRadius: SomaDesign.radius))
+            .overlay(RoundedRectangle(cornerRadius: SomaDesign.radius).stroke(tone.color.opacity(0.18)))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(title): \(value). \(detail)")
+    }
+
+    private var qualitySummary: Layer1ModelQuality {
+        layer1Quality(models: runner.models, segments: runner.segments).values.reduce(into: .init()) { total, quality in
+            total.exact += quality.exact
+            total.evaluated += quality.evaluated
+            total.accepted += quality.accepted
+            total.edited += quality.edited
+            total.failed += quality.failed
+        }
+    }
+}
+
+struct Layer1ModelQuality {
+    var exact = 0
+    var evaluated = 0
+    var accepted = 0
+    var edited = 0
+    var failed = 0
+
+    var matchLabel: String {
+        guard evaluated > 0 else { return "No verified text" }
+        return "\(Int((Double(exact) / Double(evaluated) * 100).rounded()))% quality"
+    }
+
+    var detail: String {
+        guard evaluated > 0 else { return "Open details after human review" }
+        return "\(exact)/\(evaluated) exact · open details"
+    }
+
+    var tone: SomaStatusTone {
+        guard evaluated > 0 else { return .neutral }
+        let rate = Double(exact) / Double(evaluated)
+        if rate >= 0.9 { return .good }
+        if rate >= 0.7 { return .info }
+        return .warning
+    }
+}
+
+func layer1Quality(models: [Layer1ModelSpec], segments: [Layer1Segment]) -> [String: Layer1ModelQuality] {
+    var result = Dictionary(uniqueKeysWithValues: models.map { ($0.id, Layer1ModelQuality()) })
+    for segment in segments {
+        for model in models {
+            guard let suggestion = segment.modelSuggestions[model.id] else { continue }
+            var quality = result[model.id] ?? .init()
+            if suggestion.status == .failed { quality.failed += 1 }
+            if segment.decision.status == .verified,
+               let reference = segment.decision.normalizedText,
+               !reference.isEmpty,
+               suggestion.status == .completed {
+                quality.evaluated += 1
+                if Layer1GroundTruthStore.normalize(suggestion.text ?? "") == reference { quality.exact += 1 }
+                if segment.decision.sourceModelID == model.id {
+                    if segment.decision.action == .selectedModel { quality.accepted += 1 }
+                    if segment.decision.action == .selectedAndEdited { quality.edited += 1 }
                 }
-                .disabled(runner.isRunning)
-                .frame(maxWidth: 320)
             }
-            Toggle("Maximum verification — every engine on every recording", isOn: $thorough)
-                .toggleStyle(.switch)
-                .disabled(runner.isRunning)
-            Text(thorough
-                 ? "Every decode runs on every recording, not just where the first two disagree. Measured at about seven hours for a thousand recordings, against five without. What it buys is grading: an accepted file then reads how many of the Whisper decodes and both GigaAM heads actually agreed — five or six Whisper configs depending on length, since the shifted-window pass is skipped under 30 s. The fast path cannot make that distinction; it stops as soon as the first two agree."
-                 : "Only recordings where Whisper and GigaAM disagree get the other six decodes. About five hours for a thousand recordings, and every accepted file reads the same 1/1 regardless of how solid it is.")
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            if asr.isRecording || asr.isTranscribing {
-                Text("Finish the current transcription first — the run loads its own copy of the model.")
-                    .font(.caption).foregroundStyle(.orange)
-            }
-            if let failure = runner.failure {
-                Text(failure).font(.caption).foregroundStyle(.red).textSelection(.enabled)
-            }
+            result[model.id] = quality
         }
     }
-
-    private var progressCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(runner.stage).font(.callout)
-                Spacer()
-                Text("\(runner.decided) of \(runner.files) decided")
-                    .font(.callout).monospacedDigit().foregroundStyle(.secondary)
-            }
-            ProgressView(value: runner.progress)
-            HStack {
-                Text(runner.currentFile.isEmpty ? " " : runner.currentFile)
-                    .font(.caption).monospaced().foregroundStyle(.secondary).lineLimit(1)
-                Spacer()
-                Text("\(runner.remaining) left").font(.caption).foregroundStyle(.secondary)
-            }
-        }
-        .padding(14)
-        .background(Color.primary.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-
-    private var counters: some View {
-        HStack(spacing: 12) {
-            counter("Accepted", runner.accepted, "checkmark.seal", .green)
-            counter("Needs review", runner.review, "person.fill.questionmark", .orange)
-            counter("Errors", runner.errors, "exclamationmark.triangle", .red)
-            counter("No speech", runner.empty, "speaker.slash", .secondary)
-        }
-    }
-
-    private func counter(_ title: String, _ value: Int, _ symbol: String, _ tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label(title, systemImage: symbol).font(.caption).foregroundStyle(.secondary)
-            Text("\(value)").font(.title).monospacedDigit().foregroundStyle(tint)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(Color.primary.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
+    return result
 }

@@ -16,12 +16,14 @@ enum GroundTruthDiff {
 
     /// Punctuation and case differ between the engines on every single word —
     /// GigaAM writes lowercase and unpunctuated — so comparing raw would paint
-    /// the entire transcript and say nothing. This is the same normalisation the
-    /// consensus votes on, so the highlights match what actually counted as a
-    /// disagreement.
+    /// the entire transcript and say nothing. GroundTruthGlossary.normalize is
+    /// the same normalisation the consensus votes on, so the highlights match
+    /// what actually counted as a disagreement — including "C++" vs "C" vs
+    /// "C#" (issue #0070/#61/#0083): this used to strip +/#/* unconditionally,
+    /// so those three words looked identical here and a disagreement on a
+    /// technical term never even reached the reviewer.
     private static func key(_ word: String) -> String {
-        String(word.lowercased().replacingOccurrences(of: "ё", with: "е")
-            .unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) })
+        GroundTruthGlossary.normalize(word)
     }
 
     /// Marks every candidate against the first one, then folds the differences

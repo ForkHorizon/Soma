@@ -7,6 +7,7 @@ Split from the run script so that "what state a run holds" stays separate from
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import subprocess
 import sys
@@ -202,6 +203,63 @@ class Runner:
                 clips.append([round(start, 2), round(end, 2)])
         return clips or None
 
+    def review_operation_seconds(self, name: str, operations: list[dict] | None) -> list[dict] | None:
+        """Attach tier-one timing to the raw-word operations emitted by consensus."""
+        words = (self.decoded.get((name, PRIMARY)) or {}).get("words")
+        if not operations or not words:
+            return None
+        timed = []
+        for operation in operations:
+            anchor = operation.get("anchor") or []
+            if len(anchor) != 2:
+                continue
+            first = max(0, min(int(anchor[0]), len(words) - 1))
+            # An insertion has a zero-width anchor. Listen around the word at
+            # that boundary rather than dropping a real candidate alternative.
+            anchor_start, anchor_end = int(anchor[0]), int(anchor[1])
+            # A slow four-word phrase can still be 20 seconds. Partition it by
+            # real word timings, not a guessed words-per-second rate.
+            parts = [(anchor_start, anchor_end)] if anchor_start == anchor_end else []
+            cursor = anchor_start
+            while cursor < anchor_end:
+                part_end = cursor + 1
+                while part_end < anchor_end:
+                    candidate_end = min(part_end, len(words) - 1)
+                    duration = float(words[candidate_end][2]) + SPOT_PADDING - max(0.0, float(words[first if cursor == anchor_start else cursor][1]) - SPOT_PADDING)
+                    if duration > 6.0:
+                        break
+                    part_end += 1
+                parts.append((cursor, part_end))
+                cursor = part_end
+            for part_start, part_end in parts:
+                local_first = max(0, min(part_start, len(words) - 1))
+                last = max(local_first, min(max(part_start, part_end - 1), len(words) - 1))
+                raw_start, raw_end = float(words[local_first][1]), float(words[last][2])
+                # Preserve the normal 0.8 s context unless the spoken span
+                # itself leaves less room; a slow word should not create a
+                # seven-second review button solely because of padding.
+                padding = min(SPOT_PADDING, max(0.0, (6.0 - (raw_end - raw_start)) / 2))
+                start = max(0.0, raw_start - padding)
+                end = raw_end + padding
+                if end <= start:
+                    continue
+                fragment = {**operation, "anchor": [part_start, part_end]}
+                if (part_start, part_end) != (anchor_start, anchor_end):
+                    width = max(1, anchor_end - anchor_start)
+                    alternatives = []
+                    for option in operation.get("alternatives", []):
+                        option_words = str(option.get("text", "")).split()
+                        left = round((part_start - anchor_start) * len(option_words) / width)
+                        right = round((part_end - anchor_start) * len(option_words) / width)
+                        alternatives.append({**option, "text": " ".join(option_words[left:right])})
+                    fragment["id"] = f"{operation['id']}:{part_start}:{part_end}"
+                    fragment["alternatives"] = alternatives
+                    fragment["signature"] = hashlib.sha256(
+                        f"{operation['signature']}:{part_start}:{part_end}".encode()).hexdigest()[:16]
+                fragment["seconds"] = [round(start, 2), round(end, 2)]
+                timed.append(fragment)
+        return timed or None
+
     def can_settle(self, name: str) -> bool:
         """A verdict is final, so it may only be written once every engine has
         actually had its turn on this recording. A row that RAN and failed is
@@ -228,9 +286,10 @@ class Runner:
             return None
         every = [TIER_ONE, *TIER_TWO.split(","), TIER_TWO_FASTER, "gigaam", TIER_TWO_GIGAAM]
         verdict = decide(self.candidates(path.name, every), self.glossary, self.metrics(path.name))
+        operations = self.review_operation_seconds(path.name, verdict.pop("review_operations", None))
+        if operations:
+            verdict["review_operations"] = operations
         clips = self.spot_seconds(path.name, verdict.pop("spots", None))
         if clips:
             verdict["spot_seconds"] = clips
         return self.write(path, verdict, publish)
-
-

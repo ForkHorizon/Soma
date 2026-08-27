@@ -14,19 +14,37 @@ import unicodedata
 # The engines never agree on surface form: GigaAM emits lowercase and
 # unpunctuated, Whisper emits cased and punctuated. Comparing raw would report a
 # disagreement on literally every file.
-_PUNCT = re.compile(r"[^\w\s]", re.UNICODE)
+#
+# `+`, `#`, `*` used to be stripped like any other punctuation (issue
+# #0070/GitHub#61), so "C++", "C#" and "C" all collapsed to "c" and errors on
+# those technical terms were invisible to WER. Fixed point-wise: a run of
+# these symbols survives only when it's glued to a letter/digit on at least
+# one side; a bare "+" (e.g. "5 + 3") still strips as ordinary punctuation.
+_SYMBOL_OR_PUNCT = re.compile(r"[+#*]+|[^\w\s]", re.UNICODE)
 _SPACE = re.compile(r"\s+")
 
 
 def normalize(text: str) -> str:
-    """Casefold, unify ё/е, drop punctuation, collapse whitespace.
+    """Casefold, unify ё/е, drop punctuation (keeping +/#/* glued to a word),
+    collapse whitespace.
 
     Digits are deliberately NOT spelled out. "5" versus "пять" is exactly the
     kind of difference a human should adjudicate, so leaving it in place routes
     those files to review instead of silently guessing one form.
     """
     folded = unicodedata.normalize("NFC", text or "").casefold().replace("ё", "е")
-    return _SPACE.sub(" ", _PUNCT.sub(" ", folded)).strip()
+
+    def strip_or_keep(match: re.Match) -> str:
+        run = match.group()
+        if run[0] not in "+#*":
+            return " "
+        start, end = match.span()
+        glued_left = start > 0 and folded[start - 1].isalnum()
+        glued_right = end < len(folded) and folded[end].isalnum()
+        return run if glued_left or glued_right else " "
+
+    stripped = _SYMBOL_OR_PUNCT.sub(strip_or_keep, folded)
+    return _SPACE.sub(" ", stripped).strip()
 
 
 _LATIN = re.compile(r"[a-z]")

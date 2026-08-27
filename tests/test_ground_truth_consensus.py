@@ -24,6 +24,14 @@ def test_normalize_keeps_digits_apart_from_words():
     assert normalize("нужно 5 штук") != normalize("нужно пять штук")
 
 
+def test_normalize_keeps_c_plus_plus_and_c_sharp_apart_from_c():
+    # Issue #0070/#61: normalize() used to strip +/# as punctuation, so
+    # "C++", "C#" and "C" all collapsed to "c" and errors on these terms
+    # were invisible to WER.
+    assert normalize("C++") != normalize("C#") != normalize("C")
+    assert normalize("C++") == "c++" and normalize("C#") == "c#"
+
+
 def test_exact_agreement_between_the_two_architectures_is_accepted():
     verdict = decide({"w-greedy": "Привет, мир.", "gigaam": "привет мир"})
     assert verdict["status"] == "accepted"
@@ -214,6 +222,111 @@ def test_neighbouring_disagreements_share_one_spot():
     verdict = decide({"w-greedy": "раз два три четыре пять",
                       "gigaam": "раз сто сорок четыре пять"}, None, SPEECH)
     assert verdict["spots"] == [[1, 2]]
+
+
+def test_nearby_independent_changes_do_not_chain_into_one_operation():
+    verdict = decide({"w-greedy": "a b c d e f g h i",
+                      "gigaam": "x b c y e f g z i"}, None, SPEECH)
+    assert [operation["anchor"] for operation in verdict["review_operations"]] == [[0, 1], [3, 4], [7, 8]]
+
+
+def test_an_insertion_is_an_operation_even_without_an_anchor_word():
+    verdict = decide({"w-greedy": "one three", "gigaam": "one two three"}, None, SPEECH)
+    assert verdict["review_operations"][0]["anchor"] == [1, 1]
+    assert any(option["text"] == "two" for option in verdict["review_operations"][0]["alternatives"])
+
+
+def test_a_single_dissenting_decode_does_not_become_a_question():
+    # w-sample perturbs the temperature and w-offset shifts the window so they
+    # can wander; a reading only that one decode produced is its own noise, and
+    # ruling on those was a third of the review queue.
+    verdict = decide({
+        "w-greedy": "раз два три", "w-prompt": "раз два три",
+        "w-fallback": "раз два три", "w-sample": "раз восемь три",
+        "gigaam": "раз два четыре", "gigaam-ctc": "раз два четыре",
+    }, None, SPEECH)
+    options = [option["text"] for operation in verdict["review_operations"]
+               for option in operation["alternatives"]]
+    assert len(options) == 2, "one question, not two"
+    assert not any("восемь" in option for option in options), "w-sample wandered alone"
+
+
+def test_a_reading_the_majority_corrects_is_applied_without_being_asked():
+    # The primary transcript anchors the reference, so when it is the lone
+    # dissenter the correction must still be carried — as the only option, which
+    # the panel applies unattended rather than showing.
+    verdict = decide({
+        "w-greedy": "раз двое три альфа", "w-prompt": "раз два три альфа",
+        "w-fallback": "раз два три альфа", "gigaam": "раз два три бета",
+        "gigaam-ctc": "раз два три бета",
+    }, None, SPEECH)
+    settled = [operation for operation in verdict["review_operations"]
+               if len(operation["alternatives"]) == 1]
+    assert [operation["alternatives"][0]["text"] for operation in settled] == ["два"]
+    assert len(verdict["review_operations"]) == 2, "альфа vs бета is still a real question"
+
+
+def test_a_seven_way_split_keeps_its_question():
+    # The most disputed spot there is: every decode reads it differently. The
+    # operation must not vanish under pruning — but the lone Whisper readings
+    # are still one model's noise, so what survives is the cross-architecture
+    # evidence. The primary's own reading stays one click away in the panel
+    # (it is the text being edited), not an option the vote has to re-offer.
+    verdict = decide({name: f"раз {word} три" for name, word in
+                      [("w-greedy", "а"), ("w-prompt", "б"), ("w-fallback", "в"),
+                       ("gigaam", "г"), ("gigaam-ctc", "д")]}, None, SPEECH)
+    assert verdict["review_operations"], "a full split must not be pruned away"
+    alternatives = verdict["review_operations"][0]["alternatives"]
+    assert [option["text"] for option in alternatives] == ["г", "д"]
+
+
+def test_a_lone_gigaam_dissent_keeps_its_operation():
+    # "whisper unanimous but gigaam dissents" used to lose EVERY operation: the
+    # two-name floor counted six correlated Whisper decodes as six votes while
+    # each dissenting GigaAM head counted as zero, so the file fell through to
+    # a whole-transcript fallback card. A cross-architecture dissent is the one
+    # lone reading that must survive the floor.
+    verdict = decide({
+        "w-greedy": "прошло еще час либо два", "w-prompt": "прошло еще час либо два",
+        "w-fallback": "прошло еще час либо два", "w-sample": "прошло еще час либо два",
+        "fw-beam": "прошло еще час либо два", "gigaam": "прошло еще час или два",
+        "gigaam-ctc": "прошло еще час или два",
+    }, None, SPEECH)
+    assert verdict["status"] == "review"
+    assert verdict["review_operations"], "the dissent must surface as an operation"
+    texts = [option["text"] for option in verdict["review_operations"][0]["alternatives"]]
+    assert "либо" in texts and "или" in texts, texts
+
+
+def test_a_confirmed_term_removes_that_spot_everywhere():
+    # The listener confirmed "ишью -> issue" against the audio once. From then
+    # on it is one reading, not two, and the confirmed spelling is the one kept.
+    candidates = {"w-greedy": "открой issue сейчас", "w-prompt": "открой issue сейчас",
+                  "gigaam": "открой ишью сейчас", "gigaam-ctc": "открой ишью сейчас"}
+    assert decide(candidates, None, SPEECH)["status"] == "review"
+    settled = decide(candidates, {"ишью": ["issue"]}, SPEECH)
+    assert settled["status"] == "accepted"
+    assert settled["text"] == "открой issue сейчас"
+
+
+def test_an_unconfirmed_cross_script_pair_is_still_a_question():
+    # "аудио" against "audi" looks identical to a rule based on alphabet alone,
+    # and folding it would bury a real mishearing under a spelling convention.
+    verdict = decide({"w-greedy": "перевод audi в текст", "w-prompt": "перевод audi в текст",
+                      "gigaam": "перевод аудио в текст", "gigaam-ctc": "перевод аудио в текст"},
+                     None, SPEECH)
+    assert verdict["status"] == "review"
+    assert len(verdict["review_operations"][0]["alternatives"]) == 2
+
+
+def test_number_notation_alone_is_not_an_operation():
+    # canonical_numbers already stopped this counting as a disagreement in the
+    # vote; the diff kept asking about it anyway, 115 times in the live queue.
+    verdict = decide({"w-greedy": "жди 10 секунд и пиши", "w-prompt": "жди 10 секунд и пиши",
+                      "gigaam": "жди десять секунд а пиши", "gigaam-ctc": "жди десять секунд а пиши"},
+                     None, SPEECH)
+    anchors = [operation["anchor"] for operation in verdict["review_operations"]]
+    assert anchors == [[3, 4]], "only 'и' vs 'а' is left to decide"
 
 
 def test_evenly_split_gigaam_heads_go_to_a_human_not_to_the_alphabet():

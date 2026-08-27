@@ -21,8 +21,11 @@ extension ASRManager {
     }
 
     func pruneOldRecordings() {
-        guard let cutoff = Self.retentionCutoff(days: Self.retentionDays) else { return }
         let dir = recordingsDir
+        guard let cutoff = Self.retentionCutoff(days: Self.retentionDays) else {
+            refreshRecordings()
+            return
+        }
         Task { [weak self, dir, cutoff] in
             await Task.detached(priority: .utility) {
                 Self.removeRecordingFiles(in: dir, olderThan: cutoff)
@@ -32,9 +35,8 @@ extension ASRManager {
     }
 
     nonisolated static func removeRecordingFiles(in dir: URL, olderThan cutoff: Date) {
-        let files =
-            (try? FileManager.default.contentsOfDirectory(
-                at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles])) ?? []
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles])) ?? []
         for url in files where url.pathExtension.lowercased() == "wav" {
             // An unreadable date used to fall back to .distantPast, which made
             // "I don't know how old this is" mean "delete it". Unknown age is a
@@ -51,33 +53,93 @@ extension ASRManager {
     }
 
     func refreshRecordings() {
-        // Scan off the main thread. This runs after *every* recording (incl. each
-        // global paste), and the directory grows unbounded — a synchronous stat of
-        // hundreds/thousands of files here hitched the UI/island animation and got
-        // slower the longer the library grew.
+        // Keep one cancellable library refresh. The directory listing still
+        // reconciles external changes, while cached durations avoid reopening
+        // every unchanged WAV after each new recording.
+        recordingsRefreshTask?.cancel()
+        recordingsRefreshGeneration += 1
+        let generation = recordingsRefreshGeneration
         let dir = recordingsDir
-        Task.detached(priority: .utility) { [weak self] in
-            let keys: [URLResourceKey] = [.contentModificationDateKey]
-            let files =
-                (try? FileManager.default.contentsOfDirectory(
-                    at: dir, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
-            let index =
-                files
-                .filter { $0.pathExtension.lowercased() == "wav" }
-                .map { url -> RecordingIndexEntry in
-                    let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                    let transcript = url.deletingPathExtension().appendingPathExtension("txt")
-                    return RecordingIndexEntry(url: url, date: date, hasTranscript: FileManager.default.fileExists(atPath: transcript.path))
-                }
-                .sorted { $0.date > $1.date }
+        if recordingDurationCacheDirectory != dir {
+            recordingDurationCache.removeAll(keepingCapacity: true)
+            recordingDurationCacheDirectory = dir
+        }
+        let cache = recordingDurationCache
+
+        recordingsRefreshTask = Task.detached(priority: .utility) { [weak self] in
+            guard let snapshot = Self.buildRecordingLibrarySnapshot(at: dir, cache: cache),
+                  !Task.isCancelled else { return }
             await MainActor.run { [weak self] in
-                guard let self else { return }
-                self.recordingIndex = index
-                self.recordingsTotal = index.count
+                guard let self, self.recordingsRefreshGeneration == generation else { return }
+                self.recordingDurationCache = snapshot.durationCache
+                self.recordingIndex = snapshot.index
+                self.recordingsTotal = snapshot.index.count
+                self.totalAudioDuration = snapshot.totalDuration
                 self.recordings = []
                 self.loadMoreRecordings(limit: self.initialRecordingsLimit)
+                self.recordingsRefreshTask = nil
             }
         }
+    }
+
+    private struct RecordingLibrarySnapshot: Sendable {
+        let index: [RecordingIndexEntry]
+        let durationCache: [String: RecordingDurationCacheEntry]
+        let totalDuration: TimeInterval
+    }
+
+    private static func buildRecordingLibrarySnapshot(
+        at dir: URL,
+        cache: [String: RecordingDurationCacheEntry]
+    ) -> RecordingLibrarySnapshot? {
+        let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey]
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
+        var updatedCache: [String: RecordingDurationCacheEntry] = [:]
+        var index: [RecordingIndexEntry] = []
+        var totalDuration = 0.0
+
+        for url in files where url.pathExtension.lowercased() == "wav" {
+            guard !Task.isCancelled else { return nil }
+            let values = try? url.resourceValues(forKeys: Set(keys))
+            let date = values?.contentModificationDate ?? .distantPast
+            let fileSize = Int64(values?.fileSize ?? -1)
+            let key = url.path
+            let duration: TimeInterval
+            if let cached = cache[key],
+               cached.fileSize == fileSize,
+               cached.modificationDate == date {
+                duration = cached.duration
+            } else {
+                duration = audioDuration(for: url)
+            }
+            updatedCache[key] = RecordingDurationCacheEntry(
+                fileSize: fileSize,
+                modificationDate: date,
+                duration: duration
+            )
+            totalDuration += duration
+            let transcript = url.deletingPathExtension().appendingPathExtension("txt")
+            index.append(RecordingIndexEntry(
+                url: url,
+                date: date,
+                duration: duration,
+                hasTranscript: FileManager.default.fileExists(atPath: transcript.path)
+            ))
+        }
+
+        index.sort { $0.date > $1.date }
+        return RecordingLibrarySnapshot(
+            index: index,
+            durationCache: updatedCache,
+            totalDuration: totalDuration
+        )
+    }
+
+    private static func audioDuration(for url: URL) -> TimeInterval {
+        guard let audio = try? AVAudioFile(forReading: url),
+              audio.processingFormat.sampleRate > 0 else { return 0 }
+        return Double(audio.length) / audio.processingFormat.sampleRate
     }
 
     var hasMoreRecordings: Bool { recordings.count < recordingsTotal }
@@ -93,16 +155,14 @@ extension ASRManager {
     func loadMoreRecordings(limit: Int) {
         let nextEntries = recordingIndex.dropFirst(recordings.count).prefix(limit)
         guard !nextEntries.isEmpty else { return }
-        recordings.append(
-            contentsOf: nextEntries.map { entry in
-                let duration = (try? AVAudioPlayer(contentsOf: entry.url))?.duration ?? 0
-                return VoiceRecording(
-                    url: entry.url,
-                    date: entry.date,
-                    duration: duration,
-                    hasTranscript: entry.hasTranscript
-                )
-            })
+        recordings.append(contentsOf: nextEntries.map { entry in
+            return VoiceRecording(
+                url: entry.url,
+                date: entry.date,
+                duration: entry.duration,
+                hasTranscript: entry.hasTranscript
+            )
+        })
     }
 
     func transcriptURL(for wav: URL) -> URL {

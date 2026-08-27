@@ -249,7 +249,11 @@ final class GlobalVoiceController: ObservableObject {
                 needsAccessibilityPermission = true
                 stopEventTap()
                 startPermissionRetry()
-                show("Allow Accessibility access to use Right Command paste.", image: "lock.shield")
+                if promptForPermission {
+                    show("Allow Accessibility access to use Right Command paste.", image: "lock.shield")
+                } else {
+                    status = "Right Command paste needs Accessibility access."
+                }
                 return
             }
             stopPermissionRetry()

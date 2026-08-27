@@ -15,9 +15,24 @@ struct GroundTruthVerdict: Identifiable, Hashable {
     /// One clip per disputed word cluster, from the tier-one decode's word
     /// timestamps. Empty means nothing narrower than the whole recording.
     let spots: [ClosedRange<Double>]
+    /// Independently selectable replacements, anchored to w-greedy raw words.
+    let operations: [GroundTruthReviewOperation]
     var id: String { file }
 
     var isReview: Bool { status == "review" }
+
+    init(file: String, status: String, reason: String, edits: Int,
+         candidates: [String: String], terms: [TermPair], spots: [ClosedRange<Double>],
+         operations: [GroundTruthReviewOperation] = []) {
+        self.file = file
+        self.status = status
+        self.reason = reason
+        self.edits = edits
+        self.candidates = candidates
+        self.terms = terms
+        self.spots = spots
+        self.operations = operations
+    }
 }
 
 struct TermPair: Identifiable, Hashable {
@@ -45,6 +60,11 @@ final class GroundTruthRunner: ObservableObject {
     @Published private(set) var empty = 0
     @Published private(set) var failure: String?
     @Published private(set) var verdicts: [GroundTruthVerdict] = []
+    /// Files already in gold.jsonl and operations already decided on disk —
+    /// loaded with the verdicts so the review counts reflect sessions that
+    /// already landed instead of showing the same total forever.
+    private(set) var settledFiles: Set<String> = []
+    private(set) var decidedSignatures: [String: [String: String]] = [:]
 
     private var process: Process?
     private var buffer = ""
@@ -54,39 +74,9 @@ final class GroundTruthRunner: ObservableObject {
     var progress: Double { files > 0 ? Double(decided) / Double(files) : 0 }
     var remaining: Int { max(0, files - decided) }
 
-    var reviewQueue: [GroundTruthVerdict] { Self.stratified(verdicts.filter(\.isReview)) }
-
-    /// Rounds of one file from each difficulty band, easiest first within a
-    /// round.
-    ///
-    /// Sorting purely by cost put all 200 one-and-two-word cases at the top,
-    /// so working down the list built a sample of nothing but easy recordings —
-    /// and easy recordings are where every decode configuration looks alike.
-    /// The queue exists to measure those configurations against each other, so
-    /// it has to stay representative at whatever point the listener stops,
-    /// which is the realistic outcome: 589 files is hours, and roughly 200 is
-    /// already enough for the interval this measurement needs.
-    nonisolated static func stratified(_ items: [GroundTruthVerdict]) -> [GroundTruthVerdict] {
-        let bands = Dictionary(grouping: items) { band($0.edits) }
-            .sorted { $0.key < $1.key }
-            .map { $0.value.sorted { ($0.edits, $0.file) < ($1.edits, $1.file) } }
-        var mixed: [GroundTruthVerdict] = []
-        var depth = 0
-        while mixed.count < items.count {
-            for band in bands where depth < band.count { mixed.append(band[depth]) }
-            depth += 1
-        }
-        return mixed
-    }
-
-    nonisolated static func band(_ edits: Int) -> Int {
-        switch edits {
-        case ...1: return 0
-        case 2: return 1
-        case 3...5: return 2
-        case 6...10: return 3
-        default: return 4
-        }
+    var reviewQueue: [GroundTruthReviewItem] {
+        Self.operationQueue(verdicts.filter(\.isReview),
+                            settled: settledFiles, decided: decidedSignatures)
     }
 
     static var outputDirectory: URL {
@@ -112,39 +102,20 @@ final class GroundTruthRunner: ObservableObject {
         let url = Self.outputDirectory.appendingPathComponent("verdicts.jsonl")
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return }
         verdicts = text.split(separator: "\n").compactMap(Self.verdict(fromLine:))
+        settledFiles = GroundTruthGold.settled()
+        decidedSignatures = GroundTruthReviewProgress.signaturesByFile()
         recount()
         if !isRunning, decided > 0 {
             stage = "Loaded \(decided) verdicts from the last run"
         }
     }
 
-    private static func verdict(fromLine line: Substring) -> GroundTruthVerdict? {
-        guard let data = line.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let file = object["file"] as? String,
-              let status = object["status"] as? String
-        else { return nil }
-        let pairs = (object["terms"] as? [[String]] ?? []).compactMap { pair -> TermPair? in
-            pair.count == 2 ? TermPair(heard: pair[0], written: pair[1]) : nil
-        }
-        return GroundTruthVerdict(file: file, status: status,
-                                  reason: object["reason"] as? String ?? "",
-                                  edits: object["edits"] as? Int ?? 0,
-                                  candidates: object["candidates"] as? [String: String] ?? [:],
-                                  terms: pairs, spots: Self.spots(object["spot_seconds"]))
-    }
-
-    private static func spots(_ raw: Any?) -> [ClosedRange<Double>] {
-        (raw as? [[Double]] ?? []).compactMap { pair in
-            guard pair.count == 2, pair[1] > pair[0] else { return nil }
-            return pair[0]...pair[1]
-        }
-    }
-
     private func recount() {
         decided = verdicts.count
+        // A review file already in gold.jsonl is finished, whatever the
+        // verdict line still says — the session never rewrites verdicts.
         accepted = verdicts.filter { $0.status == "accepted" }.count
-        review = verdicts.filter { $0.status == "review" }.count
+        review = verdicts.filter { $0.isReview && !settledFiles.contains($0.file) }.count
         errors = verdicts.filter { $0.status == "error" }.count
         empty = verdicts.filter { $0.status == "empty" }.count
         files = max(files, decided)

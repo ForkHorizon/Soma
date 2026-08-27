@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// The Voice tab's Settings disclosure group. Lives in its own file only so
@@ -14,12 +15,15 @@ struct VoiceSettingsSection: View {
     @AppStorage("asrBackend") private var asrBackend = "local"
     @AppStorage("voiceServerURL") private var voiceServerURL = ""
     @AppStorage(ASRManager.retentionKey) private var retentionDays = ASRManager.defaultRetentionDays
+    @AppStorage(ASRManager.recordingsDirectoryKey) private var recordingsDirectoryPath = ""
     @State private var showSettings = false
 
     var body: some View {
         DisclosureGroup("Settings", isExpanded: $showSettings) {
             VStack(alignment: .leading, spacing: 12) {
                 modelSettings
+                Divider()
+                recordingsLocationSettings
                 Divider()
                 retentionSettings
                 Divider()
@@ -59,6 +63,54 @@ struct VoiceSettingsSection: View {
             Text("Applies to the audio and its transcript together. \"Never\" keeps everything — the library grows without bound.")
                 .font(.caption).foregroundStyle(.secondary)
         }
+    }
+
+    private var recordingsLocationSettings: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Save recordings to")
+                .font(.callout.weight(.medium))
+            Text(recordingsDirectoryURL.path)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+            HStack(spacing: 8) {
+                Button("Choose Folder") {
+                    chooseRecordingsFolder()
+                }
+                .disabled(asr.isRecording || asr.isTranscribing)
+                if !recordingsDirectoryPath.isEmpty {
+                    Button("Use Default") {
+                        recordingsDirectoryPath = ""
+                        asr.refreshRecordings()
+                    }
+                    .buttonStyle(.link)
+                    .disabled(asr.isRecording || asr.isTranscribing)
+                }
+            }
+            Text("New recordings will be saved here. Existing recordings are not moved.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var recordingsDirectoryURL: URL {
+        guard !recordingsDirectoryPath.isEmpty else { return ASRManager.defaultRecordingsDirectory }
+        return URL(fileURLWithPath: recordingsDirectoryPath, isDirectory: true)
+    }
+
+    private func chooseRecordingsFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose"
+        panel.directoryURL = recordingsDirectoryURL
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        recordingsDirectoryPath = url.path
+        asr.refreshRecordings()
     }
 
     private var backendSettings: some View {

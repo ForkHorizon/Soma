@@ -11,7 +11,7 @@ struct ContentView: View {
     @ObservedObject var voicePrompter: RusToPromptViewModel
     @ObservedObject var globalVoice: GlobalVoiceController
     @ObservedObject var textPriorityQueue: VoiceTextPriorityQueue
-    @ObservedObject var groundTruth: GroundTruthRunner
+    @ObservedObject var layer1GroundTruth: Layer1GroundTruthRunner
     @StateObject private var promptCompilerViewModel = PromptCompilerViewModel()
     @StateObject private var rusToPromptViewModel = RusToPromptViewModel()
     @State private var selectedRoute: AppRoute? = .rusToPrompt
@@ -29,7 +29,7 @@ struct ContentView: View {
                         route: route, viewModel: viewModel, ollama: ollama,
                         rusToPromptQueueManager: rusToPromptQueueManager, voiceASR: voiceASR,
                         voicePrompter: voicePrompter, globalVoice: globalVoice,
-                        textPriorityQueue: textPriorityQueue, groundTruth: groundTruth,
+                        textPriorityQueue: textPriorityQueue, layer1GroundTruth: layer1GroundTruth,
                         rusToPromptViewModel: rusToPromptViewModel,
                         promptCompilerViewModel: promptCompilerViewModel
                     )

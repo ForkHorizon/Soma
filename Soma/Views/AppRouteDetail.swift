@@ -12,7 +12,7 @@ struct AppRouteDetail: View {
     @ObservedObject var voicePrompter: RusToPromptViewModel
     @ObservedObject var globalVoice: GlobalVoiceController
     @ObservedObject var textPriorityQueue: VoiceTextPriorityQueue
-    @ObservedObject var groundTruth: GroundTruthRunner
+    @ObservedObject var layer1GroundTruth: Layer1GroundTruthRunner
     @ObservedObject var rusToPromptViewModel: RusToPromptViewModel
     @ObservedObject var promptCompilerViewModel: PromptCompilerViewModel
 
@@ -23,7 +23,7 @@ struct AppRouteDetail: View {
         case .voiceToText:
             VoiceToTextView(somaViewModel: viewModel, ollama: ollama, asr: voiceASR, prompter: voicePrompter, globalVoice: globalVoice, textPriorityQueue: textPriorityQueue)
         case .groundTruth:
-            GroundTruthView(asr: voiceASR, runner: groundTruth)
+            GroundTruthView(asr: voiceASR, runner: layer1GroundTruth)
         case .queue:
             TestsView(mode: .queue, ollama: ollama, queueManager: rusToPromptQueueManager)
         case .modelStats:

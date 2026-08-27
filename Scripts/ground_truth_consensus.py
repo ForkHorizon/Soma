@@ -14,11 +14,12 @@ venv, and the voting rules are the part worth unit-testing.
 from __future__ import annotations
 
 import difflib
+import hashlib
 import math
 
-from ground_truth_text import (Glossary, agrees, cross_script,   # noqa: F401
-                               normalize, proposed_terms, repeats_itself,
-                               same_word, unforgiven_edits, wer)
+from ground_truth_text import (Glossary, agrees, canonical_numbers,   # noqa: F401
+                               cross_script, normalize, proposed_terms,
+                               repeats_itself, same_word, unforgiven_edits, wer)
 
 # Votes are grouped by what they actually share, because agreement inside a
 # family proves much less than agreement across one.
@@ -122,7 +123,7 @@ def _adjudicate(candidates: dict[str, str | None], norm: dict[str, str],
             else "no engine pair agrees"
         return _verdict("review", "", f"{hint} ({edits} word(s) differ, best WER {closest[0]:.3f} via {closest[1]})",
                         candidates=candidates, wer=round(closest[0], 4), edits=edits, terms=terms,
-                        spots=disputed_spots(candidates, glossary))
+                        **review_details(candidates, glossary))
 
     text = candidates[agreeing[0]] or ""
     if repeats_itself(norm[agreeing[0]]):
@@ -137,7 +138,7 @@ def _adjudicate(candidates: dict[str, str | None], norm: dict[str, str],
     if len(agreeing) < 2 and not exact:
         return _verdict("review", "", f"only {agreeing[0]} matches {best_russian}; the other whisper decodes disagree",
                         candidates=candidates, wer=round(closest[0], 4), edits=edits, terms=terms,
-                        spots=disputed_spots(candidates, glossary))
+                        **review_details(candidates, glossary))
     strong = exact or (len(agreeing) >= 3 and heads == len(russian))
     return _verdict("accepted", text,
                     f"{best_russian} matches {len(agreeing)}/{len(tried)} whisper decodes "
@@ -167,43 +168,193 @@ def _deadlocked_heads(scored: list[tuple[int, str]], norm: dict[str, str],
                     f"the two gigaam heads read this differently and draw {top} whisper "
                     f"decode(s) each — the independent evidence is split, so a human decides",
                     candidates=candidates, wer=1.0, edits=top, terms=[],
-                    spots=disputed_spots(candidates, glossary))
+                    **review_details(candidates, glossary))
 
 
-def disputed_spots(candidates: dict[str, str | None], glossary: Glossary | None) -> list[list[int]]:
-    """Word-index clusters in the tier-one decode that ANY engine disagrees on.
+def _token_map(text: str) -> tuple[list[str], list[int], list[str]]:
+    """Normalised comparison tokens, their owning raw word, and raw words.
 
-    One min-max range was the wrong shape. Disagreements are usually scattered,
-    so a single span either lies about where they are or swallows the whole
-    recording — and it was computed against one engine while the panel
-    highlighted the union of all of them, so the coloured word and the audio
-    that played were answering different questions.
+    A raw token can expand while normalising (``api/sdk`` for example).  Keeping
+    this mapping makes a review operation point at the word carrying the
+    timestamp instead of applying normalised indices directly to raw timings.
+    """
+    raw = text.split()
+    tokens, owners = [], []
+    for index, word in enumerate(raw):
+        for token in normalize(word).split():
+            tokens.append(token)
+            owners.append(index)
+    return tokens, owners, raw
 
-    Indices are the tier-one decode's, because that is the only pass carrying
-    word timestamps. Neighbours within three words join one cluster: separate
-    buttons for adjacent words would be worse than one slightly wider clip."""
-    primary = normalize(candidates.get(PRIMARY) or "").split()
+
+def _boundary(owners: list[int], raw: list[str], index: int) -> int:
+    if index <= 0:
+        return 0
+    if index >= len(owners):
+        return len(raw)
+    return owners[index]
+
+
+def _settled_key(text: str, glossary: Glossary | None) -> str:
+    """What two spellings must share before they stop being a question.
+
+    Two things are folded here that the raw diff still reported as
+    disagreement even after the vote had stopped counting them: spelled-out
+    numerals, and the cross-script pairs the listener has confirmed by ear.
+    Confirming "ишью -> issue" once therefore removes that spot from every
+    later recording, which is the only way a single decision generalises.
+
+    Nothing is folded by alphabet alone. An unconfirmed "аудио" against "audi"
+    stays two options, because guessing there would bury a real mishearing
+    under a spelling convention."""
+    written = {spelling: heard for heard, spellings in (glossary or {}).items()
+               for spelling in spellings}
+    words = canonical_numbers(normalize(text).split())
+    return " ".join(written.get(word, word) for word in words)
+
+
+def _worth_asking(options: list[dict], primary_local: str,
+                  glossary: Glossary | None) -> list[dict] | None:
+    """Prune an operation's readings to the ones a person should adjudicate,
+    or None when nobody needs to look at it.
+
+    A reading carried by a single Whisper decode out of seven is that decode's
+    own noise — w-sample perturbs the temperature and w-offset shifts the window
+    precisely so they can wander. Asking a human to rule on a lone wanderer
+    cost a third of the queue.
+
+    A lone GIGAAM reading is a different matter. It comes from the only
+    architecture here that shares neither weights nor training data with the
+    Whisper family, and the Whisper floor counts six correlated decodes of one
+    model as six votes while a dissenting GigaAM head counts as zero — so a
+    "whisper unanimous but gigaam dissents" file lost every operation and fell
+    through to a whole-transcript fallback card (30 files at the time this was
+    written). A cross-architecture dissent is exactly what the panel exists to
+    surface, so it survives with a single name attached.
+
+    A spot where EVERY decode differs keeps all of its options: that is a real
+    seven-way split, not noise."""
+    def is_cross_architecture(option: dict) -> bool:
+        return any(name in GIGAAM_CONFIGS for name in option["names"])
+
+    supported = [option for option in options
+                 if len(option["names"]) >= 2 or is_cross_architecture(option)]
+    if supported:
+        options = supported
+    if len(options) > 1:
+        return options
+    # One reading survived. If it is what the primary transcript already says
+    # there is nothing to apply; otherwise it is kept as the sole alternative
+    # so the majority correction still lands in the reference unattended.
+    if not options or _settled_key(options[0]["text"], glossary) == _settled_key(primary_local, glossary):
+        return None
+    return options
+
+
+def review_operations(candidates: dict[str, str | None], glossary: Glossary | None = None) -> list[dict]:
+    """Independent, non-overlap-merged replacements in the primary transcript.
+
+    The old set-of-indices algorithm forgot which edit created an index and then
+    joined differences merely because they were nearby.  Here each opcode keeps
+    its candidate span.  Only genuinely overlapping anchor spans become one
+    operation, which is the minimum needed for choices to be independently
+    applicable when the final reference is assembled.
+    """
+    primary_text = candidates.get(PRIMARY) or ""
+    primary, owners, raw_primary = _token_map(primary_text)
     if not primary:
         return []
-    disputed: set[int] = set()
+    changes = []
     for name, text in candidates.items():
         if name == PRIMARY or text is None:
             continue
-        other = normalize(text).split()
-        for tag, i1, i2, _, _ in difflib.SequenceMatcher(a=primary, b=other).get_opcodes():
-            if tag != "equal":
-                disputed.update(range(i1, min(i2, len(primary))))
-    if not disputed:
+        other, other_owners, raw_other = _token_map(text)
+        for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(a=primary, b=other).get_opcodes():
+            if tag == "equal":
+                continue
+            changes.append({"start": _boundary(owners, raw_primary, i1),
+                            "end": _boundary(owners, raw_primary, i2),
+                            "name": name,
+                            "other_start": _boundary(other_owners, raw_other, j1),
+                            "other_end": _boundary(other_owners, raw_other, j2),
+                            "other_raw": raw_other})
+    if not changes:
         return []
-    clusters, run = [], [min(disputed)]
-    for index in sorted(disputed)[1:]:
-        if index - run[-1] <= 3:
-            run.append(index)
+    changes.sort(key=lambda change: (change["start"], change["end"], change["name"]))
+    groups: list[list[dict]] = []
+    for change in changes:
+        if groups and change["start"] <= max(item["end"] for item in groups[-1]):
+            groups[-1].append(change)
         else:
-            clusters.append([run[0], run[-1]])
-            run = [index]
-    clusters.append([run[0], run[-1]])
-    return clusters
+            groups.append([change])
+    operations = []
+    for group in groups:
+        start = min(item["start"] for item in group)
+        end = max(item["end"] for item in group)
+        by_name = {item["name"]: item for item in group}
+        # A decoder that diverges for a whole sentence has no safe semantic
+        # alignment point.  Do not make the listener choose it in one 30-second
+        # action: split at punctuation, otherwise at four anchor words.  The
+        # alternative slice follows the same fraction of that decoder's change;
+        # the UI labels these as ordinary local alternatives, not a fabricated
+        # timestamp from the other engine.
+        parts, cursor = ([(start, end)] if start == end else []), start
+        while cursor < end:
+            limit = min(end, cursor + 4)
+            punctuated = [index + 1 for index in range(cursor, limit)
+                           if raw_primary[index].endswith((".", ",", "!", "?", ";", ":"))]
+            part_end = punctuated[-1] if punctuated else limit
+            parts.append((cursor, part_end))
+            cursor = part_end
+        for part_start, part_end in parts:
+            variants: dict[str, dict] = {}
+            for name, text in candidates.items():
+                if text is None:
+                    continue
+                change = by_name.get(name)
+                if change is None:
+                    local = " ".join(raw_primary[part_start:part_end])
+                elif change["start"] == change["end"]:
+                    local = " ".join(change["other_raw"][change["other_start"]:change["other_end"]])
+                else:
+                    width = max(1, change["end"] - change["start"])
+                    other_width = change["other_end"] - change["other_start"]
+                    left = change["other_start"] + round((part_start - change["start"]) * other_width / width)
+                    right = change["other_start"] + round((part_end - change["start"]) * other_width / width)
+                    local = " ".join(change["other_raw"][left:right])
+                key = _settled_key(local, glossary)
+                variant = variants.setdefault(key, {"names": [], "text": local})
+                if same_word(normalize(variant["text"]), normalize(local), glossary):
+                    # The confirmed pair collapsed two spellings into one option,
+                    # so the option must carry the spelling that was confirmed —
+                    # "issue", not the "ишью" GigaAM happened to emit first.
+                    variant["text"] = local
+                variant["names"].append(name)
+            options = _worth_asking(list(variants.values()),
+                                    " ".join(raw_primary[part_start:part_end]), glossary)
+            if options is None:
+                continue
+            fingerprint = "\x1f".join([str(part_start), str(part_end)] + ["+".join(option["names"]) + ":" + option["text"] for option in options])
+            operations.append({"id": f"{part_start}:{part_end}",
+                               "signature": hashlib.sha256(fingerprint.encode()).hexdigest()[:16],
+                               "anchor": [part_start, part_end],
+                               "context": [" ".join(raw_primary[max(0, part_start - 3):part_start]),
+                                           " ".join(raw_primary[part_end:part_end + 3])],
+                               "alternatives": options})
+    return operations
+
+
+def review_details(candidates: dict[str, str | None], glossary: Glossary | None) -> dict:
+    operations = review_operations(candidates, glossary)
+    # Kept for old verdict consumers and tests. New clients use the operation
+    # schema, whose half-open anchor span also represents insertions.
+    spots = [[operation["anchor"][0], max(operation["anchor"][0], operation["anchor"][1] - 1)]
+             for operation in operations]
+    return {"review_operations": operations, "spots": spots}
+
+
+def disputed_spots(candidates: dict[str, str | None], glossary: Glossary | None) -> list[list[int]]:
+    return review_details(candidates, glossary)["spots"]
 
 
 def needs_second_tier(candidates: dict[str, str | None], glossary: Glossary | None = None) -> bool:

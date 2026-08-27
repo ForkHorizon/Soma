@@ -1,0 +1,22 @@
+{
+  "w-p-p2-v1": {
+    "temperature": 0.0,
+    "condition_on_previous_text": false,
+    "initial_prompt": "Диктовка по разработке: whatsapp, issue, pr, ui."
+  },
+  "w-p-p3-v1": {
+    "temperature": 0.0,
+    "condition_on_previous_text": false,
+    "initial_prompt": "Диктовка по разработке: pr, issue, sirena, ui, unity, android, developer, email, enum, facetime, git, hermes, housedata, input, lines, m1, mem, nexus, open, project."
+  },
+  "w-p-p4-v1": {
+    "temperature": 0.0,
+    "condition_on_previous_text": false,
+    "initial_prompt": "Смотри, сегодня делаю open PR и закрываю issue в Git, чиню UI в Unity и Android, обсуждаем Nexus и HouseData, перехожу в Developer, отправляю email про project и mem, добавляю enum и input, слушаю Hermes, захожу в FaceTime, а ещё там Sirena, M1 и лишних lines кода."
+  },
+  "w-p-p5-v1": {
+    "temperature": 0.0,
+    "condition_on_previous_text": false,
+    "initial_prompt": "Смотри, сегодня делаю open PR и закрываю issue в Git. Чиню UI в Unity и Android, обсуждаем Nexus и HouseData. Перехожу в Developer, отправляю email про project и mem, добавляю enum и input. Слушаю Hermes, захожу в FaceTime — а ещё там Sirena, M1 и лишних lines кода."
+  }
+}

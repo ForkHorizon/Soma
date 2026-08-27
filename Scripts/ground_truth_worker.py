@@ -56,9 +56,13 @@ OFFSET_SECONDS = 15.0
 OFFSET_MIN_SECONDS = 30.0
 
 
-def emit(obj: dict) -> None:
-    sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
+def emit(obj: dict, out=None) -> None:
+    line = json.dumps(obj, ensure_ascii=False) + "\n"
+    sys.stdout.write(line)
     sys.stdout.flush()
+    if out is not None:
+        out.write(line)
+        out.flush()
 
 
 def load_audio(path: str, offset: float = 0.0):
@@ -77,10 +81,10 @@ def load_audio(path: str, offset: float = 0.0):
     return np.ascontiguousarray(data)
 
 
-def whisper_decoder(config: str, repository: str, best_of: int):
+def whisper_decoder(config: str, repository: str, best_of: int, options_map: dict[str, dict]):
     import mlx_whisper
 
-    options = dict(WHISPER_OPTIONS[config])
+    options = dict(options_map[config])
     if config == "w-sample":
         options["best_of"] = best_of
     options.update(path_or_hf_repo=repository, language="ru")
@@ -122,7 +126,7 @@ class TooShortForOffset(Exception):
     fits one window, so it is skipped rather than recorded as an error."""
 
 
-def faster_whisper_decoder(model_size: str, root: str):
+def faster_whisper_decoder(model_size: str, root: str, beam_size: int):
     """CTranslate2 Whisper. Same weights as the mlx passes, so NOT an
     independent architecture — but it is the only backend here that implements
     beam search, which mlx_whisper refuses outright."""
@@ -131,7 +135,7 @@ def faster_whisper_decoder(model_size: str, root: str):
     model = WhisperModel(model_size, device="cpu", compute_type="int8", download_root=root or None)
 
     def decode(path: str) -> tuple[str, dict]:
-        segments, _ = model.transcribe(path, language="ru", beam_size=5, temperature=0.0,
+        segments, _ = model.transcribe(path, language="ru", beam_size=beam_size, temperature=0.0,
                                        condition_on_previous_text=False)
         collected = list(segments)
         text = " ".join(s.text.strip() for s in collected).strip()
@@ -175,22 +179,44 @@ def peak_db(path: str) -> float:
 GIGAAM_MODELS = {"gigaam": "rnnt", "gigaam-ctc": "ctc"}
 
 
-def build_decoder(args, config: str) -> object:
+def load_config_file(path: Path | None) -> dict[str, dict]:
+    """Extra mlx_whisper option sets, keyed by config name. Merged alongside
+    WHISPER_OPTIONS at startup, never in place of it — the seven built-in
+    configs (five whisper + two gigaam) stay exactly as hardcoded above; this
+    only makes new names reachable without editing this file for every sweep
+    (initial_prompt variants in stage 2, threshold grids in stage 3).
+
+    Reusing a built-in name is refused outright rather than silently letting
+    the later dict win: the decode cache has no provenance beyond name+config
+    (issue #0073), so a config-file that shadows e.g. "w-greedy" with
+    different options would poison every future run reading that name from
+    cache without ever raising or logging anything."""
+    if not path:
+        return {}
+    custom = json.loads(path.read_text(encoding="utf-8"))
+    collisions = sorted(set(custom) & set(WHISPER_OPTIONS))
+    if collisions:
+        raise ValueError(f"--config-file reuses built-in config name(s): {', '.join(collisions)} "
+                         "— give experimental configs a unique name (plan hygiene rule #2)")
+    return custom
+
+
+def build_decoder(args, config: str, options_map: dict[str, dict]) -> object:
     if args.engine == "whisper":
-        return whisper_decoder(config, args.repository, args.best_of)
+        return whisper_decoder(config, args.repository, args.best_of, options_map)
     if args.engine == "fasterwhisper":
-        return faster_whisper_decoder(args.faster_model, args.faster_root)
+        return faster_whisper_decoder(args.faster_model, args.faster_root, args.beam_size)
     return gigaam_decoder(GIGAAM_MODELS.get(config, args.gigaam_model), args.gigaam_root)
 
 
-def run_config(args, config: str, paths: list[str]) -> None:
+def run_config(args, config: str, paths: list[str], options_map: dict[str, dict], out=None) -> None:
     started = time.perf_counter()
     try:
-        decode = build_decoder(args, config)
+        decode = build_decoder(args, config, options_map)
     except Exception as error:                                    # noqa: BLE001
-        emit({"event": "fatal", "config": config, "error": f"{type(error).__name__}: {error}"})
+        emit({"event": "fatal", "config": config, "error": f"{type(error).__name__}: {error}"}, out)
         return
-    emit({"event": "loaded", "config": config, "seconds": round(time.perf_counter() - started, 2)})
+    emit({"event": "loaded", "config": config, "seconds": round(time.perf_counter() - started, 2)}, out)
 
     for path in paths:
         began = time.perf_counter()
@@ -200,12 +226,12 @@ def run_config(args, config: str, paths: list[str]) -> None:
             text, metrics = decode(path)
             metrics["peak_db"] = peak_db(path)
         except TooShortForOffset as skipped:
-            emit({"event": "skip", "file": Path(path).name, "config": config, "reason": str(skipped)})
+            emit({"event": "skip", "file": Path(path).name, "config": config, "reason": str(skipped)}, out)
             continue
         except Exception as failure:                              # noqa: BLE001
             text, error = None, f"{type(failure).__name__}: {failure}"
         emit({"event": "decode", "file": Path(path).name, "config": config, "text": text,
-              "error": error, "seconds": round(time.perf_counter() - began, 2), **metrics})
+              "error": error, "seconds": round(time.perf_counter() - began, 2), **metrics}, out)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -221,11 +247,30 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--gigaam-root", default="")
     parser.add_argument("--faster-model", default="large-v3")
     parser.add_argument("--faster-root", default="")
+    parser.add_argument("--beam-size", type=int, default=5, help="faster-whisper beam width (stage 3.3 sweeps this)")
+    parser.add_argument("--config-file", type=Path,
+                        help="JSON {name: mlx_whisper options} merged alongside the built-in configs, "
+                             "so P2-P5 prompts / threshold grids don't need a code change")
+    parser.add_argument("--out", type=Path,
+                        help="write decodes here (default: stdout only). Written to <out>.tmp and renamed "
+                             "on completion, so a killed run never leaves a partial file at the real path")
     args = parser.parse_args(argv)
 
     paths = [line.strip() for line in args.list.read_text(encoding="utf-8").splitlines() if line.strip()]
-    for config in [name for name in args.configs.split(",") if name]:
-        run_config(args, config, paths)
+    options_map = {**WHISPER_OPTIONS, **load_config_file(args.config_file)}
+
+    out_tmp = args.out.with_suffix(args.out.suffix + ".tmp") if args.out else None
+    if out_tmp:
+        out_tmp.parent.mkdir(parents=True, exist_ok=True)
+    out = out_tmp.open("w", encoding="utf-8") if out_tmp else None
+    try:
+        for config in [name for name in args.configs.split(",") if name]:
+            run_config(args, config, paths, options_map, out)
+    finally:
+        if out:
+            out.close()
+    if out_tmp:
+        out_tmp.replace(args.out)
     return 0
 
 
