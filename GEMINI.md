@@ -29,6 +29,10 @@ Read these first:
 
 ## Hard Rules
 
+- Keep `.code-linter.json` exactly at the Code Linter base settings: 300 lines
+  per file, 50 lines per function, nesting depth 4, 5 parameters, 5 prose
+  comment lines, 50 doc-comment lines, and 2 top-level types per file. Never
+  raise or override these values; pre-existing violations are separate tasks.
 - Big AI clients connect to Soma only.
 - Do not expose raw `unity_*` or direct Nexus tools in Soma docs/config examples.
 - Deterministic `soma_prepare_context` must work without Ollama, Unity, or Nexus.

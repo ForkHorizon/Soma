@@ -36,3 +36,11 @@ via the MCP tools and the summary will follow.
 Do not re-scan source files when MCP tools can give you the same
 answer in ~500 tokens instead of ~5000. This is not optional.
 <!-- <<< projectmem bridge <<< -->
+
+## Code Linter Policy
+
+Always keep `.code-linter.json` at the Code Linter base settings: file length
+300, function length 50, nesting depth 4, parameters 5, prose comments 5,
+doc comments 50, and top-level types per file 2. Never raise or override
+these limits. Handle pre-existing violations as separate work; do not relax
+the policy for them.
