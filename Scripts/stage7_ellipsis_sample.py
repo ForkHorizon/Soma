@@ -6,7 +6,9 @@ import random
 import re
 from pathlib import Path
 
-GT = Path.home() / "Library/Application Support/Soma/GroundTruth"
+from ground_truth_paths import LEGACY_ROOT
+
+GT = LEGACY_ROOT
 RECORDINGS = Path.home() / "Library/Application Support/Soma/VoiceRecordings"
 ELLIPSIS = re.compile(r"\.\.\.")
 

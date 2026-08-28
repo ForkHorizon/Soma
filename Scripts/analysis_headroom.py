@@ -17,9 +17,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ground_truth_paths import LEGACY_ROOT
 from ground_truth_text import normalize, wer  # noqa: E402
 
-GT = os.path.expanduser("~/Library/Application Support/Soma/GroundTruth")
+GT = str(LEGACY_ROOT)
 CUR = "w-bo-t20-n10-v1-veto_v2"
 
 

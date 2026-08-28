@@ -134,8 +134,7 @@ struct Layer1State: Codable {
 /// changed without decoding the audio again.
 final class Layer1GroundTruthStore {
     static var directory: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Soma/GroundTruthLayer1", isDirectory: true)
+        GroundTruthPaths.activeLayer1
     }
 
     let directory: URL
@@ -400,6 +399,7 @@ final class Layer1GroundTruthStore {
         sourceModelID: String? = nil, now: Date = Date()
     ) {
         guard let index = state.segments.firstIndex(where: { $0.id == segmentID }) else { return }
+        let audioID = state.segments[index].audioID
         let previous = state.segments[index].decision
         state.segments[index].decision = Layer1SegmentDecision(
             status: .verified, text: text, normalizedText: Self.normalize(text ?? ""),
@@ -411,6 +411,7 @@ final class Layer1GroundTruthStore {
         if let sourceModelID { history["sourceModelID"] = sourceModelID }
         appendHistory(event: "human_decision", payload: history)
         refreshStatuses()
+        writeHumanGoldIfComplete(audioID: audioID)
         save()
     }
 
@@ -608,6 +609,44 @@ final class Layer1GroundTruthStore {
                     })
                 return result
             })
+    }
+
+    private func writeHumanGoldIfComplete(audioID: String) {
+        let segments = state.segments.filter { $0.audioID == audioID }
+        guard let file = file(for: audioID), !segments.isEmpty,
+            segments.allSatisfy({ $0.decision.status == .verified })
+        else { return }
+        let goldURL = directory.deletingLastPathComponent()
+            .appendingPathComponent("human/gold.jsonl")
+        let fileName = file.url.lastPathComponent
+        let existing =
+            (try? String(contentsOf: goldURL, encoding: .utf8))?
+            .split(separator: "\n")
+            .compactMap { line -> String? in
+                guard let data = line.data(using: .utf8),
+                    let row = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                else { return nil }
+                return row["file"] as? String
+            } ?? []
+        guard !existing.contains(fileName),
+            let data = try? JSONSerialization.data(
+                withJSONObject: [
+                    "file": fileName,
+                    "text": Self.assemble(segments),
+                    "source": "layer1-human",
+                    "cycle": "layer1-v1",
+                ], options: [.sortedKeys]),
+            let line = String(data: data, encoding: .utf8)
+        else { return }
+        try? FileManager.default.createDirectory(
+            at: goldURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let handle = try? FileHandle(forWritingTo: goldURL) {
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: Data((line + "\n").utf8))
+        } else {
+            try? Data((line + "\n").utf8).write(to: goldURL, options: .atomic)
+        }
     }
 
     private func refreshStatuses() {

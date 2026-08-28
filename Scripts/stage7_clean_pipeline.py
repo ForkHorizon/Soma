@@ -13,10 +13,11 @@ import json
 import re
 from pathlib import Path
 
+from ground_truth_paths import LEGACY_ROOT
 from ground_truth_text import normalize
 from stage7_ellipsis_postprocess import strip_personal_credits
 
-DEFAULT_GT = Path.home() / "Library/Application Support/Soma/GroundTruth"
+DEFAULT_GT = LEGACY_ROOT
 NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
 
 

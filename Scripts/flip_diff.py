@@ -27,11 +27,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from ground_truth_paths import LEGACY_ROOT  # noqa: E402
 from asr_eval import load_decodes  # noqa: E402
 from ground_truth_consensus import PRIMARY, review_operations  # noqa: E402
 from ground_truth_text import normalize  # noqa: E402
 
-DEFAULT_ROOT = Path.home() / "Library/Application Support/Soma/GroundTruth"
+DEFAULT_ROOT = LEGACY_ROOT
 _LATIN = re.compile(r"[a-zA-Z]")
 
 # Deliberately short and explicit rather than derived: a false "filler" match

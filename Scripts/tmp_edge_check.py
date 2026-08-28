@@ -1,7 +1,9 @@
 import json
 import os
 
-gt = os.path.expanduser("~/Library/Application Support/Soma/GroundTruth")
+from ground_truth_paths import LEGACY_ROOT
+
+gt = str(LEGACY_ROOT)
 
 settled = set()
 for line in open(f"{gt}/gold.jsonl"):

@@ -5,7 +5,9 @@ import json
 from collections import Counter
 from pathlib import Path
 
-GT = Path.home() / "Library/Application Support/Soma/GroundTruth"
+from ground_truth_paths import LEGACY_ROOT
+
+GT = LEGACY_ROOT
 
 
 def main():

@@ -41,9 +41,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from ground_truth_paths import LEGACY_ROOT  # noqa: E402
 from ground_truth_text import normalize  # noqa: E402
 
-DEFAULT_ROOT = Path.home() / "Library/Application Support/Soma/GroundTruth"
+DEFAULT_ROOT = LEGACY_ROOT
 LATIN_WORD = re.compile(r"^[a-z0-9+#*]*[a-z][a-z0-9+#*]*$")
 TOP_N = 20
 
