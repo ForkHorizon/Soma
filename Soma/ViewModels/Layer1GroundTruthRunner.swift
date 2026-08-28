@@ -52,7 +52,9 @@ final class Layer1GroundTruthRunner: ObservableObject {
 
     func addBatch(count: Int, asr: ASRManager) {
         failure = nil
-        let candidates = asr.recordingIndex.map { Layer1AudioCandidate(url: $0.url, date: $0.date, duration: $0.duration) }
+        let candidates = asr.recordingIndex.map {
+            Layer1AudioCandidate(url: $0.url, date: $0.date, duration: $0.duration)
+        }
         guard store.addBatch(count: count, candidates: candidates) != nil else {
             failure = "No new WAV files were available for this batch."
             objectWillChange.send()
@@ -107,10 +109,10 @@ final class Layer1GroundTruthRunner: ObservableObject {
                     }
                     for row in result.rows {
                         self.store.finish(
-                            row.runID, status: .completed, version: row.version,
-                            rawResponse: row.rawResponse, text: row.text,
-                            timestamps: row.timestamps, error: nil,
-                            duration: row.duration)
+                            row.runID,
+                            completion: Layer1RunCompletion(
+                                status: .completed, version: row.version, rawResponse: row.rawResponse,
+                                text: row.text, timestamps: row.timestamps, error: nil, duration: row.duration))
                     }
                 }
                 if let batchError {
@@ -150,8 +152,11 @@ final class Layer1GroundTruthRunner: ObservableObject {
         objectWillChange.send()
     }
 
-    func saveDecision(segmentID: String, text: String?, action: Layer1HumanAction, sourceModelID: String? = nil) {
-        store.saveDecision(segmentID: segmentID, text: text, action: action, sourceModelID: sourceModelID)
+    func saveDecision(
+        segmentID: String, text: String?, action: Layer1HumanAction, sourceModelID: String? = nil
+    ) {
+        store.saveDecision(
+            segmentID: segmentID, text: text, action: action, sourceModelID: sourceModelID)
         objectWillChange.send()
     }
 
@@ -211,7 +216,8 @@ final class Layer1GroundTruthRunner: ObservableObject {
                     error: "Batch produced malformed or duplicate JSON output for \(modelID)", rows: [])
             }
             seen.insert(runID)
-            let timestamps = (object["words"] as? [[String: Any]] ?? []).compactMap { word -> Layer1WordTimestamp? in
+            let timestamps = (object["words"] as? [[String: Any]] ?? []).compactMap {
+                word -> Layer1WordTimestamp? in
                 guard let value = word["word"] as? String,
                     let start = word["start"] as? Double,
                     let end = word["end"] as? Double
@@ -228,9 +234,12 @@ final class Layer1GroundTruthRunner: ObservableObject {
         return .init(status: 0, output: result.output, error: result.error, rows: rows)
     }
 
-    private func runBatchProcess(arguments: [String]) async -> (status: Int32, output: String, error: String) {
+    private func runBatchProcess(arguments: [String]) async -> (
+        status: Int32, output: String, error: String
+    ) {
         await withCheckedContinuation { continuation in
-            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+                UUID().uuidString)
             let outputURL = directory.appendingPathComponent("stdout")
             let errorURL = directory.appendingPathComponent("stderr")
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -258,7 +267,10 @@ final class Layer1GroundTruthRunner: ObservableObject {
                 let output = (try? String(contentsOf: outputURL, encoding: .utf8)) ?? ""
                 let error = (try? String(contentsOf: errorURL, encoding: .utf8)) ?? ""
                 try? FileManager.default.removeItem(at: directory)
-                continuation.resume(returning: (process.terminationStatus, output, error.trimmingCharacters(in: .whitespacesAndNewlines)))
+                continuation.resume(
+                    returning: (
+                        process.terminationStatus, output, error.trimmingCharacters(in: .whitespacesAndNewlines)
+                    ))
             }
             do {
                 try task.run()
@@ -272,7 +284,9 @@ final class Layer1GroundTruthRunner: ObservableObject {
         }
     }
 
-    private func execute(_ run: Layer1ModelRun, command: (command: [String], version: String)) async -> Layer1ASRProcessResult {
+    private func execute(_ run: Layer1ModelRun, command: (command: [String], version: String)) async
+        -> Layer1ASRProcessResult
+    {
         let script = repoRoot.appendingPathComponent("Scripts/layer1_asr_worker.py")
         let audio = store.file(for: run.audioID)?.path ?? ""
         guard FileManager.default.fileExists(atPath: script.path), !audio.isEmpty else {
@@ -303,7 +317,8 @@ final class Layer1GroundTruthRunner: ObservableObject {
             task.standardOutput = pipe
             task.standardError = pipe
             task.terminationHandler = { [weak self] process in
-                let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                let output = String(
+                    decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
                 Task { @MainActor [weak self] in
                     self?.process = nil
                     continuation.resume(returning: (process.terminationStatus, output))
@@ -316,12 +331,15 @@ final class Layer1GroundTruthRunner: ObservableObject {
         }
     }
 
-    private func parse(_ output: String, status: Int32, fallbackVersion: String) -> Layer1ASRProcessResult {
+    private func parse(_ output: String, status: Int32, fallbackVersion: String)
+        -> Layer1ASRProcessResult
+    {
         guard status == 0 else {
             return .init(
                 status: .failed, version: fallbackVersion, rawResponse: output, text: nil,
                 timestamps: [],
-                error: output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Worker exited with status \(status)" : output)
+                error: output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? "Worker exited with status \(status)" : output)
         }
         guard let data = output.data(using: .utf8),
             let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -333,7 +351,8 @@ final class Layer1GroundTruthRunner: ObservableObject {
         }
         let text = object["text"] as? String
         let version = object["version"] as? String ?? fallbackVersion
-        let timestamps = (object["words"] as? [[String: Any]] ?? []).compactMap { row -> Layer1WordTimestamp? in
+        let timestamps = (object["words"] as? [[String: Any]] ?? []).compactMap {
+            row -> Layer1WordTimestamp? in
             guard let word = row["word"] as? String,
                 let start = row["start"] as? Double, let end = row["end"] as? Double
             else { return nil }
@@ -345,10 +364,12 @@ final class Layer1GroundTruthRunner: ObservableObject {
     }
 
     private var repoRoot: URL {
-        URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent()
     }
 
     private var pythonPath: String {
-        FileManager.default.fileExists(atPath: "/opt/homebrew/bin/python3") ? "/opt/homebrew/bin/python3" : "/usr/bin/python3"
+        FileManager.default.fileExists(atPath: "/opt/homebrew/bin/python3")
+            ? "/opt/homebrew/bin/python3" : "/usr/bin/python3"
     }
 }

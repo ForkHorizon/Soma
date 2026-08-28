@@ -27,8 +27,10 @@ struct Layer1ReviewView: View {
                 review(segment)
             } else {
                 Text("All available segments are verified.").font(.headline)
-                Text("Every segment still passed through a human decision; model agreement never auto-accepted a segment.")
-                    .font(.callout).foregroundStyle(.secondary)
+                Text(
+                    "Every segment still passed through a human decision; model agreement never auto-accepted a segment."
+                )
+                .font(.callout).foregroundStyle(.secondary)
             }
         }
         .padding(20).frame(minWidth: 820, minHeight: 620)
@@ -41,15 +43,7 @@ struct Layer1ReviewView: View {
 
     private func review(_ segment: Layer1Segment) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(URL(fileURLWithPath: runner.store.file(for: segment.audioID)?.path ?? "").lastPathComponent)
-                    .font(.caption).monospaced()
-                Text("· \(segment.start, specifier: "%.2f")–\(segment.end, specifier: "%.2f") s")
-                    .font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Button("Mark bad boundary") { runner.flagSegmentation(segment.id) }.font(.caption)
-                if segment.segmentationNeedsReview { Text("boundary flagged").font(.caption2).foregroundStyle(.orange) }
-            }
+            reviewHeader(segment)
             HStack {
                 Button {
                     play(segment, context: false)
@@ -76,17 +70,37 @@ struct Layer1ReviewView: View {
                 }
             }.frame(maxHeight: 300)
             Divider()
-            Text("Human text — preserve every spoken word, repetition, filler, false start, and unfinished attempt.")
-                .font(.caption).foregroundStyle(.secondary)
+            Text(
+                "Human text — preserve every spoken word, repetition, filler, false start, and unfinished attempt."
+            )
+            .font(.caption).foregroundStyle(.secondary)
             TextEditor(text: $text).font(.body).frame(minHeight: 90)
-                .padding(6).background(Color.primary.opacity(0.05)).clipShape(RoundedRectangle(cornerRadius: 8))
+                .padding(6).background(Color.primary.opacity(0.05)).clipShape(
+                    RoundedRectangle(cornerRadius: 8))
             HStack {
                 Button("No speech") { save(segment, text: "", action: .noSpeech) }
                 Button("Unclear") { save(segment, text: text, action: .unclear) }
                 Spacer()
                 Button("Previous") { cursor = max(cursor - 1, 0) }.disabled(cursor == 0)
                 Button("Save and next") { saveCurrent(segment) }.buttonStyle(.borderedProminent)
-                Button("Next") { cursor = min(cursor + 1, max(items.count - 1, 0)) }.disabled(cursor >= items.count - 1)
+                Button("Next") { cursor = min(cursor + 1, max(items.count - 1, 0)) }.disabled(
+                    cursor >= items.count - 1)
+            }
+        }
+    }
+
+    private func reviewHeader(_ segment: Layer1Segment) -> some View {
+        HStack {
+            Text(
+                URL(fileURLWithPath: runner.store.file(for: segment.audioID)?.path ?? "").lastPathComponent
+            )
+            .font(.caption).monospaced()
+            Text("· \(segment.start, specifier: "%.2f")–\(segment.end, specifier: "%.2f") s")
+                .font(.caption).foregroundStyle(.secondary)
+            Spacer()
+            Button("Mark bad boundary") { runner.flagSegmentation(segment.id) }.font(.caption)
+            if segment.segmentationNeedsReview {
+                Text("boundary flagged").font(.caption2).foregroundStyle(.orange)
             }
         }
     }
@@ -96,7 +110,8 @@ struct Layer1ReviewView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(suggestion.model).font(.caption.bold())
                 if suggestion.status == .failed {
-                    Text("FAILED: \(suggestion.error ?? "unknown error")").font(.caption).foregroundStyle(.red)
+                    Text("FAILED: \(suggestion.error ?? "unknown error")").font(.caption).foregroundStyle(
+                        .red)
                 } else {
                     Text(suggestion.text?.isEmpty == false ? suggestion.text! : "(no speech returned)")
                         .font(.callout).textSelection(.enabled)
@@ -111,7 +126,8 @@ struct Layer1ReviewView: View {
                 .buttonStyle(.bordered).controlSize(.small)
             }
         }
-        .padding(8).background(Color.primary.opacity(0.045)).clipShape(RoundedRectangle(cornerRadius: 7))
+        .padding(8).background(Color.primary.opacity(0.045)).clipShape(
+            RoundedRectangle(cornerRadius: 7))
     }
 
     private func loadCurrent() {
@@ -133,7 +149,8 @@ struct Layer1ReviewView: View {
 
     private func saveCurrent(_ segment: Layer1Segment) {
         let original = sourceModelID.flatMap { segment.modelSuggestions[$0]?.text }
-        let action: Layer1HumanAction = sourceModelID == nil ? .manual : (original == text ? .selectedModel : .selectedAndEdited)
+        let action: Layer1HumanAction =
+            sourceModelID == nil ? .manual : (original == text ? .selectedModel : .selectedAndEdited)
         save(segment, text: text, action: action)
     }
 

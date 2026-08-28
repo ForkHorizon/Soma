@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import Soma
 
 final class Layer1GroundTruthTests: XCTestCase {
@@ -47,8 +48,10 @@ final class Layer1GroundTruthTests: XCTestCase {
         for (index, run) in store.queuedRuns().enumerated() {
             store.markRunning(run.id, configuration: run.configuration, version: "test", at: Date())
             store.finish(
-                run.id, status: .completed, version: "test", rawResponse: "{\"text\":\"я я думаю\"}",
-                text: "я я думаю", timestamps: index == 0 ? timestamp : [], error: nil, duration: 0.1)
+                run.id,
+                completion: .init(
+                    status: .completed, version: "test", rawResponse: "{\"text\":\"я я думаю\"}",
+                    text: "я я думаю", timestamps: index == 0 ? timestamp : [], error: nil, duration: 0.1))
         }
         let segment = try XCTUnwrap(store.state.segments.first(where: { $0.audioID == file }))
         XCTAssertEqual(segment.decision.status, .pending)
@@ -57,7 +60,8 @@ final class Layer1GroundTruthTests: XCTestCase {
         store.saveDecision(segmentID: segment.id, text: "Я я думаю", action: .manual)
         XCTAssertEqual(store.state.segments.first?.decision.normalizedText, "я я думаю")
         XCTAssertEqual(store.verifiedSegmentsCount(), 1)
-        var gold = try String(contentsOf: root.appendingPathComponent("human/gold.jsonl"), encoding: .utf8)
+        var gold = try String(
+            contentsOf: root.appendingPathComponent("human/gold.jsonl"), encoding: .utf8)
         XCTAssertTrue(gold.contains("\"source\":\"layer1-human\""))
         XCTAssertTrue(gold.contains("\"text\":\"Я я думаю\""))
 
@@ -123,15 +127,20 @@ final class Layer1GroundTruthTests: XCTestCase {
         let audio = root.appendingPathComponent("speech.wav")
         try Data("speech".utf8).write(to: audio)
         let store = Layer1GroundTruthStore(directory: root.appendingPathComponent("store"))
-        _ = store.addBatch(count: 1, candidates: [Layer1AudioCandidate(url: audio, date: Date(), duration: 4)])
+        _ = store.addBatch(
+            count: 1, candidates: [Layer1AudioCandidate(url: audio, date: Date(), duration: 4)])
         let run = try XCTUnwrap(store.queuedRuns().first)
         store.markRunning(run.id, configuration: run.configuration, version: "test", at: Date())
         store.finish(
-            run.id, status: .failed, version: "test", rawResponse: "", text: nil,
-            timestamps: [], error: "FileNotFoundError: ffmpeg", duration: 0.1)
+            run.id,
+            completion: .init(
+                status: .failed, version: "test", rawResponse: "", text: nil,
+                timestamps: [], error: "FileNotFoundError: ffmpeg", duration: 0.1))
 
         let reloaded = Layer1GroundTruthStore(directory: root.appendingPathComponent("store"))
-        let retry = reloaded.queuedRuns().first { $0.audioID == run.audioID && $0.modelID == run.modelID }
+        let retry = reloaded.queuedRuns().first {
+            $0.audioID == run.audioID && $0.modelID == run.modelID
+        }
         XCTAssertEqual(retry?.attempt, 2)
     }
 
@@ -149,12 +158,15 @@ final class Layer1GroundTruthTests: XCTestCase {
         let failed = try XCTUnwrap(store.queuedRuns().first)
         store.markRunning(failed.id, configuration: failed.configuration, version: "test", at: Date())
         store.finish(
-            failed.id, status: .failed, version: "test", rawResponse: "", text: nil,
-            timestamps: [], error: "model failed", duration: 0.1)
+            failed.id,
+            completion: .init(
+                status: .failed, version: "test", rawResponse: "", text: nil,
+                timestamps: [], error: "model failed", duration: 0.1))
 
         store.retryFailed()
         XCTAssertEqual(store.latestRuns(for: batch.id).count, Layer1ModelSpec.catalog.count)
-        XCTAssertTrue(store.latestRuns(for: batch.id).allSatisfy { $0.status == .queued && $0.attempt == 2 })
+        XCTAssertTrue(
+            store.latestRuns(for: batch.id).allSatisfy { $0.status == .queued && $0.attempt == 2 })
     }
 
     func testFailBatchInvalidatesSegmentsAndAllLatestRuns() throws {
@@ -171,8 +183,10 @@ final class Layer1GroundTruthTests: XCTestCase {
         for run in store.queuedRuns() {
             store.markRunning(run.id, configuration: run.configuration, version: "test", at: Date())
             store.finish(
-                run.id, status: .completed, version: "test", rawResponse: "{}", text: "слово",
-                timestamps: [], error: nil, duration: 0.1)
+                run.id,
+                completion: .init(
+                    status: .completed, version: "test", rawResponse: "{}", text: "слово",
+                    timestamps: [], error: nil, duration: 0.1))
         }
         XCTAssertFalse(store.state.segments.isEmpty)
         store.failBatch(batch.id, error: "one model failed")
@@ -194,17 +208,21 @@ final class Layer1GroundTruthTests: XCTestCase {
         let run = try XCTUnwrap(store.queuedRuns().first)
         store.markRunning(run.id, configuration: run.configuration, version: "test", at: Date())
         store.finish(
-            run.id, status: .completed, version: "test", rawResponse: "{}", text: "слово",
-            timestamps: [], error: nil, duration: 0.1)
+            run.id,
+            completion: .init(
+                status: .completed, version: "test", rawResponse: "{}", text: "слово",
+                timestamps: [], error: nil, duration: 0.1))
 
         let reloaded = Layer1GroundTruthStore(directory: root.appendingPathComponent("store"))
         XCTAssertTrue(reloaded.latestRuns(for: batch.id).allSatisfy { $0.status == .queued })
-        XCTAssertEqual(reloaded.latestRuns(for: batch.id).first { $0.modelID == run.modelID }?.attempt, 2)
+        XCTAssertEqual(
+            reloaded.latestRuns(for: batch.id).first { $0.modelID == run.modelID }?.attempt, 2)
         XCTAssertTrue(reloaded.state.segments.isEmpty)
     }
 
     private func makeTempDirectory() throws -> URL {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }

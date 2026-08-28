@@ -1,5 +1,10 @@
+import os
 import importlib.util
 import json
+import signal
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 
@@ -29,12 +34,6 @@ def test_child_environment_exposes_homebrew_tools_to_decoders():
 
 
 def test_single_worker_terminates_child_process_group_on_sigterm(tmp_path):
-    import os
-    import signal
-    import subprocess
-    import sys
-    import time
-
     audio = tmp_path / "audio.wav"
     audio.write_bytes(b"RIFF....WAVE")
     pid_file = tmp_path / "child.pid"
@@ -97,6 +96,7 @@ def test_decode_hf_load16_stereo_downmix(monkeypatch=None):
     mock_torchaudio.load.return_value = (stereo_tensor, 16000)
 
     import types
+
     sys.modules["torchaudio"] = mock_torchaudio
 
     decode_hf_spec = importlib.util.spec_from_file_location(
