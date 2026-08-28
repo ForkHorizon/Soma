@@ -57,3 +57,51 @@ def test_batch_worker_fails_when_child_fails(tmp_path):
         check=False,
     )
     assert result.returncode != 0
+
+
+def test_batch_worker_terminates_child_process_group_on_sigterm(tmp_path):
+    import os
+    import signal
+    import time
+
+    manifest = tmp_path / "manifest.jsonl"
+    manifest.write_text(json.dumps({"id": "run-1", "file": "a.wav", "audio": "/tmp/a.wav"}) + "\n")
+    pid_file = tmp_path / "child.pid"
+    command_script = tmp_path / "hanging_decoder.py"
+    command_script.write_text(
+        "import os, time, sys\n"
+        f"with open(r'{pid_file}', 'w') as f: f.write(str(os.getpid()))\n"
+        "while True:\n"
+        "    time.sleep(0.1)\n"
+    )
+    command = f"{sys.executable} {command_script} {{manifest}}".replace(" ", "\x1f")
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            str(WORKER),
+            "--manifest",
+            str(manifest),
+            "--model",
+            "fake",
+            "--command",
+            command,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    for _ in range(50):
+        if pid_file.exists():
+            break
+        time.sleep(0.05)
+    assert pid_file.exists()
+    child_pid = int(pid_file.read_text().strip())
+    os.kill(child_pid, 0)
+    proc.send_signal(signal.SIGTERM)
+    proc.wait(timeout=5)
+    time.sleep(0.2)
+    try:
+        os.kill(child_pid, 0)
+        is_alive = True
+    except OSError:
+        is_alive = False
+    assert not is_alive, f"Child process {child_pid} was not terminated on SIGTERM"

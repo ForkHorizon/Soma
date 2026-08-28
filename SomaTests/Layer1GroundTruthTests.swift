@@ -57,11 +57,18 @@ final class Layer1GroundTruthTests: XCTestCase {
         store.saveDecision(segmentID: segment.id, text: "Я я думаю", action: .manual)
         XCTAssertEqual(store.state.segments.first?.decision.normalizedText, "я я думаю")
         XCTAssertEqual(store.verifiedSegmentsCount(), 1)
-        let gold = try String(contentsOf: root.appendingPathComponent("human/gold.jsonl"), encoding: .utf8)
+        var gold = try String(contentsOf: root.appendingPathComponent("human/gold.jsonl"), encoding: .utf8)
         XCTAssertTrue(gold.contains("\"source\":\"layer1-human\""))
         XCTAssertTrue(gold.contains("\"text\":\"Я я думаю\""))
+
+        store.saveDecision(segmentID: segment.id, text: "Я я думаю точно", action: .manual)
+        gold = try String(contentsOf: root.appendingPathComponent("human/gold.jsonl"), encoding: .utf8)
+        XCTAssertTrue(gold.contains("\"text\":\"Я я думаю точно\""))
+        XCTAssertFalse(gold.contains("\"text\":\"Я я думаю\""))
+        XCTAssertEqual(gold.split(separator: "\n").count, 1)
+
         let history = try String(contentsOf: store.historyURL, encoding: .utf8)
-        XCTAssertGreaterThanOrEqual(history.split(separator: "\n").count, 14)
+        XCTAssertGreaterThanOrEqual(history.split(separator: "\n").count, 15)
     }
 
     func testAssemblyUsesEachSegmentOnceAndPreservesOrder() {

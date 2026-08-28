@@ -14,9 +14,49 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
+
+active_proc: subprocess.Popen | None = None
+
+
+def terminate_child() -> None:
+    global active_proc
+    if active_proc is None or active_proc.poll() is not None:
+        return
+    try:
+        os.killpg(active_proc.pid, signal.SIGTERM)
+    except OSError:
+        try:
+            active_proc.terminate()
+        except OSError:
+            pass
+    try:
+        active_proc.wait(timeout=2)
+    except (subprocess.TimeoutExpired, OSError):
+        try:
+            os.killpg(active_proc.pid, signal.SIGKILL)
+        except OSError:
+            try:
+                active_proc.kill()
+            except OSError:
+                pass
+        try:
+            active_proc.wait(timeout=1)
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+
+
+def handle_signal(signum: int, frame: object) -> None:
+    terminate_child()
+    sys.exit(128 + signum)
+
+
+signal.signal(signal.SIGTERM, handle_signal)
+signal.signal(signal.SIGINT, handle_signal)
+signal.signal(signal.SIGHUP, handle_signal)
 
 
 def main() -> int:
@@ -40,13 +80,26 @@ def main() -> int:
     environment = child_environment()
     environment["SOMA_LAYER1_AUDIO"] = args.audio
     environment["SOMA_LAYER1_AUDIO_HASH"] = args.audio_hash
+    global active_proc
     try:
-        completed = subprocess.run(command, capture_output=True, text=True, env=environment, check=False)
+        active_proc = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=environment,
+            start_new_session=True,
+        )
+        stdout, stderr = active_proc.communicate()
+        returncode = active_proc.returncode
     except OSError as error:
         return fail(f"Could not start {args.model}: {error}")
-    if completed.returncode != 0:
-        return fail(completed.stderr.strip() or f"{args.model} exited with {completed.returncode}")
-    output = completed.stdout
+    finally:
+        active_proc = None
+
+    if returncode != 0:
+        return fail(stderr.strip() or f"{args.model} exited with {returncode}")
+    output = stdout
     payload = parse_payload(output)
     if payload is None:
         print(json.dumps({"text": output.strip(), "version": args.version}, ensure_ascii=False))

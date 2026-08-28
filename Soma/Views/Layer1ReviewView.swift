@@ -141,7 +141,11 @@ struct Layer1ReviewView: View {
         runner.saveDecision(
             segmentID: segment.id, text: text, action: action,
             sourceModelID: action == .noSpeech ? nil : sourceModelID)
-        if cursor < items.count - 1 { cursor += 1 } else { loadedSegmentID = nil }
+        if cursor >= items.count {
+            cursor = max(0, items.count - 1)
+        }
+        loadedSegmentID = nil
+        loadCurrent()
     }
 
     private func play(_ segment: Layer1Segment, context: Bool) {

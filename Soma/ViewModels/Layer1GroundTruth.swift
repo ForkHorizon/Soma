@@ -619,34 +619,41 @@ final class Layer1GroundTruthStore {
         let goldURL = directory.deletingLastPathComponent()
             .appendingPathComponent("human/gold.jsonl")
         let fileName = file.url.lastPathComponent
-        let existing =
-            (try? String(contentsOf: goldURL, encoding: .utf8))?
-            .split(separator: "\n")
-            .compactMap { line -> String? in
-                guard let data = line.data(using: .utf8),
-                    let row = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-                else { return nil }
-                return row["file"] as? String
-            } ?? []
-        guard !existing.contains(fileName),
-            let data = try? JSONSerialization.data(
-                withJSONObject: [
-                    "file": fileName,
-                    "text": Self.assemble(segments),
-                    "source": "layer1-human",
-                    "cycle": "layer1-v1",
-                ], options: [.sortedKeys]),
+        guard let data = try? JSONSerialization.data(
+            withJSONObject: [
+                "file": fileName,
+                "text": Self.assemble(segments),
+                "source": "layer1-human",
+                "cycle": "layer1-v1",
+            ], options: [.sortedKeys]),
             let line = String(data: data, encoding: .utf8)
         else { return }
         try? FileManager.default.createDirectory(
             at: goldURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if let handle = try? FileHandle(forWritingTo: goldURL) {
-            defer { try? handle.close() }
-            _ = try? handle.seekToEnd()
-            try? handle.write(contentsOf: Data((line + "\n").utf8))
-        } else {
-            try? Data((line + "\n").utf8).write(to: goldURL, options: .atomic)
+        let rawContent = (try? String(contentsOf: goldURL, encoding: .utf8)) ?? ""
+        let existingLines = rawContent.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+        var updated = false
+        var outputLines: [String] = []
+        for rawLine in existingLines {
+            guard let lineData = rawLine.data(using: .utf8),
+                let row = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                let rowFile = row["file"] as? String
+            else {
+                outputLines.append(rawLine)
+                continue
+            }
+            if rowFile == fileName {
+                outputLines.append(line)
+                updated = true
+            } else {
+                outputLines.append(rawLine)
+            }
         }
+        if !updated {
+            outputLines.append(line)
+        }
+        let outputText = outputLines.joined(separator: "\n") + "\n"
+        try? Data(outputText.utf8).write(to: goldURL, options: .atomic)
     }
 
     private func refreshStatuses() {

@@ -17,6 +17,8 @@ def load16(path):
     import torchaudio
 
     audio, sr = torchaudio.load(path)
+    if audio.shape[0] > 1:
+        audio = audio.mean(dim=0, keepdim=True)
     if sr != 16000:
         audio = torchaudio.functional.resample(audio, sr, 16000)
     return audio.squeeze(0).numpy()
@@ -73,14 +75,18 @@ def run(kind, rows):
                 logits = model(inputs.input_values).logits
             yield row, proc.batch_decode(torch.argmax(logits, dim=-1))[0], [], f"{kind}-ru"
     elif kind == "vosk":
+        import numpy as np
         from vosk import KaldiRecognizer, Model
 
         model = Model(str(Path.home() / "Daliys/AIModels/vosk/vosk-model-small-ru-0.22"))
         for row in rows:
             rec = KaldiRecognizer(model, 16000)
-            with wave.open(row["audio"]) as handle:
-                while chunk := handle.readframes(4000):
-                    rec.AcceptWaveform(chunk)
+            rec.SetWords(True)
+            audio = load16(row["audio"])
+            pcm = (np.clip(audio, -1.0, 1.0) * 32767.0).astype(np.int16).tobytes()
+            chunk_size = 8000
+            for i in range(0, len(pcm), chunk_size):
+                rec.AcceptWaveform(pcm[i : i + chunk_size])
             final = json.loads(rec.FinalResult())
             words = [
                 {"word": w.get("word", ""), "start": round(w.get("start", 0.0), 2), "end": round(w.get("end", 0.0), 2)}
