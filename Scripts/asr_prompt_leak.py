@@ -27,10 +27,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from ground_truth_paths import LEGACY_ROOT  # noqa: E402
 from ground_truth_consensus import NO_SPEECH_PROB  # noqa: E402
 from ground_truth_text import normalize, repeats_itself  # noqa: E402
 
-DEFAULT_ROOT = Path.home() / "Library/Application Support/Soma/GroundTruth"
+DEFAULT_ROOT = LEGACY_ROOT
 LEAK_RUN = 3
 
 

@@ -5,7 +5,7 @@ cd /Users/daliys/Daliys/Swift/Soma
 export HF_HOME=/Users/daliys/Daliys/AI_Test_PlayGround/asr-models/hf
 export PYTORCH_ENABLE_MPS_FALLBACK=1
 export PYTHONUNBUFFERED=1
-GT="$HOME/Library/Application Support/Soma/GroundTruth"
+GT="$HOME/Library/Application Support/Soma/GroundTruth/archives/pre-structure-v1/root"
 VENV=/Users/daliys/Daliys/AI_Test_PlayGround/asr-engines/venv-whisper/bin/python
 
 "$VENV" Scripts/ground_truth_worker.py --engine whisper \

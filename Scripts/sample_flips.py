@@ -6,7 +6,9 @@ import json
 import random
 from pathlib import Path
 
-DEFAULT_INPUT = Path.home() / "Library/Application Support/Soma/GroundTruth/experiments/flips-final-candidate.jsonl"
+from ground_truth_paths import LEGACY_ROOT
+
+DEFAULT_INPUT = LEGACY_ROOT / "experiments/flips-final-candidate.jsonl"
 DEFAULT_AUDIO_DIR = Path.home() / "Library/Application Support/Soma/VoiceRecordings"
 
 

@@ -16,8 +16,10 @@ import sys
 import time
 from pathlib import Path
 
+from ground_truth_paths import LEGACY_ROOT
+
 HOME = Path.home()
-GT = HOME / "Library/Application Support/Soma/GroundTruth"
+GT = LEGACY_ROOT
 RECS = HOME / "Library/Application Support/Soma/VoiceRecordings"
 VENV_ROOT = HOME / "Daliys/AI_Test_Playground/asr-engines"
 WORKER = Path(__file__).resolve().parent.parent / "Scripts" / "ground_truth_worker.py"

@@ -25,7 +25,7 @@
 | Скоринг и сравнение с базой | `Scripts/asr_eval.py` (`--decodes`, `--baseline`, `--save`) |
 | Замороженная база | `Scripts/asr_baseline.json` |
 | Тесты harness | `tests/test_asr_eval.py` |
-| Корпус и данные | `~/Library/Application Support/Soma/GroundTruth/` — `decodes.jsonl` (кэш декодов, 991 файл), `gold.jsonl` (~94–99 дословных эталонов), `verdicts.jsonl` + `review_progress.jsonl` (~106–128 решённых человеком спорных мест), `glossary.json` (подтверждённые пары латиница↔кириллица) |
+| Корпус и данные | `~/Library/Application Support/Soma/GroundTruth/archives/pre-structure-v1/root/` — архивный legacy workspace: `decodes.jsonl`, `gold.jsonl`, `verdicts.jsonl`, `review_progress.jsonl`, `experiments/` |
 | Окружения движков | venv-whisper (mlx), venv-fasterwhisper (CTranslate2, int8 CPU, **единственный с beam search**), venv-gigaam (две головы RNNT/CTC) |
 
 **Метрики asr_eval (пять):** WER по золоту ↓ (медианный), spots% (попадание в
@@ -293,7 +293,7 @@ spots 50.4 / drift 0.0927 / latin 18.9 / punct 81.8.
   ≈ 60–65 мин, best_of=5 ≈ 90 мин (уже измерено), best_of=10 ≈ 165–170 мин.
   **Сетка НЕ влезает в одну ночь** — разбита на 3 ночи по best_of:
   ```
-  GT="$HOME/Library/Application Support/Soma/GroundTruth"
+  GT="$HOME/Library/Application Support/Soma/GroundTruth/archives/pre-structure-v1/root"
   # Ночь 1: best_of=3
   venv-whisper/bin/python Scripts/ground_truth_worker.py --engine whisper \
     --configs w-bo-t20-n3-v1,w-bo-t40-n3-v1 \

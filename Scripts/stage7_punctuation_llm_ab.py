@@ -6,11 +6,12 @@ import urllib.request
 import argparse
 from pathlib import Path
 
+from ground_truth_paths import LEGACY_ROOT
 from ground_truth_text import normalize
 from stage7_clean_pipeline import NUMBER, is_subsequence, preserved_glossary_terms
 from stage7_ellipsis_postprocess import strip_personal_credits
 
-GT = Path.home() / "Library/Application Support/Soma/GroundTruth"
+GT = LEGACY_ROOT
 MODEL = "qwen3:14b"
 PROMPT = """Ты редактор пунктуации русского ASR. Верни ТОЛЬКО исходный текст с исправленными запятыми, точками, заглавными буквами и троеточиями. Нельзя добавлять, удалять, заменять или переставлять слова, числа и термины. Если не уверен — оставь пунктуацию как есть. Без пояснений.\n\nТекст:\n"""
 

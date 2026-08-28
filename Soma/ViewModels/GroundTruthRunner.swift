@@ -83,8 +83,7 @@ final class GroundTruthRunner: ObservableObject {
     }
 
     static var outputDirectory: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Soma/GroundTruth", isDirectory: true)
+        GroundTruthPaths.legacyRoot
     }
 
     private var repoRoot: URL {

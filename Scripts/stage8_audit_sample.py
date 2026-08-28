@@ -14,7 +14,9 @@ import random
 from itertools import zip_longest
 from pathlib import Path
 
-DEFAULT_GT = Path.home() / "Library/Application Support/Soma/GroundTruth"
+from ground_truth_paths import LEGACY_ROOT
+
+DEFAULT_GT = LEGACY_ROOT
 DEFAULT_RECORDINGS = Path.home() / "Library/Application Support/Soma/VoiceRecordings"
 DEFAULT_SEED = 20260822
 

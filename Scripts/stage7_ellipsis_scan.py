@@ -9,9 +9,10 @@ import json
 from collections import Counter
 from pathlib import Path
 
+from ground_truth_paths import LEGACY_ROOT
 from stage7_ellipsis_postprocess import remove_planning_ellipsis
 
-DEFAULT_GT = Path.home() / "Library/Application Support/Soma/GroundTruth"
+DEFAULT_GT = LEGACY_ROOT
 
 
 def read_rows(path):

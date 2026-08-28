@@ -38,7 +38,7 @@ final class Stage8AuditStore: ObservableObject {
     @Published private(set) var failure: String?
 
     static var experimentsDirectory: URL {
-        GroundTruthRunner.outputDirectory.appendingPathComponent("experiments", isDirectory: true)
+        GroundTruthPaths.legacyExperiments
     }
 
     private let manifestURL: URL

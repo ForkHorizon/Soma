@@ -4,9 +4,10 @@
 import json
 from pathlib import Path
 
+from ground_truth_paths import LEGACY_ROOT
 from stage7_ellipsis_postprocess import strip_personal_credits
 
-GT = Path.home() / "Library/Application Support/Soma/GroundTruth"
+GT = LEGACY_ROOT
 
 
 def main():

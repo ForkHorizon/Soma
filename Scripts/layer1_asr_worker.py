@@ -3,7 +3,7 @@
 
 The Swift layer owns queueing and durable state. This tiny adapter deliberately
 does not import a legacy Ground Truth script or decide consensus. A model
-command is configured in GroundTruthLayer1/model_commands.json and must emit
+command is configured in GroundTruth/active/layer1/model_commands.json and must emit
 either plain text or JSON: {"text": "...", "words": [{"word": ..., "start": 0,
 "end": 1}], "version": "..."}. Missing commands are failures, never empty
 transcripts.
