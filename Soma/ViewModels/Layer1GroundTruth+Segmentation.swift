@@ -84,11 +84,10 @@ extension Layer1GroundTruthStore {
                     uniqueKeysWithValues: runs.map { run in
                         let scoped: String?
                         if !run.wordTimestamps.isEmpty {
-                            let timed = run.wordTimestamps.filter {
+                            scoped = run.wordTimestamps.filter {
                                 $0.end > segment.start && $0.start < segment.end
                             }
                             .map(\.word).joined(separator: " ")
-                            scoped = timed.isEmpty ? run.text : timed
                         } else {
                             scoped = run.text
                         }

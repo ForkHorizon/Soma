@@ -102,14 +102,25 @@ def run_vosk(rows):
         rec.SetWords(True)
         audio = load16(row["audio"])
         pcm = (np.clip(audio, -1.0, 1.0) * 32767.0).astype(np.int16).tobytes()
+        words = []
+        text_chunks = []
         for i in range(0, len(pcm), 8000):
-            rec.AcceptWaveform(pcm[i : i + 8000])
+            if rec.AcceptWaveform(pcm[i : i + 8000]):
+                res = json.loads(rec.Result())
+                if res.get("text"):
+                    text_chunks.append(res["text"])
+                words.extend(
+                    {"word": w.get("word", ""), "start": round(w.get("start", 0.0), 2), "end": round(w.get("end", 0.0), 2)}
+                    for w in res.get("result", [])
+                )
         final = json.loads(rec.FinalResult())
-        words = [
+        if final.get("text"):
+            text_chunks.append(final["text"])
+        words.extend(
             {"word": w.get("word", ""), "start": round(w.get("start", 0.0), 2), "end": round(w.get("end", 0.0), 2)}
             for w in final.get("result", [])
-        ]
-        yield row, final.get("text", ""), words, "vosk-small-ru-0.22"
+        )
+        yield row, " ".join(text_chunks).strip(), words, "vosk-small-ru-0.22"
 
 
 def main() -> int:

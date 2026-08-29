@@ -170,11 +170,13 @@ struct Layer1ReviewView: View {
         let duration = runner.store.file(for: segment.audioID)?.duration ?? segment.end
         let start = context ? max(0, segment.start - 1.5) : segment.start
         let end = context ? min(duration, segment.end + 1.5) : segment.end
+        asr.stopPlayback()
         asr.togglePlayback(URL(fileURLWithPath: path), from: start, to: end)
     }
 
     private func playWhole(_ segment: Layer1Segment) {
         guard let path = runner.store.file(for: segment.audioID)?.path else { return }
+        asr.stopPlayback()
         asr.togglePlayback(URL(fileURLWithPath: path))
     }
 }

@@ -5,7 +5,7 @@ final class Layer1GroundTruthStore {
     static var directory: URL { GroundTruthPaths.activeLayer1 }
 
     let directory: URL
-    private(set) var state: Layer1State
+    var state: Layer1State
 
     init(directory: URL = Layer1GroundTruthStore.directory) {
         self.directory = directory

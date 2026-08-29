@@ -9,7 +9,10 @@ extension Layer1GroundTruthStore {
     }
 
     func segmentsForReview() -> [Layer1Segment] {
-        state.segments.filter { $0.decision.status == .pending }.sorted { $0.id < $1.id }
+        state.segments.filter { $0.decision.status == .pending }.sorted {
+            if $0.audioID != $1.audioID { return $0.audioID < $1.audioID }
+            return $0.start < $1.start
+        }
     }
 
     func file(for id: String) -> Layer1AudioFile? { state.files.first { $0.id == id } }

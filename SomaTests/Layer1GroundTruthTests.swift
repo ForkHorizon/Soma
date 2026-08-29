@@ -220,6 +220,73 @@ final class Layer1GroundTruthTests: XCTestCase {
         XCTAssertTrue(reloaded.state.segments.isEmpty)
     }
 
+    func testReviewSegmentsChronologicalOrderAboveTenSeconds() throws {
+        let root = try makeTempDirectory()
+        let store = Layer1GroundTruthStore(directory: root.appendingPathComponent("store"))
+        let suggestions: [String: Layer1ModelSuggestion] = [:]
+        let late = Layer1Segment(
+            id: "audio#10.0#12.0", audioID: "audio", start: 10.0, end: 12.0,
+            segmentationAlgorithmVersion: "v1", sourceWordRange: nil,
+            modelSuggestions: suggestions, proposalOrder: [], segmentationNeedsReview: false,
+            decision: .init(
+                status: .pending, text: nil, normalizedText: nil, action: nil,
+                sourceModelID: nil, createdAt: nil, updatedAt: nil))
+        let early = Layer1Segment(
+            id: "audio#2.0#4.0", audioID: "audio", start: 2.0, end: 4.0,
+            segmentationAlgorithmVersion: "v1", sourceWordRange: nil,
+            modelSuggestions: suggestions, proposalOrder: [], segmentationNeedsReview: false,
+            decision: .init(
+                status: .pending, text: nil, normalizedText: nil, action: nil,
+                sourceModelID: nil, createdAt: nil, updatedAt: nil))
+        store.state.segments = [late, early]
+        let review = store.segmentsForReview()
+        XCTAssertEqual(review.map(\.start), [2.0, 10.0])
+    }
+
+    func testTimedModelsDoNotLeakFullTranscriptIntoEmptySegments() throws {
+        let root = try makeTempDirectory()
+        let audio = root.appendingPathComponent("speech.wav")
+        try Data("speech".utf8).write(to: audio)
+        let store = Layer1GroundTruthStore(directory: root.appendingPathComponent("store"))
+        let file = try XCTUnwrap(
+            store.addBatch(
+                count: 1,
+                candidates: [Layer1AudioCandidate(url: audio, date: Date(), duration: 20)]
+            )?.fileIDs.first)
+        let modelA = Layer1ModelSpec.catalog[0].id
+        let modelB = Layer1ModelSpec.catalog[1].id
+        let timedAll = [
+            Layer1WordTimestamp(word: "один", start: 0.1, end: 0.4),
+            Layer1WordTimestamp(word: "два", start: 0.5, end: 0.8),
+            Layer1WordTimestamp(word: "три", start: 0.9, end: 1.2),
+            Layer1WordTimestamp(word: "четыре", start: 6.0, end: 6.4),
+            Layer1WordTimestamp(word: "пять", start: 6.5, end: 6.8),
+            Layer1WordTimestamp(word: "шесть", start: 6.9, end: 7.2),
+        ]
+        let timedPartial = [
+            Layer1WordTimestamp(word: "один", start: 0.1, end: 0.4),
+            Layer1WordTimestamp(word: "два", start: 0.5, end: 0.8),
+            Layer1WordTimestamp(word: "три", start: 0.9, end: 1.2),
+        ]
+        for run in store.queuedRuns() {
+            store.markRunning(run.id, configuration: run.configuration, version: "test", at: Date())
+            let timestamps = run.modelID == modelB ? timedPartial : timedAll
+            let text = run.modelID == modelB ? "один два три" : "один два три четыре пять шесть"
+            store.finish(
+                run.id,
+                completion: .init(
+                    status: .completed, version: "test", rawResponse: "{}",
+                    text: text, timestamps: timestamps, error: nil, duration: 0.1))
+        }
+        let segments = store.state.segments.filter { $0.audioID == file }
+        let early = segments.first { $0.start < 2.0 }
+        let late = segments.first { $0.start >= 2.0 }
+        XCTAssertEqual(early?.modelSuggestions[modelA]?.text, "один два три")
+        XCTAssertEqual(early?.modelSuggestions[modelB]?.text, "один два три")
+        XCTAssertEqual(late?.modelSuggestions[modelA]?.text, "четыре пять шесть")
+        XCTAssertEqual(late?.modelSuggestions[modelB]?.text, "")
+    }
+
     private func makeTempDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(
             UUID().uuidString, isDirectory: true)

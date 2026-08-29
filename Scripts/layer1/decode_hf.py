@@ -99,14 +99,25 @@ def decode_vosk(path):
     audio = load16(path)
     pcm = (np.clip(audio, -1.0, 1.0) * 32767.0).astype(np.int16).tobytes()
     chunk_size = 8000
+    words = []
+    text_chunks = []
     for i in range(0, len(pcm), chunk_size):
-        recognizer.AcceptWaveform(pcm[i : i + chunk_size])
+        if recognizer.AcceptWaveform(pcm[i : i + chunk_size]):
+            res = json.loads(recognizer.Result())
+            if res.get("text"):
+                text_chunks.append(res["text"])
+            words.extend(
+                {"word": w.get("word", ""), "start": round(w.get("start", 0.0), 2), "end": round(w.get("end", 0.0), 2)}
+                for w in res.get("result", [])
+            )
     final = json.loads(recognizer.FinalResult())
-    words = [
+    if final.get("text"):
+        text_chunks.append(final["text"])
+    words.extend(
         {"word": w.get("word", ""), "start": round(w.get("start", 0.0), 2), "end": round(w.get("end", 0.0), 2)}
         for w in final.get("result", [])
-    ]
-    return final.get("text", ""), words, "vosk-small-ru-0.22"
+    )
+    return " ".join(text_chunks).strip(), words, "vosk-small-ru-0.22"
 
 
 DECODERS = {
