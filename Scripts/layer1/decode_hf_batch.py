@@ -110,7 +110,11 @@ def run_vosk(rows):
                 if res.get("text"):
                     text_chunks.append(res["text"])
                 words.extend(
-                    {"word": w.get("word", ""), "start": round(w.get("start", 0.0), 2), "end": round(w.get("end", 0.0), 2)}
+                    {
+                        "word": w.get("word", ""),
+                        "start": round(w.get("start", 0.0), 2),
+                        "end": round(w.get("end", 0.0), 2),
+                    }
                     for w in res.get("result", [])
                 )
         final = json.loads(rec.FinalResult())

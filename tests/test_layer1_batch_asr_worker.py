@@ -111,9 +111,7 @@ def test_decode_hf_batch_vosk_multi_phrase_accumulation(monkeypatch):
     from unittest.mock import MagicMock
 
     mock_np = MagicMock()
-    mock_np.clip.return_value.__mul__.return_value.astype.return_value.tobytes.return_value = (
-        b"\x00" * 16000
-    )
+    mock_np.clip.return_value.__mul__.return_value.astype.return_value.tobytes.return_value = b"\x00" * 16000
     mock_vosk = MagicMock()
     mock_model = MagicMock()
     mock_rec = MagicMock()
@@ -150,11 +148,7 @@ def test_decode_hf_batch_vosk_multi_phrase_accumulation(monkeypatch):
 
     monkeypatch.setattr(decode_hf_batch, "load16", lambda p: [0.0] * 8000)
 
-    rows = list(
-        decode_hf_batch.run_vosk(
-            [{"id": "run-1", "file": "a.wav", "audio": "/dummy/a.wav"}]
-        )
-    )
+    rows = list(decode_hf_batch.run_vosk([{"id": "run-1", "file": "a.wav", "audio": "/dummy/a.wav"}]))
     assert len(rows) == 1
     row, text, words, version = rows[0]
     assert row["id"] == "run-1"

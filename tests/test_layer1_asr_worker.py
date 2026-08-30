@@ -108,9 +108,7 @@ def test_decode_hf_vosk_multi_phrase_accumulation(monkeypatch):
     from unittest.mock import MagicMock
 
     mock_np = MagicMock()
-    mock_np.clip.return_value.__mul__.return_value.astype.return_value.tobytes.return_value = (
-        b"\x00" * 16000
-    )
+    mock_np.clip.return_value.__mul__.return_value.astype.return_value.tobytes.return_value = b"\x00" * 16000
     mock_vosk = MagicMock()
     mock_model = MagicMock()
     mock_rec = MagicMock()
