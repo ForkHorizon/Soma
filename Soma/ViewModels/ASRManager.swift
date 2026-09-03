@@ -5,54 +5,6 @@ import Foundation
 import Network
 import SwiftUI
 
-struct RecordingIndexEntry: Sendable {
-    let url: URL
-    let date: Date
-    let duration: TimeInterval
-    let hasTranscript: Bool
-}
-
-struct RecordingDurationCacheEntry: Sendable {
-    let fileSize: Int64
-    let modificationDate: Date
-    let duration: TimeInterval
-}
-
-struct QueuedTranscription {
-    let url: URL
-    let source: ASRTranscriptionSource
-    let chunkPipeline: VoiceChunkPipeline?
-    let expectedChunkCount: Int
-    let continuation: CheckedContinuation<String?, Never>
-}
-
-struct VoiceServerErrorEnvelope: Decodable {
-    let error: VoiceServerErrorDetail?
-}
-
-struct VoiceServerErrorDetail: Decodable {
-    let code: String?
-    let message: String?
-    let retryable: Bool?
-}
-
-struct VoiceServerRemoteError: LocalizedError {
-    let code: String
-    let message: String
-    let retryable: Bool
-
-    var errorDescription: String? { message }
-}
-
-struct VoiceServerJobResponse: Decodable {
-    let job_id: String?
-    let status: String?
-    let text: String?
-    let infer_seconds: Double?
-    let queued_seconds: Double?
-    let error: VoiceServerErrorDetail?
-}
-
 /// Records mic audio and transcribes it via the warm multi-engine ASR server
 /// (asr_server.py under the engines folder; engine = Whisper large-v3 or GigaAM v2).
 /// The server is launched on first use and kept alive for the app session; it holds
@@ -66,6 +18,11 @@ final class ASRManager: ObservableObject {
     @Published var lastInferSeconds: Double?
     @Published var lastRecordingURL: URL?  // persisted; survives a failed transcription
     @Published var playingURL: URL?  // which recording is currently playing
+    @Published var playbackTime: TimeInterval = 0
+    @Published var playbackDuration: TimeInterval = 0
+    @Published var isPlaybackPaused = false
+    @Published var playbackError: String?
+    @Published var playbackPendingURL: URL?
     @Published var recordings: [VoiceRecording] = []
     @Published var recordingsTotal = 0
     @Published var totalAudioDuration: TimeInterval = 0
@@ -146,7 +103,10 @@ final class ASRManager: ObservableObject {
     var activeRecordingURL: URL?
     var recordingStartToken = 0
     var player: AVAudioPlayer?
-    var playbackResetTask: Task<Void, Never>?
+    var playbackEnd: TimeInterval?
+    var playbackMonitor: Timer?
+    var playbackLoadTask: Task<Void, Never>?
+    var playbackRequestID = UUID()
     let portFileURL = FileManager.default.temporaryDirectory.appendingPathComponent("soma_asr.port")
     let logFileURL = FileManager.default.temporaryDirectory.appendingPathComponent("soma_asr_server.log")
 
@@ -223,6 +183,9 @@ final class ASRManager: ObservableObject {
         recordingsRefreshTask?.cancel()
         connectivityMonitor.cancel()
         memoryPressureSource?.cancel()
+        playbackMonitor?.invalidate()
+        playbackLoadTask?.cancel()
+        player?.stop()
     }
 
     /// One hour was far too long on a RAM-bound box — a multi-GB model held for

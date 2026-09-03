@@ -14,6 +14,8 @@ enum GroundTruthPaths {
     static var activeEvidence: URL { active.appendingPathComponent("evidence", isDirectory: true) }
     static var activeExperiments: URL { active.appendingPathComponent("experiments", isDirectory: true) }
     static var activeLayer1: URL { active.appendingPathComponent("layer1", isDirectory: true) }
+    static var activeLayer2: URL { active.appendingPathComponent("layer2", isDirectory: true) }
+    static var activeLayer2Preferred: URL { activeLayer2.appendingPathComponent("preferred.jsonl") }
     static var activeHumanGold: URL { activeHuman.appendingPathComponent("gold.jsonl") }
 
     /// The pre-structure workspace is read only by historical Stage-5/7/8 UI

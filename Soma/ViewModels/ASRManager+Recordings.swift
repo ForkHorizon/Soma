@@ -216,44 +216,4 @@ extension ASRManager {
 
     var hasAnyTranscript: Bool { recordingIndex.contains { $0.hasTranscript } }
 
-    // MARK: Playback
-
-    func togglePlayback(_ url: URL) {
-        togglePlayback(url, from: nil, to: nil)
-    }
-
-    /// Playing a range matters for review: one wrong word in a two-minute
-    /// recording otherwise costs a full listen to check.
-    func togglePlayback(_ url: URL, from start: Double?, to end: Double?) {
-        if playingURL == url {
-            stopPlayback()
-            return
-        }
-        stopPlayback()
-        do {
-            let p = try AVAudioPlayer(contentsOf: url)
-            player = p
-            let begin = min(max(start ?? 0, 0), max(p.duration - 0.05, 0))
-            p.currentTime = begin
-            p.play()
-            playingURL = url
-            // No delegate — just clear the flag when the clip's duration elapses.
-            let window = min(end ?? p.duration, p.duration) - begin
-            playbackResetTask = Task { [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(max(window, 0.1) * 1_000_000_000))
-                guard !Task.isCancelled else { return }
-                self?.stopPlayback()
-            }
-        } catch {
-            status = "Playback error: \(error.localizedDescription)"
-        }
-    }
-
-    func stopPlayback() {
-        playbackResetTask?.cancel()
-        playbackResetTask = nil
-        player?.stop()
-        player = nil
-        playingURL = nil
-    }
 }

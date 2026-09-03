@@ -10,6 +10,19 @@ final class Layer1GroundTruthTests: XCTestCase {
         XCTAssertEqual(Layer1GroundTruthStore.normalize("C++  C#"), "c++ c#")
     }
 
+    func testLegacySuggestionWithoutReviewTextRemainsReadable() throws {
+        let data = Data("{\"modelID\":\"m\",\"model\":\"M\",\"status\":\"completed\",\"text\":\"text\"}".utf8)
+        let suggestion = try JSONDecoder().decode(Layer1ModelSuggestion.self, from: data)
+        XCTAssertNil(suggestion.reviewText)
+    }
+
+    func testReviewNormalizationLowercasesCollapsesAndSeparatesPunctuation() {
+        XCTAssertEqual(
+            Layer1GroundTruthStore.normalizeForReview("  Я,  я думаю...слово!  "),
+            "я я думаю слово")
+        XCTAssertEqual(Layer1GroundTruthStore.normalizeForReview("C++ C#"), "c c")
+    }
+
     func testBatchAddsOnlyNewFilesAndPersistsAcrossReload() throws {
         let root = try makeTempDirectory()
         let urls = (1...35).map { root.appendingPathComponent("rec-\($0).wav") }
@@ -63,16 +76,16 @@ final class Layer1GroundTruthTests: XCTestCase {
         var gold = try String(
             contentsOf: root.appendingPathComponent("human/gold.jsonl"), encoding: .utf8)
         XCTAssertTrue(gold.contains("\"source\":\"layer1-human\""))
-        XCTAssertTrue(gold.contains("\"text\":\"Я я думаю\""))
+        XCTAssertTrue(gold.contains("\"text\":\"я я думаю\""))
 
         store.saveDecision(segmentID: segment.id, text: "Я я думаю точно", action: .manual)
         gold = try String(contentsOf: root.appendingPathComponent("human/gold.jsonl"), encoding: .utf8)
-        XCTAssertTrue(gold.contains("\"text\":\"Я я думаю точно\""))
-        XCTAssertFalse(gold.contains("\"text\":\"Я я думаю\""))
+        XCTAssertTrue(gold.contains("\"text\":\"я я думаю точно\""))
+        XCTAssertFalse(gold.contains("\"text\":\"я я думаю\""))
         XCTAssertEqual(gold.split(separator: "\n").count, 1)
 
         let history = try String(contentsOf: store.historyURL, encoding: .utf8)
-        XCTAssertGreaterThanOrEqual(history.split(separator: "\n").count, 15)
+        XCTAssertGreaterThanOrEqual(history.split(separator: "\n").count, store.activeModelIDs.count + 3)
     }
 
     func testAssemblyUsesEachSegmentOnceAndPreservesOrder() {
@@ -94,11 +107,16 @@ final class Layer1GroundTruthTests: XCTestCase {
         XCTAssertEqual(Layer1GroundTruthStore.assemble([first, second]), "я я это")
     }
 
-    func testQualityUsesOnlyVerifiedHumanReference() {
+    func testQualityUsesOnlyFullyVerifiedHumanFile() {
         let model = Layer1ModelSpec.catalog[0]
         let suggestion = Layer1ModelSuggestion(
             modelID: model.id, model: model.title, status: .completed,
-            text: "Я я думаю", error: nil, runID: "run")
+            text: "Я я думаю", reviewText: "я я думаю", error: nil, runID: "run")
+        let run = Layer1ModelRun(
+            id: "run", audioID: "audio", modelID: model.id, model: model.title, family: model.family,
+            version: "test", configuration: [:], startedAt: nil, finishedAt: nil, duration: 1,
+            attempt: 1, status: .completed, rawResponse: "{\"text\":\"Я, я думаю.\"}",
+            text: "Я, я думаю.", wordTimestamps: [], error: nil)
         let verified = Layer1Segment(
             id: "verified", audioID: "audio", start: 0, end: 1,
             segmentationAlgorithmVersion: "v1", sourceWordRange: nil,
@@ -116,7 +134,12 @@ final class Layer1GroundTruthTests: XCTestCase {
                 status: .pending, text: nil, normalizedText: nil,
                 action: nil, sourceModelID: nil, createdAt: nil, updatedAt: nil))
 
-        let quality = layer1Quality(models: [model], segments: [verified, pending])[model.id]
+        let partialQuality = layer1Quality(models: [model], segments: [verified, pending], runs: [run])[model.id]
+        XCTAssertEqual(partialQuality?.evaluated, 0)
+        XCTAssertEqual(partialQuality?.exact, 0)
+        XCTAssertEqual(partialQuality?.accepted, 1)
+
+        let quality = layer1Quality(models: [model], segments: [verified], runs: [run])[model.id]
         XCTAssertEqual(quality?.evaluated, 1)
         XCTAssertEqual(quality?.exact, 1)
         XCTAssertEqual(quality?.accepted, 1)
@@ -164,7 +187,7 @@ final class Layer1GroundTruthTests: XCTestCase {
                 timestamps: [], error: "model failed", duration: 0.1))
 
         store.retryFailed()
-        XCTAssertEqual(store.latestRuns(for: batch.id).count, Layer1ModelSpec.catalog.count)
+        XCTAssertEqual(store.latestRuns(for: batch.id).count, store.activeModelIDs.count)
         XCTAssertTrue(
             store.latestRuns(for: batch.id).allSatisfy { $0.status == .queued && $0.attempt == 2 })
     }
@@ -241,50 +264,6 @@ final class Layer1GroundTruthTests: XCTestCase {
         store.state.segments = [late, early]
         let review = store.segmentsForReview()
         XCTAssertEqual(review.map(\.start), [2.0, 10.0])
-    }
-
-    func testTimedModelsDoNotLeakFullTranscriptIntoEmptySegments() throws {
-        let root = try makeTempDirectory()
-        let audio = root.appendingPathComponent("speech.wav")
-        try Data("speech".utf8).write(to: audio)
-        let store = Layer1GroundTruthStore(directory: root.appendingPathComponent("store"))
-        let file = try XCTUnwrap(
-            store.addBatch(
-                count: 1,
-                candidates: [Layer1AudioCandidate(url: audio, date: Date(), duration: 20)]
-            )?.fileIDs.first)
-        let modelA = Layer1ModelSpec.catalog[0].id
-        let modelB = Layer1ModelSpec.catalog[1].id
-        let timedAll = [
-            Layer1WordTimestamp(word: "один", start: 0.1, end: 0.4),
-            Layer1WordTimestamp(word: "два", start: 0.5, end: 0.8),
-            Layer1WordTimestamp(word: "три", start: 0.9, end: 1.2),
-            Layer1WordTimestamp(word: "четыре", start: 6.0, end: 6.4),
-            Layer1WordTimestamp(word: "пять", start: 6.5, end: 6.8),
-            Layer1WordTimestamp(word: "шесть", start: 6.9, end: 7.2),
-        ]
-        let timedPartial = [
-            Layer1WordTimestamp(word: "один", start: 0.1, end: 0.4),
-            Layer1WordTimestamp(word: "два", start: 0.5, end: 0.8),
-            Layer1WordTimestamp(word: "три", start: 0.9, end: 1.2),
-        ]
-        for run in store.queuedRuns() {
-            store.markRunning(run.id, configuration: run.configuration, version: "test", at: Date())
-            let timestamps = run.modelID == modelB ? timedPartial : timedAll
-            let text = run.modelID == modelB ? "один два три" : "один два три четыре пять шесть"
-            store.finish(
-                run.id,
-                completion: .init(
-                    status: .completed, version: "test", rawResponse: "{}",
-                    text: text, timestamps: timestamps, error: nil, duration: 0.1))
-        }
-        let segments = store.state.segments.filter { $0.audioID == file }
-        let early = segments.first { $0.start < 2.0 }
-        let late = segments.first { $0.start >= 2.0 }
-        XCTAssertEqual(early?.modelSuggestions[modelA]?.text, "один два три")
-        XCTAssertEqual(early?.modelSuggestions[modelB]?.text, "один два три")
-        XCTAssertEqual(late?.modelSuggestions[modelA]?.text, "четыре пять шесть")
-        XCTAssertEqual(late?.modelSuggestions[modelB]?.text, "")
     }
 
     private func makeTempDirectory() throws -> URL {

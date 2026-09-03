@@ -1,27 +1,60 @@
 import Foundation
 
 extension Layer1GroundTruthStore {
-    func save() {
+    @discardableResult
+    func save() -> Bool {
+        guard canPersistState else { return false }
         state.updatedAt = Date()
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        if let data = try? encoder.encode(state) { try? data.write(to: stateURL, options: .atomic) }
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(state).write(to: stateURL, options: .atomic)
+            statePersistenceError = nil
+            return true
+        } catch {
+            statePersistenceError = error.localizedDescription
+            return false
+        }
     }
 
     func writeHumanGoldIfComplete(audioID: String) {
         let segments = state.segments.filter { $0.audioID == audioID }
-        guard let file = file(for: audioID), !segments.isEmpty,
-            segments.allSatisfy({ $0.decision.status == .verified }),
-            let line = Self.humanGoldLine(fileName: file.url.lastPathComponent, segments: segments)
+        guard let file = file(for: audioID), fullyVerifiedFileIDs().contains(audioID),
+            let line = Self.humanGoldLine(
+                audioID: audioID, fileName: file.url.lastPathComponent, segments: segments)
         else { return }
+        updateHumanGold(audioID: audioID, fileName: file.url.lastPathComponent, line: line)
+    }
+
+    func removeHumanGold(audioID: String) {
+        guard let file = file(for: audioID) else { return }
+        updateHumanGold(audioID: audioID, fileName: file.url.lastPathComponent, line: nil)
+    }
+
+    private func updateHumanGold(audioID: String, fileName: String, line: String?) {
         let goldURL = directory.deletingLastPathComponent().appendingPathComponent("human/gold.jsonl")
         try? FileManager.default.createDirectory(
             at: goldURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let rawContent = (try? String(contentsOf: goldURL, encoding: .utf8)) ?? ""
+        let rawContent: String
+        if FileManager.default.fileExists(atPath: goldURL.path) {
+            guard let content = try? String(contentsOf: goldURL, encoding: .utf8) else {
+                statePersistenceError = "Human gold could not be read."
+                return
+            }
+            rawContent = content
+        } else {
+            rawContent = ""
+        }
         let existingLines = rawContent.split(separator: "\n", omittingEmptySubsequences: true).map(
             String.init)
+        let legacyMatches = existingLines.filter { rawLine in
+            guard let data = rawLine.data(using: .utf8),
+                let row = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { return false }
+            return row["audio_id"] == nil && row["file"] as? String == fileName
+        }.count
         var updated = false
         var outputLines: [String] = []
         for rawLine in existingLines {
@@ -32,21 +65,30 @@ extension Layer1GroundTruthStore {
                 outputLines.append(rawLine)
                 continue
             }
-            if rowFile == file.url.lastPathComponent {
-                outputLines.append(line)
+            let sameAudio = row["audio_id"] as? String == audioID
+            let safeLegacyMatch = row["audio_id"] == nil && legacyMatches == 1 && rowFile == fileName
+            if sameAudio || safeLegacyMatch {
+                if let line { outputLines.append(line) }
                 updated = true
             } else {
                 outputLines.append(rawLine)
             }
         }
-        if !updated { outputLines.append(line) }
-        let outputText = outputLines.joined(separator: "\n") + "\n"
-        try? Data(outputText.utf8).write(to: goldURL, options: .atomic)
+        if let line, !updated { outputLines.append(line) }
+        guard line != nil || updated else { return }
+        let outputText = outputLines.isEmpty ? "" : outputLines.joined(separator: "\n") + "\n"
+        do {
+            try Data(outputText.utf8).write(to: goldURL, options: .atomic)
+        } catch {
+            statePersistenceError = error.localizedDescription
+        }
     }
 
-    private static func humanGoldLine(fileName: String, segments: [Layer1Segment]) -> String? {
+    private static func humanGoldLine(
+        audioID: String, fileName: String, segments: [Layer1Segment]
+    ) -> String? {
         let object: [String: Any] = [
-            "file": fileName, "text": Self.assemble(segments),
+            "audio_id": audioID, "file": fileName, "text": Self.assemble(segments),
             "source": "layer1-human", "cycle": "layer1-v1",
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
@@ -74,12 +116,16 @@ extension Layer1GroundTruthStore {
         }
     }
 
-    static func loadState(from directory: URL) -> Layer1State? {
-        guard let data = try? Data(contentsOf: directory.appendingPathComponent("state.json")) else {
-            return nil
-        }
+    static func loadState(from directory: URL) throws -> Layer1State {
+        let data = try Data(contentsOf: directory.appendingPathComponent("state.json"))
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(Layer1State.self, from: data)
+        let state = try decoder.decode(Layer1State.self, from: data)
+        guard state.schemaVersion == Layer1State.currentSchemaVersion else {
+            throw NSError(
+                domain: "Soma.Layer1State", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Unsupported state schema version."])
+        }
+        return state
     }
 }

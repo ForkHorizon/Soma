@@ -15,7 +15,7 @@ extension Layer1GroundTruthStore {
                 duration: source.duration,
                 addedAt: now, batchIDs: [batchID], lastStatus: .queued)
             state.files.append(file)
-            for spec in Layer1ModelSpec.catalog {
+            for spec in activeModelSpecs {
                 state.modelRuns.append(
                     Layer1ModelRun(
                         id: UUID().uuidString, audioID: file.id, modelID: spec.id,
@@ -36,7 +36,8 @@ extension Layer1GroundTruthStore {
     }
 
     func queuedRuns() -> [Layer1ModelRun] {
-        state.modelRuns.filter { $0.status == .queued }.sorted { lhs, rhs in
+        state.modelRuns.filter { $0.status == .queued && activeModelIDs.contains($0.modelID) }.sorted {
+            lhs, rhs in
             let left = state.files.first { $0.id == lhs.audioID }?.addedAt ?? .distantPast
             let right = state.files.first { $0.id == rhs.audioID }?.addedAt ?? .distantPast
             return left < right
@@ -51,7 +52,9 @@ extension Layer1GroundTruthStore {
 
     func nextQueuedBatch() -> Layer1Batch? {
         state.batches.sorted { $0.createdAt < $1.createdAt }.first { batch in
-            latestRuns(for: batch.id).contains { $0.status == .queued }
+            latestRuns(for: batch.id).contains {
+                $0.status == .queued && activeModelIDs.contains($0.modelID)
+            }
         }
     }
 
@@ -78,6 +81,7 @@ extension Layer1GroundTruthStore {
         let batch = state.batches.first { $0.id == batchID }
         let fileIDs = Set(batch?.fileIDs ?? [])
         guard !fileIDs.isEmpty else { return }
+        fileIDs.forEach { invalidateStage2Transcript(audioID: $0) }
         state.segments.removeAll { fileIDs.contains($0.audioID) }
         let latestIDs = Set(latestRuns(for: batchID).map(\.id))
         for index in state.modelRuns.indices where latestIDs.contains(state.modelRuns[index].id) {
@@ -108,7 +112,9 @@ extension Layer1GroundTruthStore {
             }
         }
         for old in runsToRetry {
-            guard let spec = Layer1ModelSpec.catalog.first(where: { $0.id == old.modelID }) else {
+            guard activeModelIDs.contains(old.modelID),
+                let spec = Layer1ModelSpec.catalog.first(where: { $0.id == old.modelID })
+            else {
                 continue
             }
             state.modelRuns.append(

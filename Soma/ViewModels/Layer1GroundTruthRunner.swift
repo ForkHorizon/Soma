@@ -34,6 +34,7 @@ final class Layer1GroundTruthRunner: ObservableObject {
     var reviewSegments: [Layer1Segment] { store.segmentsForReview() }
     var models: [Layer1ModelSpec] { Layer1ModelSpec.catalog }
     var resumeSegmentID: String? { store.resumeSegmentID }
+    var stateLoadError: String? { store.stateLoadError }
 
     var pendingRuns: Int { store.queuedRuns().count }
     var verifiedMinutes: Double {
@@ -53,7 +54,6 @@ final class Layer1GroundTruthRunner: ObservableObject {
         }
         objectWillChange.send()
     }
-
     func start() {
         guard !isRunning else { return }
         failure = nil
@@ -80,7 +80,7 @@ final class Layer1GroundTruthRunner: ObservableObject {
         let batchRuns = store.latestRuns(for: batch.id).filter { $0.status == .queued }
         var batchError: String?
         let modelIDs = Layer1ModelSpec.catalog.map(\.id).filter { modelID in
-            batchRuns.contains { $0.modelID == modelID }
+            store.activeModelIDs.contains(modelID) && batchRuns.contains { $0.modelID == modelID }
         }
         for modelID in modelIDs {
             guard batchError == nil, !Task.isCancelled else { break }
@@ -154,7 +154,6 @@ final class Layer1GroundTruthRunner: ObservableObject {
         failure = nil
         objectWillChange.send()
     }
-
     func saveDecision(
         segmentID: String, text: String?, action: Layer1HumanAction, sourceModelID: String? = nil
     ) {
@@ -165,6 +164,11 @@ final class Layer1GroundTruthRunner: ObservableObject {
 
     func flagSegmentation(_ segmentID: String) {
         store.markSegmentationNeedsReview(segmentID)
+        objectWillChange.send()
+    }
+
+    func clearSegmentationFlag(_ segmentID: String) {
+        store.clearSegmentationNeedsReview(segmentID)
         objectWillChange.send()
     }
 
@@ -293,5 +297,4 @@ final class Layer1GroundTruthRunner: ObservableObject {
             }
         }
     }
-
 }

@@ -46,6 +46,7 @@ def migrate(root: Path, layer1_root: Path, apply: bool = False) -> Dict[str, Uni
     snapshot = archive / "pre-structure-v1"
     legacy = snapshot / "root"
     active_layer1 = active / "layer1"
+    active_layer2 = active / "layer2"
     manifest = active / "manifest.json"
 
     if manifest.exists():
@@ -82,50 +83,58 @@ def migrate(root: Path, layer1_root: Path, apply: bool = False) -> Dict[str, Uni
         moved += 1
 
     if apply:
-        for directory in (
-            active / "human",
-            active / "evidence",
-            active / "experiments" / "stage7",
-            active / "experiments" / "stage8",
-            active / "experiments" / "other",
-            active_layer1 / "batch-manifests",
-        ):
-            directory.mkdir(parents=True, exist_ok=True)
-        for path in (
-            active / "human" / "gold.jsonl",
-            active / "human" / "review_progress.jsonl",
-            active / "evidence" / "decodes.jsonl",
-            active / "evidence" / "verdicts.jsonl",
-            active_layer1 / "history.jsonl",
-        ):
-            path.touch()
-        (active / "human" / "glossary.json").write_text("{}\n", encoding="utf-8")
-        archived_commands = snapshot / "layer1" / "model_commands.json"
-        if archived_commands.exists():
-            shutil.copy2(archived_commands, active_layer1 / "model_commands.json")
-        else:
-            (active_layer1 / "model_commands.json").write_text("{}\n", encoding="utf-8")
-        (active_layer1 / "state.json").write_text("{}\n", encoding="utf-8")
-        active.mkdir(parents=True, exist_ok=True)
-        manifest.write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "cycle_id": "layer1-v1",
-                    "status": "not_started",
-                    "gold_policy": "human_verified_only",
-                    "active_root": str(active),
-                    "legacy_snapshot": str(snapshot),
-                },
-                indent=2,
-                ensure_ascii=False,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-        print(f"created active cycle: {active}")
+        _create_active_cycle(active, active_layer1, active_layer2, snapshot, manifest)
 
     return {"moved": moved, "already_migrated": False}
+
+
+def _create_active_cycle(
+    active: Path, active_layer1: Path, active_layer2: Path, snapshot: Path, manifest: Path
+) -> None:
+    for directory in (
+        active / "human",
+        active / "evidence",
+        active / "experiments" / "stage7",
+        active / "experiments" / "stage8",
+        active / "experiments" / "other",
+        active_layer1 / "batch-manifests",
+        active_layer2,
+    ):
+        directory.mkdir(parents=True, exist_ok=True)
+    for path in (
+        active / "human" / "gold.jsonl",
+        active / "human" / "review_progress.jsonl",
+        active / "evidence" / "decodes.jsonl",
+        active / "evidence" / "verdicts.jsonl",
+        active_layer1 / "history.jsonl",
+        active_layer2 / "preferred.jsonl",
+    ):
+        path.touch()
+    (active / "human" / "glossary.json").write_text("{}\n", encoding="utf-8")
+    archived_commands = snapshot / "layer1" / "model_commands.json"
+    if archived_commands.exists():
+        shutil.copy2(archived_commands, active_layer1 / "model_commands.json")
+    else:
+        (active_layer1 / "model_commands.json").write_text("{}\n", encoding="utf-8")
+    (active_layer1 / "state.json").write_text("{}\n", encoding="utf-8")
+    active.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "cycle_id": "layer1-v1",
+                "status": "not_started",
+                "gold_policy": "human_verified_only",
+                "active_root": str(active),
+                "legacy_snapshot": str(snapshot),
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    print(f"created active cycle: {active}")
 
 
 def main(argv: list[str] | None = None) -> int:
