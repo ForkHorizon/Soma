@@ -21,4 +21,6 @@ jobs:
     with:
       working-directory: Soma/go_scanner
       gates-ref: main
-      runs-on: '["self-hosted", "macOS", "ARM64", "ci-scope", "ci-scope-v2"]'
+      runner-group: Default
+      runner-labels: '["self-hosted", "macOS", "ARM64", "ci-scope"]'
+      runner-label: ci-scope

@@ -21,4 +21,6 @@ jobs:
     with:
       config: .swift-compile-gate.json
       gates-ref: main
-      runs-on: '["self-hosted", "macOS", "ARM64", "ci-scope", "ci-scope-v2"]'
+      runner-group: Default
+      runner-labels: '["self-hosted", "macOS", "ARM64", "ci-scope"]'
+      runner-label: ci-scope
