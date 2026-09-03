@@ -66,6 +66,11 @@ final class ASRManager: ObservableObject {
     @Published var lastInferSeconds: Double?
     @Published var lastRecordingURL: URL?  // persisted; survives a failed transcription
     @Published var playingURL: URL?  // which recording is currently playing
+    @Published var playbackTime: TimeInterval = 0
+    @Published var playbackDuration: TimeInterval = 0
+    @Published var isPlaybackPaused = false
+    @Published var playbackError: String?
+    @Published var playbackPendingURL: URL?
     @Published var recordings: [VoiceRecording] = []
     @Published var recordingsTotal = 0
     @Published var totalAudioDuration: TimeInterval = 0
@@ -146,7 +151,10 @@ final class ASRManager: ObservableObject {
     var activeRecordingURL: URL?
     var recordingStartToken = 0
     var player: AVAudioPlayer?
-    var playbackResetTask: Task<Void, Never>?
+    var playbackEnd: TimeInterval?
+    var playbackMonitor: Timer?
+    var playbackLoadTask: Task<Void, Never>?
+    var playbackRequestID = UUID()
     let portFileURL = FileManager.default.temporaryDirectory.appendingPathComponent("soma_asr.port")
     let logFileURL = FileManager.default.temporaryDirectory.appendingPathComponent("soma_asr_server.log")
 
@@ -223,6 +231,9 @@ final class ASRManager: ObservableObject {
         recordingsRefreshTask?.cancel()
         connectivityMonitor.cancel()
         memoryPressureSource?.cancel()
+        playbackMonitor?.invalidate()
+        playbackLoadTask?.cancel()
+        player?.stop()
     }
 
     /// One hour was far too long on a RAM-bound box — a multi-GB model held for

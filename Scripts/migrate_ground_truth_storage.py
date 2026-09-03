@@ -46,6 +46,7 @@ def migrate(root: Path, layer1_root: Path, apply: bool = False) -> Dict[str, Uni
     snapshot = archive / "pre-structure-v1"
     legacy = snapshot / "root"
     active_layer1 = active / "layer1"
+    active_layer2 = active / "layer2"
     manifest = active / "manifest.json"
 
     if manifest.exists():
@@ -89,6 +90,7 @@ def migrate(root: Path, layer1_root: Path, apply: bool = False) -> Dict[str, Uni
             active / "experiments" / "stage8",
             active / "experiments" / "other",
             active_layer1 / "batch-manifests",
+            active_layer2,
         ):
             directory.mkdir(parents=True, exist_ok=True)
         for path in (
@@ -97,6 +99,7 @@ def migrate(root: Path, layer1_root: Path, apply: bool = False) -> Dict[str, Uni
             active / "evidence" / "decodes.jsonl",
             active / "evidence" / "verdicts.jsonl",
             active_layer1 / "history.jsonl",
+            active_layer2 / "preferred.jsonl",
         ):
             path.touch()
         (active / "human" / "glossary.json").write_text("{}\n", encoding="utf-8")

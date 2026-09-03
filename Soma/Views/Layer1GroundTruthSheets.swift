@@ -250,7 +250,7 @@ struct Layer1QualitySheet: View {
     @Environment(\.dismiss) private var dismiss
 
     private var quality: [String: Layer1ModelQuality] {
-        layer1Quality(models: runner.models, segments: runner.segments)
+        layer1Quality(models: runner.models, segments: runner.segments, runs: runner.state.modelRuns)
     }
 
     private var summary: Layer1ModelQuality {

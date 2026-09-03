@@ -2,6 +2,17 @@ import CryptoKit
 import Foundation
 
 extension Layer1GroundTruthStore {
+    func currentAudioMatches(_ file: Layer1AudioFile) -> Bool {
+        Self.audioMatches(file)
+    }
+
+    static func audioMatches(_ file: Layer1AudioFile) -> Bool {
+        guard FileManager.default.fileExists(atPath: file.url.path),
+            file.audioHash != "unreadable"
+        else { return false }
+        return sha256(file: file.url) == file.audioHash
+    }
+
     static func sha256(file: URL) -> String {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return "unreadable" }
         var hasher = SHA256()

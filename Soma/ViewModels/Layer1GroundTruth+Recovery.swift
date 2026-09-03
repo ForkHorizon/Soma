@@ -15,7 +15,8 @@ extension Layer1GroundTruthStore {
 
     func normalizePartiallyQueuedBatches() {
         let affected = state.batches.filter { batch in
-            let statuses = Set(latestRuns(for: batch.id).map(\.status))
+            let statuses = Set(
+                latestRuns(for: batch.id).filter { activeModelIDs.contains($0.modelID) }.map(\.status))
             return statuses.contains(.queued)
                 && (statuses.contains(.completed) || statuses.contains(.failed))
         }
@@ -29,11 +30,14 @@ extension Layer1GroundTruthStore {
         let latest = runsForLatestAttempts()
         for batchID in batchIDs {
             let fileIDs = Set(state.batches.first { $0.id == batchID }?.fileIDs ?? [])
+            fileIDs.forEach { invalidateStage2Transcript(audioID: $0) }
             state.segments.removeAll { fileIDs.contains($0.audioID) }
             let batchRuns = latestRuns(for: batchID)
             for old in latest
             where batchRuns.contains(where: { $0.id == old.id }) && old.status != .queued {
-                guard let spec = Layer1ModelSpec.catalog.first(where: { $0.id == old.modelID }) else {
+                guard activeModelIDs.contains(old.modelID),
+                    let spec = Layer1ModelSpec.catalog.first(where: { $0.id == old.modelID })
+                else {
                     continue
                 }
                 state.modelRuns.append(

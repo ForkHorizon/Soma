@@ -5,6 +5,7 @@ struct Layer1ModelSuggestion: Codable, Hashable {
     let model: String
     let status: Layer1ModelRunStatus
     let text: String?
+    let reviewText: String?
     let error: String?
     let runID: String?
 }

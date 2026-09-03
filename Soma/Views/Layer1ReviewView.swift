@@ -1,5 +1,10 @@
 import SwiftUI
 
+private struct Layer1ReviewContext {
+    let before: [String]
+    let after: [String]
+}
+
 struct Layer1ReviewView: View {
     @ObservedObject var asr: ASRManager
     @ObservedObject var runner: Layer1GroundTruthRunner
@@ -53,25 +58,24 @@ struct Layer1ReviewView: View {
                 Button {
                     play(segment, context: true)
                 } label: {
-                    Label("Play ±1.5 s context", systemImage: "waveform")
-                }
-                Button {
-                    playWhole(segment)
-                } label: {
-                    Label("Whole file", systemImage: "arrow.up.right.and.arrow.down.left")
+                    Label("Play ±5 s context", systemImage: "waveform")
                 }
             }.buttonStyle(.bordered).controlSize(.small)
             Text("All model proposals").font(.headline)
+            Text("Only time-aligned snippets are shown here; full-file outputs are scored after review.")
+                .font(.caption).foregroundStyle(.secondary)
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(segment.proposalOrder, id: \.self) { modelID in
-                        if let suggestion = segment.modelSuggestions[modelID] { proposal(suggestion) }
+                    ForEach(Array(proposalGroups(for: segment).enumerated()), id: \.offset) { item in
+                        proposal(item.element)
                     }
                 }
             }.frame(maxHeight: 300)
+            Text("Context around this segment").font(.headline)
+            contextPreview(segment)
             Divider()
             Text(
-                "Human text — preserve every spoken word, repetition, filler, false start, and unfinished attempt."
+                "Current segment — preserve every spoken word, repetition, filler, false start, and unfinished attempt."
             )
             .font(.caption).foregroundStyle(.secondary)
             TextEditor(text: $text).font(.body).frame(minHeight: 90)
@@ -98,27 +102,54 @@ struct Layer1ReviewView: View {
             Text("· \(segment.start, specifier: "%.2f")–\(segment.end, specifier: "%.2f") s")
                 .font(.caption).foregroundStyle(.secondary)
             Spacer()
-            Button("Mark bad boundary") { runner.flagSegmentation(segment.id) }.font(.caption)
             if segment.segmentationNeedsReview {
+                Button("Clear boundary flag") { runner.clearSegmentationFlag(segment.id) }
+                    .font(.caption)
                 Text("boundary flagged").font(.caption2).foregroundStyle(.orange)
+            } else {
+                Button("Mark bad boundary") { runner.flagSegmentation(segment.id) }.font(.caption)
             }
         }
     }
 
-    private func proposal(_ suggestion: Layer1ModelSuggestion) -> some View {
-        HStack(alignment: .top, spacing: 8) {
+    private func proposalGroups(for segment: Layer1Segment) -> [[Layer1ModelSuggestion]] {
+        var groups: [[Layer1ModelSuggestion]] = []
+        for modelID in segment.proposalOrder {
+            guard let suggestion = segment.modelSuggestions[modelID] else { continue }
+            let key = suggestion.status == .completed ? reviewText(for: suggestion) : nil
+            if let key,
+                let index = groups.firstIndex(where: { group in
+                    guard let first = group.first else { return false }
+                    return first.status == .completed && reviewText(for: first) == key
+                })
+            {
+                groups[index].append(suggestion)
+            } else {
+                groups.append([suggestion])
+            }
+        }
+        return groups.enumerated().sorted {
+            if $0.element.count != $1.element.count { return $0.element.count > $1.element.count }
+            return $0.offset < $1.offset
+        }.map(\.element)
+    }
+
+    private func proposal(_ suggestions: [Layer1ModelSuggestion]) -> some View {
+        let suggestion = suggestions[0]
+        let value = reviewText(for: suggestion)
+        return HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(suggestion.model).font(.caption.bold())
+                Text(suggestions.map(\.model).joined(separator: ", ")).font(.caption.bold())
                 if suggestion.status == .failed {
                     Text("FAILED: \(suggestion.error ?? "unknown error")").font(.caption).foregroundStyle(
                         .red)
                 } else {
-                    Text(suggestion.text?.isEmpty == false ? suggestion.text! : "(no speech returned)")
+                    Text(value.isEmpty ? "(no speech returned)" : value)
                         .font(.callout).textSelection(.enabled)
                 }
             }
             Spacer()
-            if let value = suggestion.text, suggestion.status == .completed {
+            if suggestion.text != nil, suggestion.status == .completed {
                 Button("Use") {
                     text = value
                     sourceModelID = suggestion.modelID
@@ -130,11 +161,66 @@ struct Layer1ReviewView: View {
             RoundedRectangle(cornerRadius: 7))
     }
 
+    private func contextPreview(_ segment: Layer1Segment) -> some View {
+        let context = reviewContext(for: segment)
+        let focus = reviewText(for: segment)
+        return
+            (Text(context.before.joined(separator: " ") + (context.before.isEmpty ? "" : " "))
+            .foregroundStyle(.secondary)
+            + Text(focus.isEmpty ? "(empty segment)" : focus)
+            + Text((context.after.isEmpty ? "" : " ") + context.after.joined(separator: " "))
+            .foregroundStyle(.secondary))
+            .font(.body)
+            .textSelection(.enabled)
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 7))
+    }
+
+    private func reviewContext(for segment: Layer1Segment) -> Layer1ReviewContext {
+        let ordered = runner.segments.filter { $0.audioID == segment.audioID }.sorted {
+            $0.start < $1.start
+        }
+        guard let index = ordered.firstIndex(where: { $0.id == segment.id }) else {
+            return Layer1ReviewContext(before: [], after: [])
+        }
+        let before = ordered[..<index].flatMap(contextWords).suffix(5)
+        let after = ordered.dropFirst(index + 1).flatMap(contextWords).prefix(3)
+        return Layer1ReviewContext(before: Array(before), after: Array(after))
+    }
+
+    private func reviewText(for segment: Layer1Segment) -> String {
+        let edited = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return edited.isEmpty
+            ? contextWords(segment).joined(separator: " ")
+            : Layer1GroundTruthStore.normalizeForReview(text)
+    }
+
+    private func reviewText(for suggestion: Layer1ModelSuggestion) -> String {
+        suggestion.reviewText ?? Layer1GroundTruthStore.normalizeForReview(suggestion.text ?? "")
+    }
+
+    private func contextWords(_ segment: Layer1Segment) -> [String] {
+        if segment.decision.status == .verified {
+            return Layer1GroundTruthStore.normalizeForReview(segment.decision.text ?? "")
+                .split(whereSeparator: \.isWhitespace).map(String.init)
+        }
+        for modelID in segment.proposalOrder {
+            guard let suggestion = segment.modelSuggestions[modelID],
+                suggestion.status == .completed,
+                !reviewText(for: suggestion).isEmpty
+            else { continue }
+            return reviewText(for: suggestion).split(whereSeparator: \.isWhitespace).map(String.init)
+        }
+        return []
+    }
+
     private func loadCurrent() {
         guard let segment = current else { return }
         guard loadedSegmentID != segment.id else { return }
         loadedSegmentID = segment.id
-        text = segment.decision.text ?? ""
+        text = Layer1GroundTruthStore.normalizeForReview(segment.decision.text ?? "")
         sourceModelID = segment.decision.sourceModelID
         let url = URL(fileURLWithPath: runner.store.file(for: segment.audioID)?.path ?? "")
         if FileManager.default.fileExists(atPath: url.path) { play(segment, context: false) }
@@ -148,10 +234,16 @@ struct Layer1ReviewView: View {
     }
 
     private func saveCurrent(_ segment: Layer1Segment) {
-        let original = sourceModelID.flatMap { segment.modelSuggestions[$0]?.text }
+        let original: String?
+        if let sourceModelID, let suggestion = segment.modelSuggestions[sourceModelID] {
+            original = reviewText(for: suggestion)
+        } else {
+            original = nil
+        }
+        let reviewText = Layer1GroundTruthStore.normalizeForReview(text)
         let action: Layer1HumanAction =
-            sourceModelID == nil ? .manual : (original == text ? .selectedModel : .selectedAndEdited)
-        save(segment, text: text, action: action)
+            sourceModelID == nil ? .manual : (original == reviewText ? .selectedModel : .selectedAndEdited)
+        save(segment, text: reviewText, action: action)
     }
 
     private func save(_ segment: Layer1Segment, text: String, action: Layer1HumanAction) {
@@ -168,15 +260,10 @@ struct Layer1ReviewView: View {
     private func play(_ segment: Layer1Segment, context: Bool) {
         guard let path = runner.store.file(for: segment.audioID)?.path else { return }
         let duration = runner.store.file(for: segment.audioID)?.duration ?? segment.end
-        let start = context ? max(0, segment.start - 1.5) : segment.start
-        let end = context ? min(duration, segment.end + 1.5) : segment.end
+        let padding = context ? 5.0 : 0
+        let start = max(0, segment.start - padding)
+        let end = min(duration, segment.end + padding)
         asr.stopPlayback()
         asr.togglePlayback(URL(fileURLWithPath: path), from: start, to: end)
-    }
-
-    private func playWhole(_ segment: Layer1Segment) {
-        guard let path = runner.store.file(for: segment.audioID)?.path else { return }
-        asr.stopPlayback()
-        asr.togglePlayback(URL(fileURLWithPath: path))
     }
 }

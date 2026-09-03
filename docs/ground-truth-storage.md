@@ -21,11 +21,14 @@ lifecycle; filenames alone are not a sufficient boundary.
 │   │   ├── stage7/
 │   │   ├── stage8/
 │   │   └── other/
-│   └── layer1/
-│       ├── state.json
-│       ├── history.jsonl
-│       ├── model_commands.json
-│       └── batch-manifests/
+    │   ├── layer1/
+    │   │   ├── state.json
+    │   │   ├── history.jsonl
+    │   │   ├── model_commands.json
+    │   │   └── batch-manifests/
+    │   └── layer2/
+    │       ├── preferred.jsonl
+    │       └── preferred.jsonl.bak
 └── archives/
     └── pre-structure-v1/
         ├── root/
@@ -57,6 +60,8 @@ historical analysis but are not read by active code.
 - `active/layer1/` contains the new model-major batch state and human segment
   decisions. Verified completed files are exported to `active/human/gold.jsonl`
   with `source: layer1-human`.
+- `active/layer2/` contains separately edited preferred transcripts. Each row is
+  bound to the current audio hash and complete Stage 1 source hash.
 - `archives/` is historical. Old Stage-5/7/8 scripts default to the archived
   workspace so rerunning them cannot contaminate the active cycle.
 

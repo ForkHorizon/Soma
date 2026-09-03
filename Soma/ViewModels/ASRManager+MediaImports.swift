@@ -18,14 +18,13 @@ extension ASRManager {
     @MainActor
     func retryImport(_ id: UUID) {
         guard let index = importJobs.firstIndex(where: { $0.id == id }) else { return }
-        importJobs[index].errorMessage = nil
-        importJobs[index].retryCount = 0
-        if importJobs[index].backend == "remote" {
-            importJobs[index].remoteURL = voiceServerURL?.absoluteString
-            importJobs[index].sessionID = nil
-            importJobs[index].nextChunkIndex = 0
+        var job = importJobs[index]
+        job.prepareForRetry()
+        if job.backend == "remote" {
+            job.remoteURL = voiceServerURL?.absoluteString
         }
-        importJobs[index].phase = FileManager.default.fileExists(atPath: importJobs[index].sourcePath) ? .queued : .needsSource
+        job.phase = FileManager.default.fileExists(atPath: job.sourcePath) ? .queued : .needsSource
+        importJobs[index] = job
         persistImportQueue()
         startImportQueueIfNeeded()
     }
