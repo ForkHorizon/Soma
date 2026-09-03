@@ -52,7 +52,7 @@ extension MediaImportTools {
         return words.dropFirst(contextWords.count).joined(separator: " ")
     }
 
-    private static func normalize(_ value: Substring) -> String {
+    nonisolated private static func normalize(_ value: Substring) -> String {
         value.lowercased().trimmingCharacters(in: .punctuationCharacters)
     }
 

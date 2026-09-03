@@ -164,18 +164,17 @@ struct Layer1ReviewView: View {
     private func contextPreview(_ segment: Layer1Segment) -> some View {
         let context = reviewContext(for: segment)
         let focus = reviewText(for: segment)
-        return
-            (Text(context.before.joined(separator: " ") + (context.before.isEmpty ? "" : " "))
-            .foregroundStyle(.secondary)
-            + Text(focus.isEmpty ? "(empty segment)" : focus)
-            + Text((context.after.isEmpty ? "" : " ") + context.after.joined(separator: " "))
-            .foregroundStyle(.secondary))
-            .font(.body)
-            .textSelection(.enabled)
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.primary.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: 7))
+        let before = context.before.isEmpty ? "" : context.before.joined(separator: " ") + " "
+        let after = context.after.isEmpty ? "" : " " + context.after.joined(separator: " ")
+        return Text(
+            "\(Text(before).foregroundStyle(.secondary))\(Text(focus.isEmpty ? "(empty segment)" : focus))\(Text(after).foregroundStyle(.secondary))"
+        )
+        .font(.body)
+        .textSelection(.enabled)
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 7))
     }
 
     private func reviewContext(for segment: Layer1Segment) -> Layer1ReviewContext {
