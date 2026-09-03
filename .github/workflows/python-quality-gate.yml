@@ -20,4 +20,6 @@ jobs:
     uses: ForkHorizon/ci-gates/.github/workflows/python-quality.yml@main
     with:
       gates-ref: main
-      runs-on: '["self-hosted", "macOS", "ARM64", "ci-scope", "ci-scope-v2"]'
+      runner-group: Default
+      runner-labels: '["self-hosted", "macOS", "ARM64", "ci-scope"]'
+      runner-label: ci-scope
