@@ -250,43 +250,40 @@ struct Layer1ModelQuality {
 }
 
 func layer1Quality(
-    models: [Layer1ModelSpec], segments: [Layer1Segment], runs: [Layer1ModelRun]
+    models: [Layer1ModelSpec], segments: [Layer1Segment], runs: [Layer1ModelRun] = []
 ) -> [String: Layer1ModelQuality] {
     var result = Dictionary(uniqueKeysWithValues: models.map { ($0.id, Layer1ModelQuality()) })
-    let latestRuns = latestLayer1Runs(runs)
     let segmentsByFile = Dictionary(grouping: segments, by: \.audioID)
+    let verifiedFileIDs = Set(
+        segmentsByFile.compactMap { audioID, fileSegments in
+            (!fileSegments.isEmpty && fileSegments.allSatisfy {
+                $0.decision.status == .verified && !$0.segmentationNeedsReview
+            }) ? audioID : nil
+        })
     for model in models {
         var quality = result[model.id] ?? .init()
-        for run in latestRuns where run.modelID == model.id {
-            if run.status == .failed {
-                quality.failed += 1
-                continue
+        for segment in segments {
+            guard let suggestion = segment.modelSuggestions[model.id] else { continue }
+            if suggestion.status == .failed { quality.failed += 1 }
+            if verifiedFileIDs.contains(segment.audioID),
+                let reference = segment.decision.normalizedText,
+                !reference.isEmpty,
+                suggestion.status == .completed
+            {
+                quality.evaluated += 1
+                if Layer1GroundTruthStore.normalize(suggestion.text ?? "") == reference {
+                    quality.exact += 1
+                }
             }
-            guard run.status == .completed, let fileSegments = segmentsByFile[run.audioID],
-                !fileSegments.isEmpty,
-                fileSegments.allSatisfy({ $0.decision.status == .verified && !$0.segmentationNeedsReview })
-            else { continue }
-            let humanText = Layer1GroundTruthStore.normalizeForReview(
-                Layer1GroundTruthStore.assemble(fileSegments))
-            let modelText = Layer1GroundTruthStore.normalizeForReview(run.text ?? "")
-            quality.evaluated += 1
-            if modelText == humanText { quality.exact += 1 }
-        }
-        for segment in segments
-        where
-            segment.decision.status == .verified
-            && !segment.segmentationNeedsReview
-            && segment.decision.sourceModelID == model.id
-        {
-            if segment.decision.action == .selectedModel { quality.accepted += 1 }
-            if segment.decision.action == .selectedAndEdited { quality.edited += 1 }
+            if segment.decision.status == .verified,
+                !segment.segmentationNeedsReview,
+                segment.decision.sourceModelID == model.id
+            {
+                if segment.decision.action == .selectedModel { quality.accepted += 1 }
+                if segment.decision.action == .selectedAndEdited { quality.edited += 1 }
+            }
         }
         result[model.id] = quality
     }
     return result
-}
-
-private func latestLayer1Runs(_ runs: [Layer1ModelRun]) -> [Layer1ModelRun] {
-    Dictionary(grouping: runs, by: { "\($0.audioID)\u{1f}\($0.modelID)" })
-        .values.compactMap { $0.max { $0.attempt < $1.attempt } }
 }

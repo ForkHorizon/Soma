@@ -60,13 +60,12 @@ extension Layer1GroundTruthStore {
         let audioID = state.segments[index].audioID
         invalidateStage2Transcript(audioID: audioID)
         let previous = state.segments[index].decision
-        let reviewText = text.map(Self.normalizeForReview)
         state.segments[index].decision = Layer1SegmentDecision(
-            status: .verified, text: reviewText, normalizedText: Self.normalize(reviewText ?? ""), action: action,
+            status: .verified, text: text, normalizedText: Self.normalize(text ?? ""), action: action,
             sourceModelID: sourceModelID, createdAt: previous.createdAt ?? now, updatedAt: now)
         state.lastReviewSegmentID = segmentID
         var history: [String: Any] = ["segmentID": segmentID, "action": action.rawValue]
-        if let reviewText { history["text"] = reviewText }
+        if let text { history["text"] = text }
         if let sourceModelID { history["sourceModelID"] = sourceModelID }
         appendHistory(event: "human_decision", payload: history)
         refreshStatuses()

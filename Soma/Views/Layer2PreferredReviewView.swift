@@ -72,7 +72,7 @@ struct Layer2PreferredReviewView: View {
                 if currentSource != loadedSourceText {
                     sourceChangedWhileEditing = true
                 }
-            } else {
+            } else if currentSource != loadedSourceText {
                 loadedAudioID = nil
             }
             reconcileSelection()
@@ -244,7 +244,7 @@ struct Layer2PreferredReviewView: View {
         guard loadedAudioID != file.id else { return }
         loadedAudioID = file.id
         dirtyFileSnapshot = file
-        asr.stopPlayback()
+        if asr.playingURL != file.url { asr.stopPlayback() }
         let source = runner.store.stage2ReviewSourceText(audioID: file.id) ?? ""
         loadedSourceText = source
         let nextText = transcripts[file.id]?.preferredText ?? source
@@ -278,9 +278,7 @@ struct Layer2PreferredReviewView: View {
 
     private func reloadStage2() {
         do {
-            transcripts = try runner.store.stage2Transcripts().reduce(into: [:]) {
-                $0[$1.audioID] = $1
-            }
+            transcripts = try runner.store.currentStage2Transcripts()
         } catch {
             errorMessage = error.localizedDescription
         }

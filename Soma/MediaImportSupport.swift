@@ -47,7 +47,7 @@ enum MediaImportTools {
                 sourceURL.path,
             ])
         guard let duration = Double(output.trimmingCharacters(in: .whitespacesAndNewlines)), duration > 0 else {
-            throw MediaImportError.noAudioStream
+            throw MediaImportError.invalidDuration
         }
         return duration
     }
