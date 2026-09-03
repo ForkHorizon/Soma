@@ -142,23 +142,7 @@ struct Layer1HistorySheet: View {
         let segments = runner.segments.filter { $0.audioID == file.id }.sorted { $0.start < $1.start }
 
         return VStack(alignment: .leading, spacing: 10) {
-            Button {
-                expandedFileID = open ? nil : file.id
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: open ? "chevron.down" : "chevron.right")
-                        .font(.caption).foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(file.url.lastPathComponent).font(.callout.monospaced())
-                        Text("\(String(format: "%.1f", file.duration)) s · \(segments.count) segments")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    StatusChip(text: status.rawValue.capitalized, tone: tone(for: status))
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
+            fileHeader(file, status: status, segments: segments, isOpen: open)
 
             if open {
                 Divider()
@@ -190,6 +174,28 @@ struct Layer1HistorySheet: View {
         .background(SomaDesign.elevatedBackground)
         .clipShape(RoundedRectangle(cornerRadius: SomaDesign.radius))
         .overlay(RoundedRectangle(cornerRadius: SomaDesign.radius).stroke(Color.secondary.opacity(0.12)))
+    }
+
+    private func fileHeader(
+        _ file: Layer1AudioFile, status: Layer1BatchStatus, segments: [Layer1Segment], isOpen: Bool
+    ) -> some View {
+        Button {
+            expandedFileID = isOpen ? nil : file.id
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: isOpen ? "chevron.down" : "chevron.right")
+                    .font(.caption).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(file.url.lastPathComponent).font(.callout.monospaced())
+                    Text("\(String(format: "%.1f", file.duration)) s · \(segments.count) segments")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                StatusChip(text: status.rawValue.capitalized, tone: tone(for: status))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func modelAnswer(_ run: Layer1ModelRun) -> some View {
