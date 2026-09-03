@@ -7,10 +7,11 @@ extension Layer1GroundTruthStore {
     }
 
     nonisolated static func audioMatches(_ file: Layer1AudioFile) -> Bool {
-        guard FileManager.default.fileExists(atPath: file.url.path),
+        let url = URL(fileURLWithPath: file.path)
+        guard FileManager.default.fileExists(atPath: url.path),
             file.audioHash != "unreadable"
         else { return false }
-        return sha256(file: file.url) == file.audioHash
+        return sha256(file: url) == file.audioHash
     }
 
     nonisolated static func sha256(file: URL) -> String {
