@@ -38,35 +38,43 @@ struct GroundTruthView: View {
             ) {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 205), spacing: 12)], spacing: 12) {
                     actionCard(
-                        title: "Finished",
-                        value: "\(finishedFiles.formatted()) / \(asr.recordingsTotal.formatted())",
-                        detail: "\(finishedPercent)% of the whole corpus · open history",
-                        icon: "checkmark.seal.fill",
-                        tone: .good,
+                        (
+                            title: "Finished",
+                            value: "\(finishedFiles.formatted()) / \(asr.recordingsTotal.formatted())",
+                            detail: "\(finishedPercent)% of the whole corpus · open history",
+                            icon: "checkmark.seal.fill",
+                            tone: .good
+                        ),
                         action: { historyPresented = true }
                     )
                     actionCard(
-                        title: "AI analysis",
-                        value: "\(analysedFiles.formatted()) / \(asr.recordingsTotal.formatted())",
-                        detail: analysisDetail,
-                        icon: runner.isRunning ? "waveform.path.ecg" : "cpu",
-                        tone: runner.isRunning ? .info : .neutral,
+                        (
+                            title: "AI analysis",
+                            value: "\(analysedFiles.formatted()) / \(asr.recordingsTotal.formatted())",
+                            detail: analysisDetail,
+                            icon: runner.isRunning ? "waveform.path.ecg" : "cpu",
+                            tone: runner.isRunning ? .info : .neutral
+                        ),
                         action: { analysisPresented = true }
                     )
                     actionCard(
-                        title: "Human review",
-                        value: "\(readyFiles.formatted()) files",
-                        detail: "\(runner.reviewSegments.count.formatted()) segments waiting for a decision",
-                        icon: "person.crop.circle.badge.checkmark",
-                        tone: readyFiles > 0 ? .warning : .neutral,
+                        (
+                            title: "Human review",
+                            value: "\(readyFiles.formatted()) files",
+                            detail: "\(runner.reviewSegments.count.formatted()) segments waiting for a decision",
+                            icon: "person.crop.circle.badge.checkmark",
+                            tone: readyFiles > 0 ? .warning : .neutral
+                        ),
                         action: { reviewPresented = true }
                     )
                     actionCard(
-                        title: "AI quality",
-                        value: qualitySummary.matchLabel,
-                        detail: qualitySummary.detail,
-                        icon: "chart.bar.xaxis",
-                        tone: qualitySummary.tone,
+                        (
+                            title: "AI quality",
+                            value: qualitySummary.matchLabel,
+                            detail: qualitySummary.detail,
+                            icon: "chart.bar.xaxis",
+                            tone: qualitySummary.tone
+                        ),
                         action: { qualityPresented = true }
                     )
                 }
@@ -167,9 +175,14 @@ struct GroundTruthView: View {
     }
 
     private func actionCard(
-        title: String, value: String, detail: String, icon: String,
-        tone: SomaStatusTone, action: @escaping () -> Void
+        _ content: (title: String, value: String, detail: String, icon: String, tone: SomaStatusTone),
+        action: @escaping () -> Void
     ) -> some View {
+        let title = content.title
+        let value = content.value
+        let detail = content.detail
+        let icon = content.icon
+        let tone = content.tone
         Button(action: action) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 7) {

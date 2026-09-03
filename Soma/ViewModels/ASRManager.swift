@@ -5,54 +5,6 @@ import Foundation
 import Network
 import SwiftUI
 
-struct RecordingIndexEntry: Sendable {
-    let url: URL
-    let date: Date
-    let duration: TimeInterval
-    let hasTranscript: Bool
-}
-
-struct RecordingDurationCacheEntry: Sendable {
-    let fileSize: Int64
-    let modificationDate: Date
-    let duration: TimeInterval
-}
-
-struct QueuedTranscription {
-    let url: URL
-    let source: ASRTranscriptionSource
-    let chunkPipeline: VoiceChunkPipeline?
-    let expectedChunkCount: Int
-    let continuation: CheckedContinuation<String?, Never>
-}
-
-struct VoiceServerErrorEnvelope: Decodable {
-    let error: VoiceServerErrorDetail?
-}
-
-struct VoiceServerErrorDetail: Decodable {
-    let code: String?
-    let message: String?
-    let retryable: Bool?
-}
-
-struct VoiceServerRemoteError: LocalizedError {
-    let code: String
-    let message: String
-    let retryable: Bool
-
-    var errorDescription: String? { message }
-}
-
-struct VoiceServerJobResponse: Decodable {
-    let job_id: String?
-    let status: String?
-    let text: String?
-    let infer_seconds: Double?
-    let queued_seconds: Double?
-    let error: VoiceServerErrorDetail?
-}
-
 /// Records mic audio and transcribes it via the warm multi-engine ASR server
 /// (asr_server.py under the engines folder; engine = Whisper large-v3 or GigaAM v2).
 /// The server is launched on first use and kept alive for the app session; it holds
