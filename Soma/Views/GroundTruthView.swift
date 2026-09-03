@@ -183,7 +183,7 @@ struct GroundTruthView: View {
         let detail = content.detail
         let icon = content.icon
         let tone = content.tone
-        Button(action: action) {
+        return Button(action: action) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 7) {
                     Image(systemName: icon).foregroundStyle(tone.color)
