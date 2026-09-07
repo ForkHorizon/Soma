@@ -107,16 +107,36 @@ extension Layer1GroundTruthStore {
 
     func invalidateStage2Transcript(audioID: String) {
         do {
-            try withStage2Lock {
-                let current = try readStage2Transcripts()
-                guard current.contains(where: { $0.audioID == audioID }) else { return }
-                let entries = current.filter { $0.audioID != audioID }
-                try writeStage2Transcripts(entries)
-            }
+            try removeStage2Transcripts(audioIDs: Set([audioID]))
             stage2StorageError = nil
         } catch {
             stage2StorageError = error.localizedDescription
         }
+    }
+
+    func removeStage2Transcripts(audioIDs: Set<String>) throws {
+        guard !audioIDs.isEmpty else { return }
+        try withStage2Lock {
+            let entries = try readStage2Transcripts()
+            let backup = stage2PreferredURL.appendingPathExtension("bak")
+            let currentContainsID = entries.contains { audioIDs.contains($0.audioID) }
+            let backupEntries: [Layer2PreferredTranscript]
+            if currentContainsID || !FileManager.default.fileExists(atPath: backup.path) {
+                backupEntries = []
+            } else {
+                backupEntries = try readStage2Transcripts(from: backup)
+                guard backupEntries.contains(where: { audioIDs.contains($0.audioID) }) else { return }
+            }
+            guard currentContainsID || backupEntries.contains(where: { audioIDs.contains($0.audioID) }) else {
+                return
+            }
+            let remaining = entries.filter { !audioIDs.contains($0.audioID) }
+            try writeStage2Transcripts(remaining)
+            if FileManager.default.fileExists(atPath: backup.path) {
+                try writeStage2Entries(remaining, to: backup)
+            }
+        }
+        stage2StorageError = nil
     }
 
     private func isCurrent(_ entry: Layer2PreferredTranscript, audioID: String) -> Bool {
@@ -126,9 +146,10 @@ extension Layer1GroundTruthStore {
         return entry.verbatimText == source
     }
 
-    private func readStage2Transcripts() throws -> [Layer2PreferredTranscript] {
-        guard FileManager.default.fileExists(atPath: stage2PreferredURL.path) else { return [] }
-        let content = try String(contentsOf: stage2PreferredURL, encoding: .utf8)
+    private func readStage2Transcripts(from url: URL? = nil) throws -> [Layer2PreferredTranscript] {
+        let source = url ?? stage2PreferredURL
+        guard FileManager.default.fileExists(atPath: source.path) else { return [] }
+        let content = try String(contentsOf: source, encoding: .utf8)
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         var lines = content.components(separatedBy: .newlines)
@@ -156,6 +177,10 @@ extension Layer1GroundTruthStore {
             let backup = stage2PreferredURL.appendingPathExtension("bak")
             try Data(contentsOf: stage2PreferredURL).write(to: backup, options: .atomic)
         }
+        try writeStage2Entries(entries, to: stage2PreferredURL)
+    }
+
+    private func writeStage2Entries(_ entries: [Layer2PreferredTranscript], to url: URL) throws {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.sortedKeys]
@@ -165,7 +190,7 @@ extension Layer1GroundTruthStore {
             return line
         }
         try Data((lines.joined(separator: "\n") + (lines.isEmpty ? "" : "\n")).utf8)
-            .write(to: stage2PreferredURL, options: .atomic)
+            .write(to: url, options: .atomic)
     }
 
     private func withStage2Lock<T>(_ body: () throws -> T) throws -> T {

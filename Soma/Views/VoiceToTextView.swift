@@ -9,6 +9,7 @@ struct VoiceToTextView: View {
     @ObservedObject var prompter: RusToPromptViewModel
     @ObservedObject var globalVoice: GlobalVoiceController
     @ObservedObject var textPriorityQueue: VoiceTextPriorityQueue
+    @ObservedObject var layer1GroundTruth: Layer1GroundTruthRunner
     @AppStorage("modelKeepLoadedMinutes") private var keepLoadedMinutes = 60
     @AppStorage(VoiceOutputMode.storageKey) private var voiceMode = VoiceOutputMode.prompt.rawValue
     @AppStorage("globalVoicePasteEnabled") private var globalVoicePasteEnabled = false
@@ -22,6 +23,7 @@ struct VoiceToTextView: View {
     @State private var importDropTarget = false
     @State private var expandedImportHistoryID: UUID?
     @State private var translateImportedMedia = false
+    @State private var deleteAllRecordingsPresented = false
 
     var body: some View {
         ScrollView {
@@ -512,6 +514,10 @@ struct VoiceToTextView: View {
                     Text("\(asr.recordings.count) of \(asr.recordingsTotal)")
                         .foregroundStyle(.secondary)
                 }
+                Button("Delete all recordings", role: .destructive) {
+                    deleteAllRecordingsPresented = true
+                }
+                .disabled(asr.recordingsTotal == 0)
             }
             if asr.recordings.isEmpty {
                 Text("No recordings yet. Press the mic to record.")
@@ -539,6 +545,19 @@ struct VoiceToTextView: View {
             }
         }
         .frame(maxWidth: 640, alignment: .leading)
+        .confirmationDialog(
+            "Delete all recordings?", isPresented: $deleteAllRecordingsPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Delete recordings", role: .destructive) {
+                Task { await layer1GroundTruth.deleteAllLayer1Audio(asr: asr) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "This permanently deletes \(asr.recordingsTotal) WAV files, TXT files and related Layer 1 and Layer 2 data. Untracked recordings are included."
+            )
+        }
     }
 
     private func recordingRow(_ rec: VoiceRecording) -> some View {
@@ -571,7 +590,7 @@ struct VoiceToTextView: View {
                 Button(action: { asr.reveal(rec.url) }) { Image(systemName: "folder") }
                     .buttonStyle(.borderless)
                     .help(Text(verbatim: "Show in Finder"))
-                Button(action: { asr.deleteRecording(rec.url) }) {
+                Button(action: { deleteRecording(rec.url) }) {
                     Image(systemName: "trash").foregroundStyle(.red)
                 }
                 .buttonStyle(.borderless)
@@ -610,6 +629,14 @@ struct VoiceToTextView: View {
         } else {
             expandedRecordingURL = rec.url
             expandedTranscript = asr.transcript(for: rec.url)
+        }
+    }
+
+    private func deleteRecording(_ url: URL) {
+        if let file = layer1GroundTruth.files.first(where: { $0.url == url }) {
+            Task { await layer1GroundTruth.deleteLayer1Audio(audioID: file.id, asr: asr) }
+        } else {
+            _ = asr.deleteRecording(url)
         }
     }
 

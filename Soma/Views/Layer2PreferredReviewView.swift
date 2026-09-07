@@ -18,6 +18,7 @@ struct Layer2PreferredReviewView: View {
     @State private var eligibilityTask: Task<Void, Never>?
     @State private var dirtyFileSnapshot: Layer1AudioFile?
     @State var sourceChangedWhileEditing = false
+    @State private var managementPresented = false
 
     var eligibleFiles: [Layer1AudioFile] {
         eligibleFilesSnapshot
@@ -40,6 +41,8 @@ struct Layer2PreferredReviewView: View {
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button("Manage files") { managementPresented = true }
+                    .disabled(isDirty)
                 Button("Done") { requestDismiss() }
             }
 
@@ -104,6 +107,12 @@ struct Layer2PreferredReviewView: View {
         .onDisappear {
             eligibilityTask?.cancel()
             asr.stopPlayback()
+        }
+        .sheet(isPresented: $managementPresented) {
+            Layer2FileManagementView(asr: asr, runner: runner) {
+                reloadStage2()
+                refreshEligibleFiles()
+            }
         }
     }
 

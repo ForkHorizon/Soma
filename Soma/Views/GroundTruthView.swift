@@ -104,7 +104,7 @@ struct GroundTruthView: View {
             Layer1ReviewView(asr: asr, runner: runner)
         }
         .sheet(isPresented: $historyPresented) {
-            Layer1HistorySheet(runner: runner)
+            Layer1HistorySheet(asr: asr, runner: runner)
         }
         .sheet(isPresented: $qualityPresented) {
             Layer1QualitySheet(runner: runner)
@@ -256,9 +256,10 @@ func layer1Quality(
     let segmentsByFile = Dictionary(grouping: segments, by: \.audioID)
     let verifiedFileIDs = Set(
         segmentsByFile.compactMap { audioID, fileSegments in
-            (!fileSegments.isEmpty && fileSegments.allSatisfy {
-                $0.decision.status == .verified && !$0.segmentationNeedsReview
-            }) ? audioID : nil
+            (!fileSegments.isEmpty
+                && fileSegments.allSatisfy {
+                    $0.decision.status == .verified && !$0.segmentationNeedsReview
+                }) ? audioID : nil
         })
     for model in models {
         var quality = result[model.id] ?? .init()

@@ -24,7 +24,7 @@ struct AppRouteDetail: View {
         case .voiceToText:
             VoiceToTextView(
                 somaViewModel: viewModel, ollama: ollama, asr: voiceASR, prompter: voicePrompter, globalVoice: globalVoice,
-                textPriorityQueue: textPriorityQueue)
+                textPriorityQueue: textPriorityQueue, layer1GroundTruth: layer1GroundTruth)
         case .groundTruth:
             GroundTruthView(asr: voiceASR, runner: layer1GroundTruth)
         case .queue:

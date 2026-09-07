@@ -6,6 +6,8 @@ struct Layer1AnalysisSheet: View {
     @ObservedObject var runner: Layer1GroundTruthRunner
     @Environment(\.dismiss) private var dismiss
     @State private var batchCount = 20
+    @State private var resetAllPresented = false
+    @State private var deleteAllPresented = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -40,6 +42,17 @@ struct Layer1AnalysisSheet: View {
                 .buttonStyle(.bordered)
                 Button("Retry failed") { runner.retryFailed() }
                     .disabled(runner.isRunning || !hasFailures)
+            }
+
+            HStack(spacing: 8) {
+                Button("Reset all Layer 1 results") {
+                    resetAllPresented = true
+                }
+                .disabled(runner.files.isEmpty)
+                Button("Delete all Layer 1 audio", role: .destructive) {
+                    deleteAllPresented = true
+                }
+                .disabled(runner.files.isEmpty)
             }
 
             if let failure = runner.failure {
@@ -80,6 +93,26 @@ struct Layer1AnalysisSheet: View {
         }
         .padding(22)
         .frame(width: 720, alignment: .topLeading)
+        .confirmationDialog(
+            "Reset all Layer 1 results?", isPresented: $resetAllPresented, titleVisibility: .visible
+        ) {
+            Button("Reset results", role: .destructive) {
+                Task { await runner.resetAllLayer1Results() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The audio and TXT files will remain. Analysis, human review and Stage 2 results will be removed.")
+        }
+        .confirmationDialog(
+            "Delete all Layer 1 audio?", isPresented: $deleteAllPresented, titleVisibility: .visible
+        ) {
+            Button("Delete audio", role: .destructive) {
+                Task { await runner.deleteAllLayer1Audio(asr: asr) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes \(runner.files.count) WAV files, TXT files and all related results.")
+        }
     }
 
     private var queuedDetail: String {
@@ -102,9 +135,11 @@ struct Layer1AnalysisSheet: View {
 }
 
 struct Layer1HistorySheet: View {
+    let asr: ASRManager
     @ObservedObject var runner: Layer1GroundTruthRunner
     @Environment(\.dismiss) private var dismiss
     @State private var expandedFileID: String?
+    @State private var managementPresented = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -115,6 +150,7 @@ struct Layer1HistorySheet: View {
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button("Manage files") { managementPresented = true }
                 Button("Done") { dismiss() }
             }
 
@@ -134,6 +170,9 @@ struct Layer1HistorySheet: View {
         }
         .padding(22)
         .frame(width: 820, alignment: .topLeading)
+        .sheet(isPresented: $managementPresented) {
+            Layer1FileManagementView(asr: asr, runner: runner)
+        }
     }
 
     private func fileHistory(_ file: Layer1AudioFile) -> some View {
