@@ -8,9 +8,9 @@ final class Layer1GroundTruthRunner: ObservableObject {
     @Published private(set) var isRunning = false
     @Published private(set) var currentFileID: String?
     @Published private(set) var currentModelID: String?
-    @Published private(set) var failure: String?
+    @Published var failure: String?
 
-    private var workerTask: Task<Void, Never>?
+    var workerTask: Task<Void, Never>?
     private var process: Process?
     private var currentBatchID: String?
 

@@ -149,9 +149,9 @@ struct Layer1ReviewView: View {
                 }
             }
             Spacer()
-            if suggestion.text != nil, suggestion.status == .completed {
+            if let suggestionText = suggestion.text, suggestion.status == .completed {
                 Button("Use") {
-                    text = value
+                    text = suggestionText
                     sourceModelID = suggestion.modelID
                 }
                 .buttonStyle(.bordered).controlSize(.small)
@@ -219,7 +219,7 @@ struct Layer1ReviewView: View {
         guard let segment = current else { return }
         guard loadedSegmentID != segment.id else { return }
         loadedSegmentID = segment.id
-        text = Layer1GroundTruthStore.normalizeForReview(segment.decision.text ?? "")
+        text = segment.decision.text ?? ""
         sourceModelID = segment.decision.sourceModelID
         let url = URL(fileURLWithPath: runner.store.file(for: segment.audioID)?.path ?? "")
         if FileManager.default.fileExists(atPath: url.path) { play(segment, context: false) }
@@ -233,16 +233,14 @@ struct Layer1ReviewView: View {
     }
 
     private func saveCurrent(_ segment: Layer1Segment) {
-        let original: String?
-        if let sourceModelID, let suggestion = segment.modelSuggestions[sourceModelID] {
-            original = reviewText(for: suggestion)
-        } else {
-            original = nil
-        }
-        let reviewText = Layer1GroundTruthStore.normalizeForReview(text)
+        let original = sourceModelID.flatMap { segment.modelSuggestions[$0]?.text }
+        let currentNormalized = Layer1GroundTruthStore.normalize(text)
+        let originalNormalized = original.map(Layer1GroundTruthStore.normalize)
         let action: Layer1HumanAction =
-            sourceModelID == nil ? .manual : (original == reviewText ? .selectedModel : .selectedAndEdited)
-        save(segment, text: reviewText, action: action)
+            sourceModelID == nil
+            ? .manual
+            : (originalNormalized == currentNormalized ? .selectedModel : .selectedAndEdited)
+        save(segment, text: text, action: action)
     }
 
     private func save(_ segment: Layer1Segment, text: String, action: Layer1HumanAction) {

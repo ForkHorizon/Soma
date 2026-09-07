@@ -33,7 +33,11 @@ extension Layer1GroundTruthStore {
         updateHumanGold(audioID: audioID, fileName: file.url.lastPathComponent, line: nil)
     }
 
+    private static let goldLock = NSLock()
+
     private func updateHumanGold(audioID: String, fileName: String, line: String?) {
+        Self.goldLock.lock()
+        defer { Self.goldLock.unlock() }
         let goldURL = directory.deletingLastPathComponent().appendingPathComponent("human/gold.jsonl")
         try? FileManager.default.createDirectory(
             at: goldURL.deletingLastPathComponent(), withIntermediateDirectories: true)

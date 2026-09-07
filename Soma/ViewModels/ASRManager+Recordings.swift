@@ -53,6 +53,40 @@ extension ASRManager {
         }
     }
 
+    nonisolated static func removeRecording(at url: URL, from dir: URL) throws {
+        let recording = url.standardizedFileURL
+        let directory = dir.standardizedFileURL
+        guard recording.deletingLastPathComponent() == directory,
+            recording.pathExtension.lowercased() == "wav"
+        else { throw CocoaError(.fileNoSuchFile) }
+        if FileManager.default.fileExists(atPath: recording.path) {
+            try FileManager.default.removeItem(at: recording)
+        }
+        let transcript = recording.deletingPathExtension().appendingPathExtension("txt")
+        if FileManager.default.fileExists(atPath: transcript.path) {
+            try FileManager.default.removeItem(at: transcript)
+        }
+    }
+
+    @discardableResult
+    nonisolated static func removeAllRecordings(in dir: URL) throws -> Int {
+        let files = try FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
+        let recordings = files.filter { $0.pathExtension.lowercased() == "wav" }
+        for url in recordings { try removeRecording(at: url, from: dir) }
+        let remainingWAVNames = Set(
+            (try FileManager.default.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]))
+                .filter { $0.pathExtension.lowercased() == "wav" }
+                .map { $0.deletingPathExtension().lastPathComponent })
+        for url in files where url.pathExtension.lowercased() == "txt" {
+            guard !remainingWAVNames.contains(url.deletingPathExtension().lastPathComponent) else { continue }
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            try FileManager.default.removeItem(at: url)
+        }
+        return recordings.count
+    }
+
     func refreshRecordings() {
         // Keep one cancellable library refresh. The directory listing still
         // reconciles external changes, while cached durations avoid reopening
@@ -184,12 +218,35 @@ extension ASRManager {
         (try? String(contentsOf: transcriptURL(for: wav), encoding: .utf8)) ?? ""
     }
 
-    func deleteRecording(_ url: URL) {
+    @discardableResult
+    func deleteRecording(_ url: URL) -> Bool {
         if playingURL == url { stopPlayback() }
-        try? FileManager.default.removeItem(at: url)
-        try? FileManager.default.removeItem(at: transcriptURL(for: url))
-        if lastRecordingURL == url { lastRecordingURL = nil }
-        refreshRecordings()
+        do {
+            try Self.removeRecording(at: url, from: recordingsDir)
+            if lastRecordingURL == url { lastRecordingURL = nil }
+            status = "Recording deleted"
+            refreshRecordings()
+            return true
+        } catch {
+            status = "Could not delete recording: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    @discardableResult
+    func deleteAllRecordings() -> Bool {
+        stopPlayback()
+        do {
+            _ = try Self.removeAllRecordings(in: recordingsDir)
+            lastRecordingURL = nil
+            status = "All recordings deleted"
+            refreshRecordings()
+            return true
+        } catch {
+            status = "Could not delete all recordings: \(error.localizedDescription)"
+            refreshRecordings()
+            return false
+        }
     }
 
     func reveal(_ url: URL) {

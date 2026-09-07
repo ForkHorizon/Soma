@@ -1,26 +1,49 @@
-# Project Instructions
+# Soma Agent Guide
 
-<!-- SOMA_MEMORY_TOOLS_START -->
-## Memory Tools
+## Start Here
 
-Default mode: light. Do not spend tokens on memory tools for small, obvious, single-file tasks.
+- This is an Xcode project, not a Swift Package. The primary macOS SwiftUI target is `Soma`; shared state starts in `Soma/SomaApp.swift`, and route composition starts in `Soma/ContentView.swift`. `SomaVoiceServer` and `SomaTests` are separate targets.
+- The current product direction is in `README.md` and `SOMA.md`: the app's main workflows are `Rus to Prompt` and `Tests`. The Python gateway is retained for System Status/MCP, not as the primary UI.
+- The Python entrypoint is `Soma/soma_mcp_server.py`, which delegates to `Soma/gateway/server.py`; the packet compiler lives in `Soma/scout_pipeline_module/`. Read `docs/ai-development-guide.md` before changing this backend.
+- For non-trivial bugs, regressions, or architecture work, follow the projectmem workflow in root `CLAUDE.md` when tools are available; never edit `.projectmem/` directly.
 
-- projectmem: use for bugs, regressions, multi-step changes, repeated attempts, or architecture decisions. For small self-contained edits, skip full memory startup and use targeted history checks only when useful.
-- Keep generated memory/tool state local unless the project explicitly decides to commit it.
-<!-- SOMA_MEMORY_TOOLS_END -->
+## Commands
 
-## Code Linter Policy
+Run from the repository root. Python uses the Homebrew interpreter and plain `unittest`; pytest is not the local runner:
 
-The repository Code Linter must use its base settings without exceptions:
+```bash
+PYTHONPATH="$PWD/Soma" PYTHONDONTWRITEBYTECODE=1 TMPDIR=/tmp \
+/opt/homebrew/bin/python3 -m unittest discover -s tests -p 'test_*.py'
+```
 
-- `max_file_lines`: `300`
-- `max_function_lines`: `50`
-- `max_nesting_depth`: `4`
-- `max_parameters`: `5`
-- `max_comment_lines`: `5`
-- `max_doc_comment_lines`: `50`
-- `max_types_per_file`: `2`
+For a focused module with top-level `test_` functions, use the repository helper:
 
-Do not increase, override, or otherwise change these values in `.code-linter.json`.
-Existing violations outside the current change are tracked separately; do not
-weaken the policy to make them pass.
+```bash
+PYTHONPATH="$PWD/Soma" PYTHONDONTWRITEBYTECODE=1 TMPDIR=/tmp \
+/opt/homebrew/bin/python3 Scripts/run_pytest_style_tests.py tests/test_ground_truth_consensus.py
+```
+
+Universal non-Unity acceptance:
+
+```bash
+PYTHONPATH="$PWD/Soma" PYTHONDONTWRITEBYTECODE=1 TMPDIR=/tmp \
+/opt/homebrew/bin/python3 Soma/verify_soma_universal_workflow.py \
+  --fixtures tests/fixtures/projects --budget fast
+```
+
+Swift build/test commands use the Xcode project and require full Xcode, not only Command Line Tools:
+
+```bash
+xcodebuild -project Soma.xcodeproj -scheme Soma -configuration Debug -destination 'platform=macOS' build
+xcodebuild test -project Soma.xcodeproj -scheme Soma -destination 'platform=macOS'
+```
+
+## Constraints
+
+- Keep the public MCP catalog at exactly 12 `soma_*` tools; never expose raw `unity_*` or direct Nexus tools to clients.
+- The deterministic path must work without Ollama, Unity, or Nexus. Translation, Graphify, and local-model stages are optional and must degrade or fall back without blocking it.
+- Keep logs and audit reports metadata-only by default. Raw prompts, packets, source, tool bodies, and transcripts require explicit local opt-in.
+- Graphify is project-scoped ranking metadata stored under `~/.soma/graphs`; do not inject raw graph output or trigger full semantic extraction automatically. Unity graphs scan `Assets/` only.
+- Preserve `run_id`/`task_id` through MCP, audit, logging, and benchmark changes; update tests and docs when public response shapes change.
+- Do not commit generated or machine-local data: `graphify-out/`, `.soma/`, `.projectmem/`, `DerivedData/`, or `buildServer.json`.
+- Keep `.code-linter.json` at its base limits: 300 file lines, 50 function lines, nesting depth 4, 5 parameters, 5 prose-comment lines, 50 doc-comment lines, and 2 top-level types. Fix pre-existing violations separately; do not relax the policy.

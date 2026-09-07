@@ -27,15 +27,25 @@ final class Layer1GroundTruthBoundaryTests: XCTestCase {
         store.saveDecision(segmentID: "segment", text: "Текст,  это.", action: .manual)
         let goldURL = root.appendingPathComponent("human/gold.jsonl")
         let initialGold = try String(contentsOf: goldURL, encoding: .utf8)
-        XCTAssertTrue(initialGold.contains("текст это"))
-        XCTAssertFalse(initialGold.contains("Текст,  это."))
+        XCTAssertTrue(initialGold.contains("Текст,  это."))
 
         store.markSegmentationNeedsReview("segment")
 
         XCTAssertEqual(try String(contentsOf: goldURL, encoding: .utf8), "")
         store.clearSegmentationNeedsReview("segment")
         XCTAssertTrue(store.fullyVerifiedFileIDs().contains(audio.path))
-        XCTAssertTrue(try String(contentsOf: goldURL, encoding: .utf8).contains("текст это"))
+        XCTAssertTrue(try String(contentsOf: goldURL, encoding: .utf8).contains("Текст,  это."))
+    }
+
+    func testSegmentationClampsTimestampOvershootToDuration() {
+        let words = [
+            Layer1WordTimestamp(word: "начало", start: 0.0, end: 0.5),
+            Layer1WordTimestamp(word: "конец", start: 0.6, end: 1.25),
+        ]
+        let segments = Layer1GroundTruthStore.makeSegments(
+            audioID: "audio", duration: 1.0, words: words, suggestions: [:])
+        XCTAssertEqual(segments.first?.start ?? -1, 0.0)
+        XCTAssertEqual(segments.last?.end ?? -1, 1.0)
     }
 
     private func makeTempDirectory() throws -> URL {

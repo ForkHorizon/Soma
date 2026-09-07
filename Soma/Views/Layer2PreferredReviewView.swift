@@ -18,6 +18,7 @@ struct Layer2PreferredReviewView: View {
     @State private var eligibilityTask: Task<Void, Never>?
     @State private var dirtyFileSnapshot: Layer1AudioFile?
     @State var sourceChangedWhileEditing = false
+    @State private var managementPresented = false
 
     var eligibleFiles: [Layer1AudioFile] {
         eligibleFilesSnapshot
@@ -40,6 +41,8 @@ struct Layer2PreferredReviewView: View {
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button("Manage files") { managementPresented = true }
+                    .disabled(isDirty)
                 Button("Done") { requestDismiss() }
             }
 
@@ -72,7 +75,7 @@ struct Layer2PreferredReviewView: View {
                 if currentSource != loadedSourceText {
                     sourceChangedWhileEditing = true
                 }
-            } else {
+            } else if currentSource != loadedSourceText {
                 loadedAudioID = nil
             }
             reconcileSelection()
@@ -104,6 +107,12 @@ struct Layer2PreferredReviewView: View {
         .onDisappear {
             eligibilityTask?.cancel()
             asr.stopPlayback()
+        }
+        .sheet(isPresented: $managementPresented) {
+            Layer2FileManagementView(asr: asr, runner: runner) {
+                reloadStage2()
+                refreshEligibleFiles()
+            }
         }
     }
 
@@ -244,7 +253,7 @@ struct Layer2PreferredReviewView: View {
         guard loadedAudioID != file.id else { return }
         loadedAudioID = file.id
         dirtyFileSnapshot = file
-        asr.stopPlayback()
+        if asr.playingURL != file.url { asr.stopPlayback() }
         let source = runner.store.stage2ReviewSourceText(audioID: file.id) ?? ""
         loadedSourceText = source
         let nextText = transcripts[file.id]?.preferredText ?? source
@@ -278,9 +287,7 @@ struct Layer2PreferredReviewView: View {
 
     private func reloadStage2() {
         do {
-            transcripts = try runner.store.stage2Transcripts().reduce(into: [:]) {
-                $0[$1.audioID] = $1
-            }
+            transcripts = try runner.store.currentStage2Transcripts()
         } catch {
             errorMessage = error.localizedDescription
         }

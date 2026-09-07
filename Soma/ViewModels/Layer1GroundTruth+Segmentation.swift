@@ -40,7 +40,7 @@ extension Layer1GroundTruthStore {
             let left = number == 0 ? 0 : boundary(after: clean[group.0 - 1], before: clean[group.0])
             let right =
                 number == groups.count - 1
-                ? max(duration, clean[group.1 - 1].end)
+                ? duration
                 : boundary(after: clean[group.1 - 1], before: clean[group.1])
             return segment(
                 Layer1SegmentSeed(
@@ -80,7 +80,9 @@ extension Layer1GroundTruthStore {
                 $0.decision.status == .pending
                     && !$0.segmentationAlgorithmVersion.hasPrefix("layer1-seg-v2")
             }.map(\.audioID))
-        for audioID in audioIDs where status(for: audioID) == .completed {
+        for audioID in audioIDs {
+            let fileStatus = status(for: audioID)
+            guard fileStatus == .completed || fileStatus == .partial else { continue }
             let segments = state.segments.filter { $0.audioID == audioID }
             guard segments.allSatisfy({ $0.decision.status == .pending }) else { continue }
             state.segments.removeAll { $0.audioID == audioID }
@@ -108,7 +110,8 @@ extension Layer1GroundTruthStore {
         let runs = runs(for: audioID)
         let activeRuns = runs.filter { activeModelIDs.contains($0.modelID) }
         guard activeRuns.count == activeModelIDs.count,
-            activeRuns.allSatisfy({ $0.status == .completed })
+            activeRuns.allSatisfy({ $0.status == .completed || $0.status == .failed }),
+            activeRuns.contains(where: { $0.status == .completed })
         else {
             return
         }
