@@ -25,7 +25,7 @@ jobs:
     # local AI runtime. Keep the VPS canary label out of this production path.
     runs-on: [self-hosted, macOS, ARM64, ci-scope-unified]
     env:
-      CI_SCOPE_GATES_SHA: c364fdfd6f9ca7a2d75eb66e4eac94783bc4b15d
+      CI_SCOPE_GATES_SHA: 329f39eb28c0a535ecf06a86c1efcaeed03b9a8e
     steps:
       - name: Checkout candidate
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -39,7 +39,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           repository: ForkHorizon/ci-gates
-          ref: c364fdfd6f9ca7a2d75eb66e4eac94783bc4b15d
+          ref: 329f39eb28c0a535ecf06a86c1efcaeed03b9a8e
           path: ci-gates
           fetch-depth: 1
 
