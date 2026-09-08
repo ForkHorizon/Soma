@@ -25,21 +25,15 @@ jobs:
     # local AI runtime. Keep the VPS canary label out of this production path.
     runs-on: [self-hosted, macOS, ARM64, ci-scope-unified]
     env:
-      CI_SCOPE_GATES_SHA: 329f39eb28c0a535ecf06a86c1efcaeed03b9a8e
+      CI_SCOPE_GATES_SHA: 1e4b3d1ea572cc82c0b2d4091cfc47ee9159be2f
     steps:
-      - name: Checkout candidate
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          path: candidate
-          fetch-depth: 0
-
       # Keep this SHA pinned. Bump it only when a reviewed ci-gates release is
       # accepted; floating refs would make a run non-reproducible.
       - name: Checkout ci-gates
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           repository: ForkHorizon/ci-gates
-          ref: 329f39eb28c0a535ecf06a86c1efcaeed03b9a8e
+          ref: 1e4b3d1ea572cc82c0b2d4091cfc47ee9159be2f
           path: ci-gates
           fetch-depth: 1
 
@@ -48,6 +42,40 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$(git -C ci-gates rev-parse HEAD)" == "${CI_SCOPE_GATES_SHA:?}" ]]
+
+      - name: Install trusted policy key
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+        env:
+          POLICY_PUBLIC_KEY: ${{ secrets.CI_SCOPE_POLICY_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$POLICY_PUBLIC_KEY"
+          printf '%s\n' "$POLICY_PUBLIC_KEY" > "$RUNNER_TEMP/ci-scope-policy.pub"
+          chmod 600 "$RUNNER_TEMP/ci-scope-policy.pub"
+
+      - name: Policy preflight
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_SCOPE_POLICY_READ_TOKEN: ${{ secrets.CI_SCOPE_POLICY_READ_TOKEN }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          python3 ci-gates/scripts/policy_preflight_github.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --branch "${{ github.base_ref || github.ref_name }}" \
+            --base-sha "$BASE_SHA" \
+            --head-sha "$HEAD_SHA" \
+            --policy-url "https://ci.forkhorizon.com/api/ci/policy" \
+            --allowed-signers "$RUNNER_TEMP/ci-scope-policy.pub" \
+            --output "$RUNNER_TEMP/ci-scope-policy.json"
+
+      - name: Checkout candidate
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          path: candidate
+          fetch-depth: 0
 
       - name: Resolve revision range
         id: range
@@ -136,6 +164,16 @@ jobs:
 
       - name: Run checks
         run: |
+          policy_args=()
+          if [[ -f "$RUNNER_TEMP/ci-scope-policy.json" ]]; then
+            policy_args=(
+              --policy "$RUNNER_TEMP/ci-scope-policy.json"
+              --policy-repository "$GITHUB_REPOSITORY"
+              --policy-branch "${{ github.base_ref || github.ref_name }}"
+              --policy-base-sha "${{ steps.range.outputs.base }}"
+              --allowed-signers "$RUNNER_TEMP/ci-scope-policy.pub"
+            )
+          fi
           python3 ci-gates/scripts/run-checks.py \
             --root candidate \
             --config "${{ steps.policy.outputs.config }}" \
@@ -143,7 +181,8 @@ jobs:
             --event "${{ github.event_name }}" \
             --base "${{ steps.range.outputs.base }}" \
             --head "${{ steps.range.outputs.head }}" \
-            --output "$RUNNER_TEMP/ci-scope"
+            --output "$RUNNER_TEMP/ci-scope" \
+            "${policy_args[@]}"
 
       - name: Publish summary
         if: always()
@@ -166,7 +205,7 @@ jobs:
 
       - name: Upload reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ci-scope-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ci-scope
