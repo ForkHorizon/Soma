@@ -12,6 +12,7 @@ from pathlib import Path
 from ground_truth_paths import LEGACY_ROOT
 from stage7_ellipsis_postprocess import remove_planning_ellipsis
 
+# CI Scope changed-only lint smoke test.
 DEFAULT_GT = LEGACY_ROOT
 
 
