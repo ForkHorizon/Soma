@@ -64,6 +64,7 @@ jobs:
           POLICY_BRANCH: ${{ github.base_ref || github.event.merge_group.base_ref || github.ref_name }}
         run: |
           set -euo pipefail
+          POLICY_BRANCH="${POLICY_BRANCH#refs/heads/}"
           python3 ci-gates/scripts/policy_preflight_github.py \
             --repository "$GITHUB_REPOSITORY" \
             --branch "$POLICY_BRANCH" \
@@ -172,13 +173,17 @@ jobs:
           PY
 
       - name: Run checks
+        env:
+          POLICY_BRANCH: ${{ github.base_ref || github.event.merge_group.base_ref || github.ref_name }}
         run: |
+          set -euo pipefail
+          POLICY_BRANCH="${POLICY_BRANCH#refs/heads/}"
           policy_args=()
           if [[ -f "$RUNNER_TEMP/ci-scope-policy.json" ]]; then
             policy_args=(
               --policy "$RUNNER_TEMP/ci-scope-policy.json"
               --policy-repository "$GITHUB_REPOSITORY"
-              --policy-branch "${{ github.base_ref || github.event.merge_group.base_ref || github.ref_name }}"
+              --policy-branch "$POLICY_BRANCH"
               --allowed-signers "$RUNNER_TEMP/ci-scope-policy.pub"
             )
           fi
