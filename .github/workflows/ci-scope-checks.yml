@@ -71,6 +71,7 @@ jobs:
             --head-sha "$HEAD_SHA" \
             --gates-sha "$CI_SCOPE_GATES_SHA" \
             --policy-url "https://ci.forkhorizon.com/api/ci/policy" \
+            --event-url "https://ci.forkhorizon.com/api/ci/policy/events" \
             --allowed-signers "$RUNNER_TEMP/ci-scope-policy.pub" \
             --output "$RUNNER_TEMP/ci-scope-policy.json"
 
