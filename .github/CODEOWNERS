@@ -5,3 +5,5 @@
 /.swift-compile-gate.json @Daliys
 /.github/workflows/ @Daliys
 /.github/CODEOWNERS @Daliys
+
+# Policy record refreshed after unified CI migration.
