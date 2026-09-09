@@ -1,7 +1,7 @@
 import Foundation
 
 extension Layer1GroundTruthStore {
-    static func normalizeForReview(_ text: String) -> String {
+    nonisolated static func normalizeForReview(_ text: String) -> String {
         var output = ""
         var needsSpace = false
         for character in text.precomposedStringWithCanonicalMapping.lowercased() {
@@ -16,7 +16,7 @@ extension Layer1GroundTruthStore {
         return output
     }
 
-    static func normalize(_ text: String) -> String {
+    nonisolated static func normalize(_ text: String) -> String {
         var output = ""
         for character in text.lowercased() {
             if character.isWhitespace {
