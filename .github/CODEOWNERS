@@ -1,0 +1,9 @@
+# CI policy files require the project owner’s review.
+/.ci-scope.json @Daliys
+/.code-linter.json @Daliys
+/.swift-quality-gate.json @Daliys
+/.swift-compile-gate.json @Daliys
+/.github/workflows/ @Daliys
+/.github/CODEOWNERS @Daliys
+
+# Policy record refreshed after unified CI migration.
