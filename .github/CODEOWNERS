@@ -7,5 +7,3 @@
 /.github/CODEOWNERS @Daliys
 
 # Policy record refreshed after unified CI migration.
-
-# Policy signing key rotated 2026-09-18 (CI_SCOPE_POLICY_* on ci.forkhorizon.com).
