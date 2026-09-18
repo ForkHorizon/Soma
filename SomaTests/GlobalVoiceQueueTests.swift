@@ -21,4 +21,10 @@ final class GlobalVoiceQueueTests: XCTestCase {
         XCTAssertEqual(queue.dequeue(), "third")
         XCTAssertNil(queue.dequeue())
     }
+
+    func testDequeueOnEmptyQueueReturnsNil() {
+        var queue = GlobalVoiceFIFO<Int>()
+        XCTAssertNil(queue.dequeue())
+        XCTAssertTrue(queue.isEmpty)
+    }
 }
