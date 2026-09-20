@@ -1,0 +1,82 @@
+{
+  "w-bo-t20-n3-v1": {
+    "temperature": 0.2,
+    "condition_on_previous_text": false,
+    "best_of": 3,
+    "initial_prompt": "Смотри, сегодня делаю open PR и закрываю issue в Git. Чиню UI в Unity и Android, обсуждаем Nexus и HouseData. Перехожу в Developer, отправляю email про project и mem, добавляю enum и input. Слушаю Hermes, захожу в FaceTime — а ещё там Sirena, M1 и лишних lines кода."
+  },
+  "w-bo-t20-n5-v1": {
+    "temperature": 0.2,
+    "condition_on_previous_text": false,
+    "best_of": 5,
+    "initial_prompt": "Смотри, сегодня делаю open PR и закрываю issue в Git. Чиню UI в Unity и Android, обсуждаем Nexus и HouseData. Перехожу в Developer, отправляю email про project и mem, добавляю enum и input. Слушаю Hermes, захожу в FaceTime — а ещё там Sirena, M1 и лишних lines кода."
+  },
+  "w-bo-t20-n10-v1": {
+    "temperature": 0.2,
+    "condition_on_previous_text": false,
+    "best_of": 10,
+    "initial_prompt": "Смотри, сегодня делаю open PR и закрываю issue в Git. Чиню UI в Unity и Android, обсуждаем Nexus и HouseData. Перехожу в Developer, отправляю email про project и mem, добавляю enum и input. Слушаю Hermes, захожу в FaceTime — а ещё там Sirena, M1 и лишних lines кода."
+  },
+  "w-bo-t40-n3-v1": {
+    "temperature": 0.4,
+    "condition_on_previous_text": false,
+    "best_of": 3,
+    "initial_prompt": "Смотри, сегодня делаю open PR и закрываю issue в Git. Чиню UI в Unity и Android, обсуждаем Nexus и HouseData. Перехожу в Developer, отправляю email про project и mem, добавляю enum и input. Слушаю Hermes, захожу в FaceTime — а ещё там Sirena, M1 и лишних lines кода."
+  },
+  "w-bo-t40-n5-v1": {
+    "temperature": 0.4,
+    "condition_on_previous_text": false,
+    "best_of": 5,
+    "initial_prompt": "Смотри, сегодня делаю open PR и закрываю issue в Git. Чиню UI в Unity и Android, обсуждаем Nexus и HouseData. Перехожу в Developer, отправляю email про project и mem, добавляю enum и input. Слушаю Hermes, захожу в FaceTime — а ещё там Sirena, M1 и лишних lines кода."
+  },
+  "w-bo-t40-n10-v1": {
+    "temperature": 0.4,
+    "condition_on_previous_text": false,
+    "best_of": 10,
+    "initial_prompt": "Смотри, сегодня делаю open PR и закрываю issue в Git. Чиню UI в Unity и Android, обсуждаем Nexus и HouseData. Перехожу в Developer, отправляю email про project и mem, добавляю enum и input. Слушаю Hermes, захожу в FaceTime — а ещё там Sirena, M1 и лишних lines кода."
+  },
+  "w-thr-no04-v1": {
+    "temperature": 0.0,
+    "condition_on_previous_text": false,
+    "no_speech_threshold": 0.4,
+    "initial_prompt": "Смотри, сегодня делаю open PR и закрываю issue в Git. Чиню UI в Unity и Android, обсуждаем Nexus и HouseData. Перехожу в Developer, отправляю email про project и mem, добавляю enum и input. Слушаю Hermes, захожу в FaceTime — а ещё там Sirena, M1 и лишних lines кода."
+  },
+  "w-thr-no05-v1": {
+    "temperature": 0.0,
+    "condition_on_previous_text": false,
+    "no_speech_threshold": 0.5,
+    "initial_prompt": "Смотри, сегодня делаю open PR и закрываю issue в Git. Чиню UI в Unity и Android, обсуждаем Nexus и HouseData. Перехожу в Developer, отправляю email про project и mem, добавляю enum и input. Слушаю Hermes, захожу в FaceTime — а ещё там Sirena, M1 и лишних lines кода."
+  },
+  "w-thr-logprobneg07-v1": {
+    "temperature": 0.0,
+    "condition_on_previous_text": false,
+    "logprob_threshold": -0.7,
+    "initial_prompt": "Смотри, сегодня делаю open PR и закрываю issue в Git. Чиню UI в Unity и Android, обсуждаем Nexus и HouseData. Перехожу в Developer, отправляю email про project и mem, добавляю enum и input. Слушаю Hermes, захожу в FaceTime — а ещё там Sirena, M1 и лишних lines кода."
+  },
+  "w-thr-compression20-v1": {
+    "temperature": 0.0,
+    "condition_on_previous_text": false,
+    "compression_ratio_threshold": 2.0,
+    "initial_prompt": "Смотри, сегодня делаю open PR и закрываю issue в Git. Чиню UI в Unity и Android, обсуждаем Nexus и HouseData. Перехожу в Developer, отправляю email про project и mem, добавляю enum и input. Слушаю Hermes, захожу в FaceTime — а ещё там Sirena, M1 и лишних lines кода."
+  },
+  "w-thr2-no70-lp07-v1": {
+    "temperature": 0.0,
+    "condition_on_previous_text": false,
+    "no_speech_threshold": 0.7,
+    "logprob_threshold": -0.7,
+    "initial_prompt": "Смотри, сегодня делаю open PR и закрываю issue в Git. Чиню UI в Unity и Android, обсуждаем Nexus и HouseData. Перехожу в Developer, отправляю email про project и mem, добавляю enum и input. Слушаю Hermes, захожу в FaceTime — а ещё там Sirena, M1 и лишних lines кода."
+  },
+  "w-thr2-no85-lp07-v1": {
+    "temperature": 0.0,
+    "condition_on_previous_text": false,
+    "no_speech_threshold": 0.85,
+    "logprob_threshold": -0.7,
+    "initial_prompt": "Смотри, сегодня делаю open PR и закрываю issue в Git. Чиню UI в Unity и Android, обсуждаем Nexus и HouseData. Перехожу в Developer, отправляю email про project и mem, добавляю enum и input. Слушаю Hermes, захожу в FaceTime — а ещё там Sirena, M1 и лишних lines кода."
+  },
+  "w-turbo-v1": {
+    "temperature": 0.2,
+    "condition_on_previous_text": false,
+    "best_of": 10,
+    "initial_prompt": "Смотри, сегодня делаю open PR и закрываю issue в Git. Чиню UI в Unity и Android, обсуждаем Nexus и HouseData. Перехожу в Developer, отправляю email про project и mem, добавляю enum и input. Слушаю Hermes, захожу в FaceTime — а ещё там Sirena, M1 и лишних lines кода."
+  }
+}

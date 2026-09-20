@@ -43,6 +43,7 @@ enum AppRoute: String, Hashable, CaseIterable {
     case queue = "Queue"
     case modelStats = "Model Stats"
     case tests = "Tests"
+    case groundTruth = "Ground Truth"
     case promptCompiler = "Prompt Builder"
     case localAI = "Local AI"
     case logs = "Activity"
@@ -55,14 +56,14 @@ enum AppRoute: String, Hashable, CaseIterable {
 
     static var visibleRoutes: [AppRoute] {
         [
-            .rusToPrompt, .voiceToText, .queue, .modelStats, .tests,
+            .rusToPrompt, .voiceToText, .groundTruth, .queue, .modelStats, .tests,
             .promptCompiler, .localAI, .tokenCalculator, .logs, .systemStatus, .extensions,
         ]
     }
 
     var section: String {
         switch self {
-        case .rusToPrompt, .voiceToText, .queue, .modelStats, .tests:
+        case .rusToPrompt, .voiceToText, .groundTruth, .queue, .modelStats, .tests:
             return "Main"
         case .logs:
             return "History"
@@ -79,6 +80,8 @@ enum AppRoute: String, Hashable, CaseIterable {
             return "Translate Russian prompts to English and polish them without project context."
         case .voiceToText:
             return "Record speech and transcribe it locally (Whisper / GigaAM)."
+        case .groundTruth:
+            return "Build a reference transcript for every recording by making two ASR architectures agree."
         case .queue:
             return "Real prompt queue: enqueue, monitor, and run benchmark jobs."
         case .modelStats:
@@ -108,6 +111,8 @@ enum AppRoute: String, Hashable, CaseIterable {
             return "character.bubble"
         case .voiceToText:
             return "waveform"
+        case .groundTruth:
+            return "checkmark.seal"
         case .queue:
             return "tray.full"
         case .modelStats:

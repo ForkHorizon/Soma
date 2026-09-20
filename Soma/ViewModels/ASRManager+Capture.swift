@@ -35,32 +35,6 @@ extension ASRManager {
             if !receivedAudioSignal {
                 receivedAudioSignal = (0..<count).contains { abs(samples[$0]) > 0.002 }
             }
-            if count > 0 {
-                let sampleStride = max(1, count / 256)
-                var sum = 0.0
-                var sampled = 0
-                for index in Swift.stride(from: 0, to: count, by: sampleStride) {
-                    let value = Double(samples[index])
-                    sum += value * value
-                    sampled += 1
-                }
-                let rms = sqrt(sum / Double(max(sampled, 1)))
-                let decibels = 20 * log10(max(rms, 0.000_1))
-                let normalized = min(max((decibels + 48) / 42, 0), 1)
-                smoothedInputLevel = smoothedInputLevel * 0.72 + normalized * 0.28
-
-                let now = ProcessInfo.processInfo.systemUptime
-                // Ten UI updates per second keep the meter responsive without
-                // continuously restarting a longer SwiftUI interpolation.
-                if now - lastInputLevelPublishTime >= 0.10 {
-                    lastInputLevelPublishTime = now
-                    let level = smoothedInputLevel
-                    DispatchQueue.main.async { [weak self] in
-                        guard let self, self.isRecording else { return }
-                        self.inputLevel = level
-                    }
-                }
-            }
         }
         try? fullFile?.write(from: buf)
         activeChunkCapture?.consume(buf)

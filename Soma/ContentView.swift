@@ -11,6 +11,7 @@ struct ContentView: View {
     @ObservedObject var voicePrompter: RusToPromptViewModel
     @ObservedObject var globalVoice: GlobalVoiceController
     @ObservedObject var textPriorityQueue: VoiceTextPriorityQueue
+    @ObservedObject var layer1GroundTruth: Layer1GroundTruthRunner
     @StateObject private var promptCompilerViewModel = PromptCompilerViewModel()
     @StateObject private var rusToPromptViewModel = RusToPromptViewModel()
     @State private var selectedRoute: AppRoute? = .rusToPrompt
@@ -24,36 +25,14 @@ struct ContentView: View {
         } detail: {
             VStack(spacing: 0) {
                 if let route = selectedRoute {
-                    switch route {
-                    case .rusToPrompt:
-                        RusToPromptView(
-                            viewModel: rusToPromptViewModel, somaViewModel: viewModel, ollama: ollama, queueManager: rusToPromptQueueManager
-                        )
-                    case .voiceToText:
-                        VoiceToTextView(
-                            somaViewModel: viewModel, ollama: ollama, asr: voiceASR, prompter: voicePrompter, globalVoice: globalVoice,
-                            textPriorityQueue: textPriorityQueue)
-                    case .queue:
-                        TestsView(mode: .queue, ollama: ollama, queueManager: rusToPromptQueueManager)
-                    case .modelStats:
-                        TestsView(mode: .stats, ollama: ollama, queueManager: rusToPromptQueueManager)
-                    case .tests:
-                        TestsView(mode: .full, ollama: ollama, queueManager: rusToPromptQueueManager)
-                    case .promptCompiler:
-                        PromptCompilerView(viewModel: promptCompilerViewModel, somaViewModel: viewModel, ollama: ollama)
-                    case .localAI:
-                        LocalAISettingsView(viewModel: viewModel, ollama: ollama)
-                    case .logs:
-                        LogsView(viewModel: viewModel, ollama: ollama)
-                    case .tokenCalculator:
-                        TokenCalculatorView(viewModel: viewModel)
-                    case .systemStatus:
-                        SystemStatusView(viewModel: viewModel, ollama: ollama)
-                    case .extensions:
-                        ToolVersionsView(viewModel: viewModel)
-                    case .projectOverview:
-                        ProjectOverviewView(viewModel: viewModel)
-                    }
+                    AppRouteDetail(
+                        route: route, viewModel: viewModel, ollama: ollama,
+                        rusToPromptQueueManager: rusToPromptQueueManager, voiceASR: voiceASR,
+                        voicePrompter: voicePrompter, globalVoice: globalVoice,
+                        textPriorityQueue: textPriorityQueue, layer1GroundTruth: layer1GroundTruth,
+                        rusToPromptViewModel: rusToPromptViewModel,
+                        promptCompilerViewModel: promptCompilerViewModel
+                    )
                 } else {
                     Spacer()
                     Text("Select Rus to Prompt to start")
@@ -68,9 +47,8 @@ struct ContentView: View {
         }
         .onAppear {
             ResourceSampler.shared.start()  // memory+CPU log to ~/.soma/logs/soma_resource.log
-            let asr = voiceASR
-            textPriorityQueue.onImportTranslationCompleted = { [weak asr] id, path in
-                asr?.setImportedTranslation(id, path: path)
+            textPriorityQueue.onImportTranslationCompleted = { [voiceASR] id, path in
+                voiceASR.setImportedTranslation(id, path: path)
             }
             textPriorityQueue.configure(somaViewModel: viewModel, ollama: ollama, prompter: voicePrompter)
             voiceASR.configure(textPriorityQueue: textPriorityQueue)
@@ -82,7 +60,6 @@ struct ContentView: View {
             globalVoice.setEnabled(enabled, promptForPermission: enabled)
         }
     }
-
 }
 
 nonisolated struct ProjectOverviewPayload: Codable, Sendable {

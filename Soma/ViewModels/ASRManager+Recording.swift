@@ -46,7 +46,6 @@ extension ASRManager {
         engineNode.inputNode.removeTap(onBus: 0)
         engineNode.stop()
         isRecording = false
-        inputLevel = 0
         let recordedMilliseconds = recordingBeganAt.map { Int(Date().timeIntervalSince($0) * 1_000) } ?? 0
         recordingBeganAt = nil
         VoiceMetrics.log("recording_canceled", ["recorded_milliseconds": "\(recordedMilliseconds)"])
@@ -170,11 +169,6 @@ extension ASRManager {
         transcript = ""
         lastInferSeconds = nil
         receivedAudioSignal = false
-        inputLevel = 0
-        audioQueue.async { [weak self] in
-            self?.smoothedInputLevel = 0
-            self?.lastInputLevelPublishTime = 0
-        }
     }
 
     func prepareRecordingFile(at url: URL) -> Bool {
@@ -250,7 +244,6 @@ extension ASRManager {
         engineNode.inputNode.removeTap(onBus: 0)
         engineNode.stop()
         isRecording = false
-        inputLevel = 0
         let recordedMilliseconds = recordingBeganAt.map { Int(Date().timeIntervalSince($0) * 1_000) } ?? 0
         recordingBeganAt = nil
         VoiceMetrics.log(

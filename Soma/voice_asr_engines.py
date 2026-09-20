@@ -69,7 +69,7 @@ def transcribe_gigaam(audio: str, model) -> str:
     if getattr(data, "ndim", 1) > 1:
         data = data.mean(axis=1)
     if len(data) / sr <= GIGAAM_WINDOW_SECONDS:
-        return (model.transcribe(audio) or "").strip()
+        return transcription_text(model.transcribe(audio))
 
     win, overlap = int(GIGAAM_WINDOW_SECONDS * sr), int(GIGAAM_OVERLAP_SECONDS * sr)
     step, parts, start = win - overlap, [], 0
@@ -79,11 +79,22 @@ def transcribe_gigaam(audio: str, model) -> str:
             break
         with tempfile.NamedTemporaryFile(suffix=".wav") as tmp:
             sf.write(tmp.name, seg, sr)
-            parts.append(model.transcribe(tmp.name))
+            parts.append(transcription_text(model.transcribe(tmp.name)))
         if start + win >= len(data):
             break
         start += step
     return join_parts(parts)
+
+
+def transcription_text(result) -> str:
+    """Normalize string and GigaAM TranscriptionResult outputs."""
+    if isinstance(result, str):
+        return result
+    return (
+        getattr(result, "text", None)
+        or " ".join(getattr(piece, "text", "") for piece in getattr(result, "pieces", []))
+        or str(result)
+    )
 
 
 def join_parts(parts: list[str]) -> str:

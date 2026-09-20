@@ -88,4 +88,26 @@ final class MediaImportTests: XCTestCase {
         job.prepareToResumeAfterRelaunch()
         XCTAssertEqual(job.phase, .failed)
     }
+
+    func testRetryDropsPartialFragmentsAndProgress() {
+        var job = MediaImportJob(
+            sourceURL: URL(fileURLWithPath: "/tmp/movie.mkv"),
+            backend: "local",
+            engine: "whisper",
+            remoteURL: nil
+        )
+        job.nextChunkIndex = 7
+        job.sessionID = "stale-session"
+        job.retryCount = 2
+        job.errorMessage = "failed"
+        job.localFragments = ["stale transcript"]
+
+        job.prepareForRetry()
+
+        XCTAssertEqual(job.nextChunkIndex, 0)
+        XCTAssertNil(job.sessionID)
+        XCTAssertEqual(job.retryCount, 0)
+        XCTAssertNil(job.errorMessage)
+        XCTAssertTrue(job.localFragments.isEmpty)
+    }
 }

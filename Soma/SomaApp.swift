@@ -20,6 +20,7 @@ struct SomaApp: App {
     @StateObject private var voicePrompter = RusToPromptViewModel()
     @StateObject private var globalVoice = GlobalVoiceController()
     @StateObject private var voiceTextPriorityQueue = VoiceTextPriorityQueue()
+    @StateObject private var layer1GroundTruth = Layer1GroundTruthRunner()
     @StateObject private var windowLifecycle = SomaWindowLifecycleCoordinator()
     @NSApplicationDelegateAdaptor(SomaAppDelegate.self) private var appDelegate
 
@@ -32,7 +33,8 @@ struct SomaApp: App {
                 voiceASR: voiceASR,
                 voicePrompter: voicePrompter,
                 globalVoice: globalVoice,
-                textPriorityQueue: voiceTextPriorityQueue
+                textPriorityQueue: voiceTextPriorityQueue,
+                layer1GroundTruth: layer1GroundTruth
             )
             .background(
                 MainWindowAccessor { window in

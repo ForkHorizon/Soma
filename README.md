@@ -27,7 +27,7 @@ This is the primary reason to run Soma day-to-day:
 - Non-English (typically Russian) input is normalized into a clean English task prompt before it reaches any model — see [Prompt Language Optimization](#prompt-language-optimization) below for the same translation pipeline shared with the legacy packet backend.
 - The normalized prompt runs across configured providers — local Ollama models plus paid DeepSeek, Gemini, and OpenAI — so you can compare output, latency, and token cost side by side.
 - A menu bar companion app with a Dynamic Island-style indicator shows recording/processing state without keeping the main window open.
-- ASR can run locally or offload to a dedicated Soma Voice Server on another Mac over Tailscale. See [`docs/voice-server.md`](docs/voice-server.md) for setup (per-engine venvs, LaunchAgent install, Tailscale Serve for a stable HTTPS URL, Keychain-stored bearer token).
+- ASR can run locally or offload to a dedicated Soma Voice Server on another Mac over Tailscale. See [`docs/voice-server.md`](docs/voice-server.md) for setup (per-engine venvs, LaunchAgent install, Tailscale Serve for a stable HTTPS URL, locally stored bearer token).
 
 ## Per-Project Control Panel
 
