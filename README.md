@@ -327,6 +327,10 @@ Soma writes runtime reports and logs under the user home directory:
 ~/.soma/graphs/projects/<project_id>/graphify-out/<project>-callflow.html
 ```
 
+## CI
+
+Pull requests run a single action, `CI Scope / Checks` (`.github/workflows/ci-scope-checks.yml`). What it runs is defined by `.ci-scope.json` and the gate configs in this repo, executed by ForkHorizon/ci-gates. `main` and `developer` carry the same content.
+
 ## Documentation
 
 - `docs/architecture.md`: system design and data flow.
