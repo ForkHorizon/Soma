@@ -18,6 +18,30 @@ extension Layer1GroundTruthRunner {
         resetLayer1Results(audioIDs: Set(files.map(\.id)))
     }
 
+    func resetAllHumanResults() async {
+        await stopAndWait()
+        do {
+            _ = try store.removeHumanReviewResults(audioIDs: Set(files.map(\.id)))
+            failure = nil
+        } catch {
+            failure = error.localizedDescription
+        }
+        objectWillChange.send()
+    }
+
+    func resetAllStage2Results() async {
+        await stopAndWait()
+        do {
+            let ids = Set(try store.stage2Transcripts().map(\.audioID))
+            try store.removeStage2Transcripts(audioIDs: ids)
+            store.appendHistory(event: "stage2_results_removed", payload: ["count": ids.count])
+            failure = nil
+        } catch {
+            failure = error.localizedDescription
+        }
+        objectWillChange.send()
+    }
+
     func deleteLayer1Audio(audioID: String, asr: ASRManager) async {
         await stopAndWait()
         guard let file = store.file(for: audioID) else { return }
@@ -27,17 +51,6 @@ extension Layer1GroundTruthRunner {
             return
         }
         removeLayer1Results(audioIDs: Set([audioID]), historyEvent: "layer1_audio_deleted")
-    }
-
-    func deleteAllLayer1Audio(asr: ASRManager) async {
-        await stopAndWait()
-        let ids = Set(files.map(\.id))
-        guard asr.deleteAllRecordings() else {
-            failure = asr.status
-            objectWillChange.send()
-            return
-        }
-        removeLayer1Results(audioIDs: ids, historyEvent: "layer1_audio_deleted")
     }
 
     private func resetLayer1Results(audioIDs: Set<String>) {

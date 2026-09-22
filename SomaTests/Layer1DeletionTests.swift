@@ -68,7 +68,7 @@ final class Layer1DeletionTests: XCTestCase {
                 at: root.appendingPathComponent("outside.wav"), from: recordings))
     }
 
-    func testRemoveAllRecordingsDeletesTrackedAndUntrackedAudio() throws {
+    func testDeletingOneRecordingLeavesOtherFilesUntouched() throws {
         let root = try makeTempDirectory()
         let recordings = root.appendingPathComponent("recordings")
         try FileManager.default.createDirectory(at: recordings, withIntermediateDirectories: true)
@@ -82,11 +82,32 @@ final class Layer1DeletionTests: XCTestCase {
         let notes = recordings.appendingPathComponent("notes.json")
         try Data("keep".utf8).write(to: notes)
 
-        XCTAssertEqual(try ASRManager.removeAllRecordings(in: recordings), 2)
+        try ASRManager.removeRecording(at: first, from: recordings)
         XCTAssertFalse(FileManager.default.fileExists(atPath: first.path))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: second.path))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: orphanTranscript.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: second.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: orphanTranscript.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: notes.path))
+    }
+
+    func testHumanCleanupKeepsAIResultsAndClearsStage2() throws {
+        let root = try makeTempDirectory()
+        let audio = root.appendingPathComponent("speech.wav")
+        let store = Layer1GroundTruthStore(directory: root.appendingPathComponent("store"))
+        let fileID = try addVerifiedFile(audio, to: store)
+        try store.saveStage2Transcript(audioID: fileID, preferredText: "preferred")
+        store.state.segments[0].segmentationNeedsReview = true
+
+        _ = try store.removeHumanReviewResults(audioIDs: Set([fileID]))
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: audio.path))
+        XCTAssertEqual(store.state.files.count, 1)
+        XCTAssertEqual(store.state.modelRuns.count, 1)
+        XCTAssertEqual(store.state.segments.count, 1)
+        XCTAssertEqual(store.state.segments[0].decision.status, .pending)
+        XCTAssertNil(store.state.segments[0].decision.text)
+        XCTAssertFalse(store.state.segments[0].segmentationNeedsReview)
+        XCTAssertNil(store.stage2Transcript(audioID: fileID))
+        XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("human/gold.jsonl"), encoding: .utf8), "")
     }
 
     func testStage2DeletionRemovesDeletedIDsFromBackup() throws {

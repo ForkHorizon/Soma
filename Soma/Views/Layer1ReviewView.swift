@@ -13,6 +13,10 @@ struct Layer1ReviewView: View {
     @State private var text = ""
     @State private var sourceModelID: String?
     @State private var loadedSegmentID: String?
+    @State private var resultsPresented = false
+    @State private var clearAllPresented = false
+    @State private var deleteAudioID: String?
+    @State private var finalDeleteAudioID: String?
 
     private var items: [Layer1Segment] { runner.reviewSegments }
     private var current: Layer1Segment? { items.indices.contains(cursor) ? items[cursor] : nil }
@@ -23,6 +27,8 @@ struct Layer1ReviewView: View {
                 Text("Layer 1 human review").font(.title3.bold())
                 Spacer()
                 Text("\(min(cursor + 1, items.count)) / \(items.count)").font(.caption).monospacedDigit()
+                Button("View results") { resultsPresented = true }
+                Button("Clear all human results", role: .destructive) { clearAllPresented = true }
                 Button("Done") {
                     asr.stopPlayback()
                     dismiss()
@@ -44,6 +50,17 @@ struct Layer1ReviewView: View {
             loadCurrent()
         }.onChange(of: cursor) { _, _ in loadCurrent() }
         .onDisappear { asr.stopPlayback() }
+        .modifier(
+            Layer1ReviewActions(
+                asr: asr, runner: runner, resultsPresented: $resultsPresented,
+                clearAllPresented: $clearAllPresented, deleteAudioID: $deleteAudioID,
+                finalDeleteAudioID: $finalDeleteAudioID,
+                onDeleted: {
+                    cursor = min(cursor, max(runner.reviewSegments.count - 1, 0))
+                    loadedSegmentID = nil
+                    loadCurrent()
+                })
+        )
     }
 
     private func review(_ segment: Layer1Segment) -> some View {
@@ -109,6 +126,8 @@ struct Layer1ReviewView: View {
             } else {
                 Button("Mark bad boundary") { runner.flagSegmentation(segment.id) }.font(.caption)
             }
+            Button("Delete audio", role: .destructive) { deleteAudioID = segment.audioID }
+                .font(.caption)
         }
     }
 

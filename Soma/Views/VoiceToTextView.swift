@@ -23,7 +23,8 @@ struct VoiceToTextView: View {
     @State private var importDropTarget = false
     @State private var expandedImportHistoryID: UUID?
     @State private var translateImportedMedia = false
-    @State private var deleteAllRecordingsPresented = false
+    @State private var deleteRecordingURL: URL?
+    @State private var finalDeleteRecordingURL: URL?
 
     var body: some View {
         ScrollView {
@@ -514,10 +515,6 @@ struct VoiceToTextView: View {
                     Text("\(asr.recordings.count) of \(asr.recordingsTotal)")
                         .foregroundStyle(.secondary)
                 }
-                Button("Delete all recordings", role: .destructive) {
-                    deleteAllRecordingsPresented = true
-                }
-                .disabled(asr.recordingsTotal == 0)
             }
             if asr.recordings.isEmpty {
                 Text("No recordings yet. Press the mic to record.")
@@ -546,17 +543,31 @@ struct VoiceToTextView: View {
         }
         .frame(maxWidth: 640, alignment: .leading)
         .confirmationDialog(
-            "Delete all recordings?", isPresented: $deleteAllRecordingsPresented,
+            "Delete this recording?",
+            isPresented: Binding(get: { deleteRecordingURL != nil }, set: { if !$0 { deleteRecordingURL = nil } }),
             titleVisibility: .visible
         ) {
-            Button("Delete recordings", role: .destructive) {
-                Task { await layer1GroundTruth.deleteAllLayer1Audio(asr: asr) }
+            Button("Continue", role: .destructive) {
+                finalDeleteRecordingURL = deleteRecordingURL
+                deleteRecordingURL = nil
             }
-            Button("Cancel", role: .cancel) {}
+            Button("Cancel", role: .cancel) { deleteRecordingURL = nil }
         } message: {
-            Text(
-                "This permanently deletes \(asr.recordingsTotal) WAV files, TXT files and related Layer 1 and Layer 2 data. Untracked recordings are included."
-            )
+            Text("This starts a second confirmation. The WAV, TXT and any tracked analysis data will be removed.")
+        }
+        .confirmationDialog(
+            "Confirm permanent deletion",
+            isPresented: Binding(get: { finalDeleteRecordingURL != nil }, set: { if !$0 { finalDeleteRecordingURL = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete \(finalDeleteRecordingURL?.lastPathComponent ?? "recording")", role: .destructive) {
+                guard let url = finalDeleteRecordingURL else { return }
+                finalDeleteRecordingURL = nil
+                deleteRecording(url)
+            }
+            Button("Cancel", role: .cancel) { finalDeleteRecordingURL = nil }
+        } message: {
+            Text("This cannot be undone. Only this selected recording will be deleted.")
         }
     }
 
@@ -590,7 +601,7 @@ struct VoiceToTextView: View {
                 Button(action: { asr.reveal(rec.url) }) { Image(systemName: "folder") }
                     .buttonStyle(.borderless)
                     .help(Text(verbatim: "Show in Finder"))
-                Button(action: { deleteRecording(rec.url) }) {
+                Button(action: { deleteRecordingURL = rec.url }) {
                     Image(systemName: "trash").foregroundStyle(.red)
                 }
                 .buttonStyle(.borderless)
