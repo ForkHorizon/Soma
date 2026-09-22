@@ -1,6 +1,41 @@
 import SwiftUI
 
+struct Layer2ClearResultsActions: ViewModifier {
+    @ObservedObject var runner: Layer1GroundTruthRunner
+    @Binding var presented: Bool
+    let onCleared: () -> Void
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog(
+            "Clear all Stage 2 results?", isPresented: $presented, titleVisibility: .visible
+        ) {
+            Button("Clear Stage 2 results", role: .destructive) {
+                Task {
+                    await runner.resetAllStage2Results()
+                    onCleared()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Preferred transcripts for all saved files will be removed. Layer 1, AI results, human decisions and audio remain.")
+        }
+    }
+}
+
 extension Layer2PreferredReviewView {
+    var clearResultsButton: some View {
+        Button("Clear all Stage 2 results", role: .destructive) { clearAllPresented = true }
+            .disabled(isDirty || transcripts.isEmpty)
+    }
+
+    func didClearStage2Results() {
+        errorMessage = runner.failure
+        if errorMessage == nil {
+            reloadStage2()
+            refreshEligibleFiles()
+        }
+    }
+
     func requestSelection(_ audioID: String) {
         guard audioID != selectedAudioID else { return }
         if isDirty {

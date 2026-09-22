@@ -7,7 +7,8 @@ struct Layer2FileManagementView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var resultID: String?
     @State private var audioID: String?
-    @State private var deleteAll = false
+    @State private var finalAudioID: String?
+    @State private var clearAll = false
     @State private var errorMessage: String?
 
     private var files: [Layer1AudioFile] {
@@ -27,13 +28,13 @@ struct Layer2FileManagementView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Layer 2 · Manage audio").font(.title3.bold())
-                    Text("Listen to verified audio and remove preferred results or the file itself.")
+                    Text("Listen to verified audio. Clear preferred results in bulk; delete audio only one file at a time.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button("Done") { dismiss() }
             }
-            Button("Delete all Stage 2 results", role: .destructive) { deleteAll = true }
+            Button("Clear all Stage 2 results", role: .destructive) { clearAll = true }
                 .disabled(!hasStage2Results)
             if let errorMessage {
                 StatusBanner(title: "Stage 2 deletion failed", detail: errorMessage, tone: .danger)
@@ -47,9 +48,9 @@ struct Layer2FileManagementView: View {
         .padding(22)
         .frame(width: 900, height: 620, alignment: .topLeading)
         .confirmationDialog(
-            "Delete all Stage 2 results?", isPresented: $deleteAll, titleVisibility: .visible
+            "Clear all Stage 2 results?", isPresented: $clearAll, titleVisibility: .visible
         ) {
-            Button("Delete results", role: .destructive) { deleteAllResults() }
+            Button("Clear Stage 2 results", role: .destructive) { deleteAllResults() }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Preferred transcripts will be removed. Layer 1 and the audio files will remain.")
@@ -76,14 +77,28 @@ struct Layer2FileManagementView: View {
             Button("Delete audio", role: .destructive) {
                 guard let id = audioID else { return }
                 audioID = nil
+                finalAudioID = id
+            }
+            Button("Cancel", role: .cancel) { audioID = nil }
+        } message: {
+            Text("This starts a second confirmation. The WAV, TXT and all related results will be permanently deleted.")
+        }
+        .confirmationDialog(
+            "Confirm permanent deletion",
+            isPresented: Binding(get: { finalAudioID != nil }, set: { if !$0 { finalAudioID = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete \(finalAudioID.flatMap { runner.store.file(for: $0)?.url.lastPathComponent } ?? "audio")", role: .destructive) {
+                guard let id = finalAudioID else { return }
+                finalAudioID = nil
                 Task {
                     await runner.deleteLayer1Audio(audioID: id, asr: asr)
                     onChanged()
                 }
             }
-            Button("Cancel", role: .cancel) { audioID = nil }
+            Button("Cancel", role: .cancel) { finalAudioID = nil }
         } message: {
-            Text("The WAV, TXT, Layer 1, human review and Stage 2 data will be deleted.")
+            Text("This cannot be undone. The physical audio and every saved Layer 1, human and Stage 2 result will be removed.")
         }
     }
 
@@ -124,11 +139,10 @@ struct Layer2FileManagementView: View {
     }
 
     private func deleteAllResults() {
-        do {
-            let ids = Set(try runner.store.stage2Transcripts().map(\.audioID))
-            try runner.store.removeStage2Transcripts(audioIDs: ids)
-            errorMessage = nil
+        Task {
+            await runner.resetAllStage2Results()
+            errorMessage = runner.failure
             onChanged()
-        } catch { errorMessage = error.localizedDescription }
+        }
     }
 }

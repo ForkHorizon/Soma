@@ -7,14 +7,14 @@ struct Layer1AnalysisSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var batchCount = 20
     @State private var resetAllPresented = false
-    @State private var deleteAllPresented = false
+    @State private var resultsPresented = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Layer 1 · AI analysis").font(.title3.bold())
-                    Text("Add only new recordings, then run every configured ASR head on the original audio.")
+                    Text("Run ASR heads on original audio. This panel clears results only; it never deletes audio.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -45,12 +45,9 @@ struct Layer1AnalysisSheet: View {
             }
 
             HStack(spacing: 8) {
-                Button("Reset all Layer 1 results") {
+                Button("View results") { resultsPresented = true }
+                Button("Clear all AI results", role: .destructive) {
                     resetAllPresented = true
-                }
-                .disabled(runner.files.isEmpty)
-                Button("Delete all Layer 1 audio", role: .destructive) {
-                    deleteAllPresented = true
                 }
                 .disabled(runner.files.isEmpty)
             }
@@ -94,24 +91,17 @@ struct Layer1AnalysisSheet: View {
         .padding(22)
         .frame(width: 720, alignment: .topLeading)
         .confirmationDialog(
-            "Reset all Layer 1 results?", isPresented: $resetAllPresented, titleVisibility: .visible
+            "Clear all AI results?", isPresented: $resetAllPresented, titleVisibility: .visible
         ) {
-            Button("Reset results", role: .destructive) {
+            Button("Clear AI results", role: .destructive) {
                 Task { await runner.resetAllLayer1Results() }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("The audio and TXT files will remain. Analysis, human review and Stage 2 results will be removed.")
+            Text("\(runner.files.count) files will have AI, human-review and Stage 2 results cleared. WAV and TXT files remain.")
         }
-        .confirmationDialog(
-            "Delete all Layer 1 audio?", isPresented: $deleteAllPresented, titleVisibility: .visible
-        ) {
-            Button("Delete audio", role: .destructive) {
-                Task { await runner.deleteAllLayer1Audio(asr: asr) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This permanently deletes \(runner.files.count) WAV files, TXT files and all related results.")
+        .sheet(isPresented: $resultsPresented) {
+            Layer1HistorySheet(asr: asr, runner: runner)
         }
     }
 

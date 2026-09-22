@@ -6,8 +6,8 @@ struct Layer1FileManagementView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var resetID: String?
     @State private var deleteID: String?
+    @State private var finalDeleteID: String?
     @State private var resetAll = false
-    @State private var deleteAll = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -21,9 +21,7 @@ struct Layer1FileManagementView: View {
                 Button("Done") { dismiss() }
             }
             HStack(spacing: 8) {
-                Button("Reset all Layer 1 results") { resetAll = true }
-                    .disabled(runner.files.isEmpty)
-                Button("Delete all Layer 1 audio", role: .destructive) { deleteAll = true }
+                Button("Clear all AI results", role: .destructive) { resetAll = true }
                     .disabled(runner.files.isEmpty)
             }
             if let failure = runner.failure {
@@ -38,24 +36,14 @@ struct Layer1FileManagementView: View {
         .padding(22)
         .frame(width: 900, height: 620, alignment: .topLeading)
         .confirmationDialog(
-            "Reset all Layer 1 results?", isPresented: $resetAll, titleVisibility: .visible
+            "Clear all AI results?", isPresented: $resetAll, titleVisibility: .visible
         ) {
-            Button("Reset results", role: .destructive) {
+            Button("Clear AI results", role: .destructive) {
                 Task { await runner.resetAllLayer1Results() }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("The audio and TXT files will remain. Model answers, segments, decisions and Stage 2 results will be removed.")
-        }
-        .confirmationDialog(
-            "Delete all Layer 1 audio?", isPresented: $deleteAll, titleVisibility: .visible
-        ) {
-            Button("Delete audio", role: .destructive) {
-                Task { await runner.deleteAllLayer1Audio(asr: asr) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This permanently deletes \(runner.files.count) WAV files, TXT files and all related Layer 1 and Layer 2 data.")
+            Text("\(runner.files.count) files will have AI, human-review and Stage 2 results cleared. WAV and TXT files remain.")
         }
         .confirmationDialog(
             "Reset this Layer 1 result?",
@@ -79,11 +67,25 @@ struct Layer1FileManagementView: View {
             Button("Delete audio", role: .destructive) {
                 guard let id = deleteID else { return }
                 deleteID = nil
-                Task { await runner.deleteLayer1Audio(audioID: id, asr: asr) }
+                finalDeleteID = id
             }
             Button("Cancel", role: .cancel) { deleteID = nil }
         } message: {
-            Text("The WAV, TXT, all model answers, human review, gold data and Stage 2 result will be deleted.")
+            Text("This starts a second confirmation. The WAV, TXT and all related results will be permanently deleted.")
+        }
+        .confirmationDialog(
+            "Confirm permanent deletion",
+            isPresented: Binding(get: { finalDeleteID != nil }, set: { if !$0 { finalDeleteID = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete \(finalDeleteID.flatMap { runner.store.file(for: $0)?.url.lastPathComponent } ?? "audio")", role: .destructive) {
+                guard let id = finalDeleteID else { return }
+                finalDeleteID = nil
+                Task { await runner.deleteLayer1Audio(audioID: id, asr: asr) }
+            }
+            Button("Cancel", role: .cancel) { finalDeleteID = nil }
+        } message: {
+            Text("This cannot be undone. The physical audio and every saved analysis result will be removed.")
         }
     }
 
