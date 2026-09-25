@@ -1,0 +1,3 @@
+# Building from this folder (symbols.py does) keeps output here; the root workspace builds into /target.
+[build]
+target-dir = "target"

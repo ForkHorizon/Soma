@@ -28,12 +28,6 @@
       "type": "swift-compile",
       "config": ".swift-compile-gate.json",
       "resources": ["xcode"]
-    },
-    {
-      "id": "slop-review",
-      "type": "slop-review",
-      "events": ["pull_request", "workflow_dispatch"],
-      "resources": ["ollama"]
     }
   ]
 }

@@ -1,0 +1,5 @@
+# Lets `cargo fmt/clippy --workspace` run from the repo root (the CI Scope rust-quality gate runs there).
+[workspace]
+resolver = "3"
+members = ["Soma/rust_scanner"]
+exclude = ["tests/fixtures"]
