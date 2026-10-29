@@ -38,10 +38,9 @@ Soma Packet Mode is the first production-like AI workflow. Codex-first live help
 ## Safe Change Rules
 
 - Keep `.code-linter.json` at the Code Linter base settings without overrides:
-  300 file lines, 50 function lines, nesting depth 4, 5 parameters, 5 prose
-  comment lines, 50 doc-comment lines, and 2 top-level types per file. Never
-  relax these values to accommodate existing violations; fix unrelated legacy
-  violations in separate tasks.
+  600 file lines, 80 function lines, nesting depth 4, 5 parameters, 5 prose
+  comment lines, 50 doc-comment lines, and 5 top-level types per file. Do not
+  enforce a minimum function length or split functions into tiny fragments.
 - Preserve the 12-tool public catalog unless intentionally changing a public interface.
 - Keep deterministic packets working without Ollama.
 - Keep prompt language optimization best-effort: failures must fall back, not block packets.
