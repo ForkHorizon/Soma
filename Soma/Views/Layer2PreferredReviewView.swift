@@ -7,7 +7,7 @@ struct Layer2PreferredReviewView: View {
     @State var selectedAudioID: String?
     @State private var preferredText = ""
     @State var loadedAudioID: String?
-    @State private var transcripts: [String: Layer2PreferredTranscript] = [:]
+    @State var transcripts: [String: Layer2PreferredTranscript] = [:]
     @State private var loadedSourceText = ""
     @State private var suppressTextChange = false
     @State var isDirty = false
@@ -19,19 +19,16 @@ struct Layer2PreferredReviewView: View {
     @State private var dirtyFileSnapshot: Layer1AudioFile?
     @State var sourceChangedWhileEditing = false
     @State private var managementPresented = false
-
+    @State var clearAllPresented = false
     var eligibleFiles: [Layer1AudioFile] {
         eligibleFilesSnapshot
     }
-
     private var selectedFile: Layer1AudioFile? {
         eligibleFiles.first { $0.id == selectedAudioID }
     }
-
     private var detailFile: Layer1AudioFile? {
         selectedFile ?? (isDirty ? dirtyFileSnapshot : nil)
     }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
@@ -41,6 +38,7 @@ struct Layer2PreferredReviewView: View {
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
+                clearResultsButton
                 Button("Manage files") { managementPresented = true }
                     .disabled(isDirty)
                 Button("Done") { requestDismiss() }
@@ -104,6 +102,12 @@ struct Layer2PreferredReviewView: View {
         } message: {
             Text(errorMessage ?? "Unknown error")
         }
+        .modifier(
+            Layer2ClearResultsActions(
+                runner: runner, presented: $clearAllPresented,
+                onCleared: didClearStage2Results
+            )
+        )
         .onDisappear {
             eligibilityTask?.cancel()
             asr.stopPlayback()
@@ -211,7 +215,7 @@ struct Layer2PreferredReviewView: View {
         }
     }
 
-    private func refreshEligibleFiles() {
+    func refreshEligibleFiles() {
         let files = runner.files
         let structuralIDs = runner.store.structurallyVerifiedFileIDs()
         eligibilityTask?.cancel()
@@ -285,7 +289,7 @@ struct Layer2PreferredReviewView: View {
         }
     }
 
-    private func reloadStage2() {
+    func reloadStage2() {
         do {
             transcripts = try runner.store.currentStage2Transcripts()
         } catch {

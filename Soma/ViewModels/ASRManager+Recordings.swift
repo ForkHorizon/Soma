@@ -68,25 +68,6 @@ extension ASRManager {
         }
     }
 
-    @discardableResult
-    nonisolated static func removeAllRecordings(in dir: URL) throws -> Int {
-        let files = try FileManager.default.contentsOfDirectory(
-            at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
-        let recordings = files.filter { $0.pathExtension.lowercased() == "wav" }
-        for url in recordings { try removeRecording(at: url, from: dir) }
-        let remainingWAVNames = Set(
-            (try FileManager.default.contentsOfDirectory(
-                at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]))
-                .filter { $0.pathExtension.lowercased() == "wav" }
-                .map { $0.deletingPathExtension().lastPathComponent })
-        for url in files where url.pathExtension.lowercased() == "txt" {
-            guard !remainingWAVNames.contains(url.deletingPathExtension().lastPathComponent) else { continue }
-            guard FileManager.default.fileExists(atPath: url.path) else { continue }
-            try FileManager.default.removeItem(at: url)
-        }
-        return recordings.count
-    }
-
     func refreshRecordings() {
         // Keep one cancellable library refresh. The directory listing still
         // reconciles external changes, while cached durations avoid reopening
@@ -229,22 +210,6 @@ extension ASRManager {
             return true
         } catch {
             status = "Could not delete recording: \(error.localizedDescription)"
-            return false
-        }
-    }
-
-    @discardableResult
-    func deleteAllRecordings() -> Bool {
-        stopPlayback()
-        do {
-            _ = try Self.removeAllRecordings(in: recordingsDir)
-            lastRecordingURL = nil
-            status = "All recordings deleted"
-            refreshRecordings()
-            return true
-        } catch {
-            status = "Could not delete all recordings: \(error.localizedDescription)"
-            refreshRecordings()
             return false
         }
     }

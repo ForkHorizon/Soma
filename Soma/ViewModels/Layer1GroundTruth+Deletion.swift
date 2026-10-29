@@ -14,6 +14,32 @@ enum Layer1DeletionError: LocalizedError {
 
 extension Layer1GroundTruthStore {
     @discardableResult
+    func removeHumanReviewResults(
+        audioIDs: Set<String>, historyEvent: String = "human_results_removed"
+    ) throws -> Set<String> {
+        guard canPersistState else { throw Layer1DeletionError.stateUnavailable }
+        let ids = Set(state.files.map(\.id)).intersection(audioIDs)
+        guard !ids.isEmpty else { return [] }
+        try removeStage2Transcripts(audioIDs: ids)
+        ids.forEach(removeHumanGold)
+        for index in state.segments.indices where ids.contains(state.segments[index].audioID) {
+            state.segments[index].segmentationNeedsReview = false
+            state.segments[index].decision = Layer1SegmentDecision(
+                status: .pending, text: nil, normalizedText: nil, action: nil,
+                sourceModelID: nil, createdAt: nil, updatedAt: nil)
+        }
+        if let last = state.lastReviewSegmentID,
+            state.segments.first(where: { $0.id == last && ids.contains($0.audioID) }) != nil
+        {
+            state.lastReviewSegmentID = nil
+        }
+        refreshStatuses()
+        guard save() else { throw Layer1DeletionError.stateCouldNotSave }
+        appendHistory(event: historyEvent, payload: ["count": ids.count, "audioIDs": ids.sorted()])
+        return ids
+    }
+
+    @discardableResult
     func removeLayer1Results(
         audioIDs: Set<String>, historyEvent: String = "layer1_results_removed"
     ) throws -> Set<String> {

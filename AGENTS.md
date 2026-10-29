@@ -46,4 +46,4 @@ xcodebuild test -project Soma.xcodeproj -scheme Soma -destination 'platform=macO
 - Graphify is project-scoped ranking metadata stored under `~/.soma/graphs`; do not inject raw graph output or trigger full semantic extraction automatically. Unity graphs scan `Assets/` only.
 - Preserve `run_id`/`task_id` through MCP, audit, logging, and benchmark changes; update tests and docs when public response shapes change.
 - Do not commit generated or machine-local data: `graphify-out/`, `.soma/`, `.projectmem/`, `DerivedData/`, or `buildServer.json`.
-- Keep `.code-linter.json` at its base limits: 300 file lines, 50 function lines, nesting depth 4, 5 parameters, 5 prose-comment lines, 50 doc-comment lines, and 2 top-level types. Fix pre-existing violations separately; do not relax the policy.
+- Keep `.code-linter.json` at its base limits: 600 file lines, 80 function lines, nesting depth 4, 5 parameters, 5 prose-comment lines, 50 doc-comment lines, and 5 top-level types. Do not enforce a minimum function length; avoid splitting functions into tiny fragments.

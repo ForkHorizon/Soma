@@ -91,7 +91,7 @@ struct GroundTruthView: View {
                         title: "Available", value: stage2Files.formatted(), detail: "verified files",
                         tone: stage2Files > 0 ? .info : .neutral)
                     Spacer()
-                    Button("Open Stage 2") { stage2Presented = true }
+                    Button("View Stage 2 results") { stage2Presented = true }
                         .buttonStyle(.borderedProminent)
                         .disabled(stage2Files == 0)
                 }
